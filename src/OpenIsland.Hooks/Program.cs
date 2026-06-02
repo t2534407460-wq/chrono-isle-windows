@@ -117,10 +117,6 @@ public class Program
             // 交互 hook 只在真正需要弹询问时（default 模式）才响；bypass/auto 下 Claude 自动放行，
             // 不该每次工具调用都"叮"一声。Stop（任务完成）始终响。
             bool forceAsk = ClaudeHookPolicy.ShouldForceAsk(TryGetString(payload, "permission_mode"));
-            if (IsStopEvent(source, payload) || (isInteractive && forceAsk))
-            {
-                PlayBeep();
-            }
 
             // 连接到bridge —— 短超时（500ms）：UI 没在跑则立即放弃，避免阻塞 Claude
             await using var client = new BridgeCommandClient(effectiveTimeout);

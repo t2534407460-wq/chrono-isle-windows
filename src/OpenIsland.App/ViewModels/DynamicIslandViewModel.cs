@@ -62,6 +62,15 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _gpuText = "GPU --";
     [ObservableProperty] private string _netText = "↓-- ↑--";
 
+    // ── 时间日期显示 ──
+    [ObservableProperty] private string _dateTimeText = DateTime.Now.ToString("MM/dd HH:mm");
+    private System.Timers.Timer? _dateTimeTimer;
+
+    // ── 任务完成通知（独立区域，3秒后自动消失） ──
+    [ObservableProperty] private string _notificationText = "";
+    [ObservableProperty] private bool _isNotificationVisible;
+    private System.Timers.Timer? _notificationTimer;
+
     // ── Plan usage 行：Claude 订阅 5h 滚动窗口用量（API 模式只显示 token 数） ──
     /// <summary>true = 走 API（按量付费），只显示 token 数，无进度条/重置。</summary>
     [ObservableProperty] private bool _planIsApi;
@@ -264,7 +273,18 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         };
         _greenStatusTimer.AutoReset = false;
 
-        _settings.Changed += OnSettingsChangedForModels;
+        // 时间日期更新定时器：每秒更新一次
+        _dateTimeTimer = new System.Timers.Timer(1000);
+        _dateTimeTimer.Elapsed += (_, _) =>
+        {
+            System.Windows.Application.Current?.Dispatcher?.BeginInvoke(() =>
+            {
+                DateTimeText = DateTime.Now.ToString("MM/dd HH:mm");
+            });
+        };
+        _dateTimeTimer.AutoReset = true;
+        _dateTimeTimer.Start();
+
         // 语言切换：5h 余额行等动态文案立即按新语言重渲染（静态 XAML 文本走 indexer 绑定自动刷新）。
         Loc.Instance.LanguageChanged += OnLanguageChanged;
 
@@ -281,52 +301,12 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     }
 
     // ── 全局模型切换（音量条下方那一栏）：选中即切换，写 ~/.claude/settings.json，对新 CLI 会话生效 ──
-    public System.Collections.Generic.IReadOnlyList<ModelProfile> ModelChoices
-        => ModelPresets.BuiltInClaude.Concat(_settings.ModelProfiles).ToList();
 
     [ObservableProperty] private string? _globalModelStatus;
     [ObservableProperty] private bool _modelMenuOpen;
     private bool _busyModel;
 
     // 纯按钮 + 弹出列表：点列表里的某个模型即切换并收起菜单（不显示当前模型）。
-    [RelayCommand]
-    private async Task SwitchToModel(ModelProfile? profile)
-    {
-        if (profile == null) return;
-        ModelMenuOpen = false;
-        await SwitchGlobalModelAsync(profile);
-    }
-
-    private void OnSettingsChangedForModels(object? sender, EventArgs e)
-        => System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(ModelChoices)));
-
-    private async Task SwitchGlobalModelAsync(ModelProfile profile)
-    {
-        if (_busyModel) return;
-        _busyModel = true;
-        try
-        {
-            GlobalModelStatus = Loc.Get("Model_Switching");
-            var result = await _sessionManager.SwitchGlobalModelAsync(profile);
-            if (result.Ok) _settings.SetActiveModelProfile(profile.Id);
-            GlobalModelStatus = MapModelReason(result.Reason, result.Ok);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"SwitchGlobalModelAsync failed: {ex.Message}");
-            GlobalModelStatus = Loc.Get("Model_SwitchError");
-        }
-        finally { _busyModel = false; }
-    }
-
-    private static string MapModelReason(string? reason, bool ok) => reason switch
-    {
-        "switched-official" => Loc.Get("Model_SwitchedOfficial"),
-        "needs-restart" => Loc.Get("Model_NeedsRestart"),
-        "no-key" => Loc.Get("Model_NoKey"),
-        "write-failed" => Loc.Get("Model_WriteFailed"),
-        _ => Loc.Get(ok ? "Model_Switched" : "Model_SwitchFailed")
-    };
 
     private void OnSystemStatsUpdated(object? sender, SystemStatsSnapshot s)
     {
@@ -456,6 +436,7 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
 
     private void OnTaskCompleted(object? sender, AgentSession session)
     {
+        System.Diagnostics.Debug.WriteLine($"[OnTaskCompleted] Called for session: {session?.Title ?? "null"}");
         // 关闭程序时 Application.Current 可能已为 null（completion 定时器在 teardown 后回调）；?. 防崩溃。
         System.Windows.Application.Current?.Dispatcher?.BeginInvoke(() =>
         {
@@ -465,7 +446,37 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
             RefreshSessions();
             _greenStatusTimer.Stop();
             _greenStatusTimer.Start();
+
+            // 在灵动岛中弹出任务完成通知
+            System.Diagnostics.Debug.WriteLine($"[OnTaskCompleted] Showing notification for: {session?.Title ?? "任务"}");
+            ShowTaskNotification(session?.Title ?? "任务");
         });
+    }
+
+    /// <summary>显示任务完成通知，5秒后自动消失。</summary>
+    private void ShowTaskNotification(string taskName)
+    {
+        // 精炼提示内容：只显示完成状态
+        NotificationText = $"✓ 已完成";
+        IsNotificationVisible = true;
+
+        // 重置定时器：5秒后隐藏通知
+        _notificationTimer?.Stop();
+        _notificationTimer?.Dispose();
+        _notificationTimer = new System.Timers.Timer(5000);
+        _notificationTimer.Elapsed += (_, _) =>
+        {
+            System.Windows.Application.Current?.Dispatcher?.BeginInvoke(() =>
+            {
+                IsNotificationVisible = false;
+                NotificationText = "";
+            });
+            _notificationTimer?.Stop();
+            _notificationTimer?.Dispose();
+            _notificationTimer = null;
+        };
+        _notificationTimer.AutoReset = false;
+        _notificationTimer.Start();
     }
 
     private void UpdateStatusColor()
@@ -510,10 +521,14 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         // Edge-triggered chimes; SoundService handles mute + debounce internally.
         var newPhase = AggregatePhase;
 
+        // 调试日志：追踪状态转换
+        System.Diagnostics.Debug.WriteLine($"[Sound] Phase: {_prevAggregatePhase} -> {newPhase}, AttentionCount={AttentionCount}, SoundEnabled={SoundService.Enabled}");
+
         // #1 任务完成：Running → Idle/Completed（上一轮在思考，这一轮停手等用户）
         if (_prevAggregatePhase == SessionPhase.Running
             && newPhase is SessionPhase.Idle or SessionPhase.Completed)
         {
+            System.Diagnostics.Debug.WriteLine("[Sound] Playing TaskComplete");
             SoundService.PlayTaskComplete();
         }
 
@@ -524,6 +539,7 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         if (newPhase is SessionPhase.WaitingForApproval or SessionPhase.WaitingForAnswer
             && _prevAggregatePhase != newPhase)
         {
+            System.Diagnostics.Debug.WriteLine("[Sound] Playing Attention");
             SoundService.PlayAttention();
         }
 
@@ -721,34 +737,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     /// stay hidden and reappear organically when they go Running again or need attention.
     /// The running-count badge stays accurate (recomputed from live processes in RefreshSessions).
     /// </summary>
-    private void ClearAllSessions()
-    {
-        if (Sessions.Count == 0) return;
-
-        // 快照当前 id（直接遍历 Sessions 时 RefreshSessions 会改集合，先拷出来）
-        foreach (var s in Sessions.ToList())
-        {
-            if (string.IsNullOrEmpty(s.Id)) continue;
-            // 不收起当前正活动的会话（Running / 需关注）—— 折叠/清空灵动岛不该把"正在跑的任务"
-            // 弄没了：一条持续 Running 的会话被收起后，要等它本轮结束再开新一轮才会回来，期间岛上
-            // 既无卡片、聚合状态又显示空闲，看着就像任务消失了。这里只清理已结束/空闲的卡片，
-            // 活动中的会话保持可见（聚合状态也就仍正确显示"有任务在跑"）。
-            if (s.Phase is SessionPhase.Running
-                or SessionPhase.WaitingForApproval
-                or SessionPhase.WaitingForAnswer)
-                continue;
-            // 图钉固定的会话：用户显式保留，不清理。
-            if (_pinned.Contains(s.Id))
-                continue;
-            // 已在 _dismissed 里的不要覆盖其 sawQuiet（保持它在状态机里的既有进度）
-            if (!_dismissed.ContainsKey(s.Id))
-                _dismissed[s.Id] = false;
-        }
-
-        // 刷新：IsHiddenByDismiss 会把刚记下的统统隐藏，但阻塞性 prompt 那条会被
-        // 立即移出 _dismissed 并保留显示——未答权限不会被误清。
-        RefreshSessions();
-    }
 
     /// <summary>
     /// 头部点击命令（短点而非拖拽时由 code-behind 调用）：只切换展开/收起态，不再清理任务。
@@ -765,8 +753,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>模型栏"清理任务"按钮：显式清理任务卡片（沿用 ClearAllSessions：清已结束/空闲，保留活动中的）。</summary>
-    [RelayCommand]
-    private void ClearTasks() => ClearAllSessions();
 
     /// <summary>
     /// 返回 true = 这条 session 当前应保持隐藏（被收起且还没"再次活动"）。
@@ -812,7 +798,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         _sessionManager.TaskCompleted -= OnTaskCompleted;
         _systemStats.StatsUpdated -= OnSystemStatsUpdated;
         _planUsage.UsageUpdated -= OnPlanUsageUpdated;
-        _settings.Changed -= OnSettingsChangedForModels;
         Loc.Instance.LanguageChanged -= OnLanguageChanged;
         _greenStatusTimer.Stop();
         _greenStatusTimer.Dispose();

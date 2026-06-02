@@ -207,11 +207,11 @@
                                                  Cursor="Hand"
                                                  ToolTip="点我一下试试 / Click me"/>
 
-                        <TextBlock Text="Open Island"
+                        <TextBlock Text="{Binding DateTimeText}"
                                    Foreground="#E0E0E0"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   FontFamily="Segoe UI"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   FontFamily="Microsoft YaHei UI, Segoe UI Variable"
                                    VerticalAlignment="Center"/>
 
                         <!-- 运行中的会话数量 -->
@@ -278,6 +278,24 @@
                         </Button>
                     </StackPanel>
                 </Grid>
+
+                <!-- ── 任务完成通知展开区域（类似展开状态，但只显示通知内容） ── -->
+                <Border x:Name="NotificationBorder"
+                        Background="#0D0D0D"
+                        BorderBrush="#282828"
+                        BorderThickness="1,0,1,1"
+                        CornerRadius="0,0,20,20"
+                        Padding="20,12"
+                        Visibility="Collapsed"
+                        ClipToBounds="True">
+                    <TextBlock Text="{Binding NotificationText}"
+                               Foreground="#7CC47F"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               FontFamily="Microsoft YaHei UI, Segoe UI Variable"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"/>
+                </Border>
 
                 <!-- ── 展开内容 ── -->
                 <StackPanel x:Name="ExpandedContent"
@@ -475,32 +493,120 @@
                             </Border.Resources>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <Button Grid.Column="0" Style="{StaticResource MediaBtn}"
-                                        Command="{Binding MediaPrevCommand}"
-                                        Content="&#xE892;" ToolTip="{Binding [Island_Prev], Source={x:Static svc:Loc.Instance}}"/>
-                                <Button Grid.Column="1" Style="{StaticResource MediaBtn}"
-                                        Command="{Binding MediaPlayPauseCommand}"
-                                        Content="&#xE768;" FontSize="15" ToolTip="{Binding [Island_PlayPause], Source={x:Static svc:Loc.Instance}}"/>
-                                <Button Grid.Column="2" Style="{StaticResource MediaBtn}"
-                                        Command="{Binding MediaNextCommand}"
-                                        Content="&#xE893;" ToolTip="{Binding [Island_Next], Source={x:Static svc:Loc.Instance}}"/>
+                                <!-- 左列：音量控制 -->
+                                <Border Grid.Column="0" Background="#111111" CornerRadius="10" Padding="10,6" Margin="0,0,4,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="&#xE767;"
+                                                   FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="12" Foreground="#9AA0A6"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,6,0"/>
+                                        <Slider Grid.Column="1" Style="{StaticResource VolSlider}"
+                                                Value="{Binding Volume, Mode=TwoWay}"
+                                                Margin="0,0,4,0"
+                                                ToolTip="{Binding [Island_Volume], Source={x:Static svc:Loc.Instance}}"/>
+                                    </Grid>
+                                </Border>
 
-                                <TextBlock Grid.Column="3" Text="&#xE767;"
-                                           FontFamily="Segoe MDL2 Assets"
-                                           FontSize="12" Foreground="#9AA0A6"
-                                           VerticalAlignment="Center"
-                                           Margin="8,0,6,0"/>
-                                <Slider Grid.Column="4" Style="{StaticResource VolSlider}"
-                                        Value="{Binding Volume, Mode=TwoWay}"
-                                        Margin="0,0,4,0"
-                                        ToolTip="{Binding [Island_Volume], Source={x:Static svc:Loc.Instance}}"/>
+                                <!-- 右列：用量显示 -->
+                                <Border Grid.Column="1" Background="#111111" CornerRadius="10" Padding="10,8"
+                                        Cursor="Hand"
+                                        ToolTip="{Binding [Island_UsageToggle_Tip], Source={x:Static svc:Loc.Instance}}">
+                                    <Border.InputBindings>
+                                        <MouseBinding Gesture="LeftClick" Command="{Binding ToggleUsageViewCommand}"/>
+                                    </Border.InputBindings>
+                                    <Grid>
+                                        <!-- ① 余额视图（默认）：ShowUsageChart=true 时隐藏 -->
+                                        <Grid Visibility="{Binding ShowUsageChart, Converter={StaticResource InvBoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding PlanLabel}"
+                                                       Foreground="#9AA0A6"
+                                                       FontSize="11"
+                                                       FontFamily="Consolas, Cascadia Code, Segoe UI"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,8,0"/>
+
+                                            <!-- Plan 模式：进度条 + 百分比 + 重置（PlanIsApi=false 时显示） -->
+                                            <Grid Grid.Column="1"
+                                                  Visibility="{Binding PlanIsApi, Converter={StaticResource InvBoolToVis}}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding PlanPercentText}"
+                                                           Foreground="#E0E0E0"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           FontFamily="Consolas, Cascadia Code, Segoe UI"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding PlanResetText}"
+                                                           Foreground="#7C8A9A"
+                                                           FontSize="10"
+                                                           FontFamily="Consolas, Cascadia Code, Segoe UI"
+                                                           VerticalAlignment="Center"
+                                                           Margin="6,0,0,0"/>
+                                            </Grid>
+
+                                            <!-- API 模式：· 1.24M tokens（PlanIsApi=true 时显示） -->
+                                            <TextBlock Grid.Column="1"
+                                                       Visibility="{Binding PlanIsApi, Converter={StaticResource BoolToVis}}"
+                                                       Foreground="#E0E0E0"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       FontFamily="Consolas, Cascadia Code, Segoe UI"
+                                                       VerticalAlignment="Center">
+                                                <Run Text="·" Foreground="#7C8A9A"/>
+                                                <Run Text="{Binding PlanValueText}"/>
+                                            </TextBlock>
+                                        </Grid>
+
+                                        <!-- ② 七天 token 柱状图视图：ShowUsageChart=true 时显示 -->
+                                        <Grid Visibility="{Binding ShowUsageChart, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="7天" Foreground="#9AA0A6" FontSize="11"
+                                                       FontFamily="Consolas, Cascadia Code, Segoe UI"
+                                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <ItemsControl Grid.Column="1" ItemsSource="{Binding UsageBars}"
+                                                          VerticalAlignment="Center" HorizontalAlignment="Left">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Width="10" Height="20" Margin="0,0,2,0"
+                                                                Background="Transparent" ToolTip="{Binding Tooltip}">
+                                                            <Border VerticalAlignment="Bottom" Height="{Binding BarHeight}"
+                                                                    CornerRadius="2"
+                                                                    Background="{Binding Color, Converter={StaticResource StrToBrush}}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Grid.Column="2" Text="{Binding UsageTotalText}" Foreground="#7CC47F"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       FontFamily="Consolas, Cascadia Code, Segoe UI"
+                                                       VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
                             </Grid>
                         </Border>
 
@@ -512,281 +618,10 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <ToggleButton x:Name="ModelMenuToggle" Grid.Column="0" Cursor="Hand"
-                                              FocusVisualStyle="{x:Null}" local:Anim.PressScale="True"
-                                              IsChecked="{Binding ModelMenuOpen, Mode=TwoWay}">
-                                    <ToggleButton.Template>
-                                        <ControlTemplate TargetType="ToggleButton">
-                                            <Border x:Name="Bd" Background="#252320" BorderBrush="#3A3631"
-                                                    BorderThickness="1" CornerRadius="8" Padding="12,5">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding [Island_SwitchModel], Source={x:Static svc:Loc.Instance}}" Foreground="#FAF9F5" FontSize="12" VerticalAlignment="Center"/>
-                                                    <Path Margin="7,2,0,0" VerticalAlignment="Center" Fill="#CC785C" Data="M0,0 L4,4 L8,0 Z"/>
-                                                </StackPanel>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#CC785C"/>
-                                                </Trigger>
-                                                <Trigger Property="IsChecked" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="#2F2C28"/>
-                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#CC785C"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </ToggleButton.Template>
-                                </ToggleButton>
-
-                                <Popup PlacementTarget="{Binding ElementName=ModelMenuToggle}" Placement="Bottom"
-                                       VerticalOffset="4" IsOpen="{Binding ModelMenuOpen, Mode=TwoWay}"
-                                       StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
-                                    <Border Background="#252320" BorderBrush="#3A3631" BorderThickness="1"
-                                            CornerRadius="8" Padding="4" MinWidth="170">
-                                        <ItemsControl ItemsSource="{Binding ModelChoices}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Cursor="Hand" FocusVisualStyle="{x:Null}"
-                                                            Command="{Binding DataContext.SwitchToModelCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding}">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Border x:Name="IBd" Background="Transparent" CornerRadius="6" Padding="10,6" Margin="1">
-                                                                    <ContentPresenter/>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="IBd" Property="Background" Value="#2F2C28"/>
-                                                                    </Trigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                        <TextBlock Text="{Binding Name}" Foreground="#FAF9F5" FontSize="12"/>
-                                                    </Button>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </Border>
-                                </Popup>
-
-                                <!-- 截图按钮 + 清理任务：放在同一横排（Grid 第 1 列）。 -->
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-
-                                <!-- 区域截图：微信式拖拽框选 → 复制到剪贴板。快捷键默认 Ctrl+Q（设置中心可改）。 -->
-                                <Button x:Name="ScreenshotBtn" Cursor="Hand" Margin="8,0,0,0"
-                                        FocusVisualStyle="{x:Null}" local:Anim.PressScale="True"
-                                        Command="{Binding ScreenshotCommand}" ToolTip="{Binding [Island_Screenshot_Tip], Source={x:Static svc:Loc.Instance}}">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Sb" Background="#252320" BorderBrush="#3A3631"
-                                                    BorderThickness="1" CornerRadius="8" Padding="9,5">
-                                                <TextBlock Text="&#xE924;" FontFamily="Segoe MDL2 Assets"
-                                                           Foreground="#CC785C" FontSize="12" VerticalAlignment="Center"/>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Sb" Property="BorderBrush" Value="#CC785C"/>
-                                                    <Setter TargetName="Sb" Property="Background" Value="#2F2C28"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
-
-                                <!-- 清理任务：显式清空已结束/空闲的任务卡片（保留正在跑的）；与切换模型同款暖深色风格 -->
-                                <Button x:Name="ClearTasksBtn" Cursor="Hand" Margin="8,0,0,0"
-                                        FocusVisualStyle="{x:Null}" local:Anim.PressScale="True"
-                                        Command="{Binding ClearTasksCommand}" ToolTip="{Binding [Island_ClearTasks_Tip], Source={x:Static svc:Loc.Instance}}">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Cb" Background="#252320" BorderBrush="#3A3631"
-                                                    BorderThickness="1" CornerRadius="8" Padding="12,5">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets"
-                                                               Foreground="#CC785C" FontSize="11" VerticalAlignment="Center"/>
-                                                    <TextBlock Text="{Binding [Island_ClearTasks], Source={x:Static svc:Loc.Instance}}" Foreground="#FAF9F5" FontSize="12"
-                                                               VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                                </StackPanel>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Cb" Property="BorderBrush" Value="#CC785C"/>
-                                                    <Setter TargetName="Cb" Property="Background" Value="#2F2C28"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
-
-                                </StackPanel>
 
                                 <TextBlock Grid.Column="2" Text="{Binding GlobalModelStatus}"
                                            Foreground="#777777" FontSize="10" VerticalAlignment="Center"
                                            Margin="10,0,0,0" TextTrimming="CharacterEllipsis"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- ── 5 小时余额行：Claude 订阅 5h 滚动窗口剩余额度 ──
-                             订阅模式：5h + 余额条 + 余 73% + 重置 2h13m
-                             API  模式：API · 1.24M tokens（无进度条/重置）
-                             数据来自 /api/oauth/usage（= /usage 同源，零 message 配额）。
-                             配色/间距对齐上方媒体行（#111111 / CornerRadius 10 / Margin 8,0,8,2）。 -->
-                        <Border Background="#111111"
-                                CornerRadius="10"
-                                Margin="8,0,8,2"
-                                Padding="10,8"
-                                Cursor="Hand"
-                                ToolTip="{Binding [Island_UsageToggle_Tip], Source={x:Static svc:Loc.Instance}}">
-                            <Border.InputBindings>
-                                <!-- 点余额行：在"5h 余额"与"最近七天 token 柱状图"之间切换（落盘，下次启动恢复）。 -->
-                                <MouseBinding Gesture="LeftClick" Command="{Binding ToggleUsageViewCommand}"/>
-                            </Border.InputBindings>
-                            <Border.Resources>
-                                <!-- 扁平进度条：无边框、圆角细条，Foreground 绑 PlanBarColor，
-                                     轨道 #26FFFFFF，高度 6。无 code-behind，纯模板实现 -->
-                                <Style x:Key="PlanBar" TargetType="ProgressBar">
-                                    <Setter Property="Minimum" Value="0"/>
-                                    <Setter Property="Maximum" Value="1"/>
-                                    <Setter Property="Height" Value="6"/>
-                                    <Setter Property="Foreground"
-                                            Value="{Binding PlanBarColor, Converter={StaticResource StrToBrush}}"/>
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ProgressBar">
-                                                <Border CornerRadius="3"
-                                                        Background="#26FFFFFF"
-                                                        ClipToBounds="True">
-                                                    <Grid>
-                                                        <Border x:Name="PART_Track"/>
-                                                        <Border x:Name="PART_Indicator"
-                                                                HorizontalAlignment="Left"
-                                                                CornerRadius="3"
-                                                                Background="{TemplateBinding Foreground}"/>
-                                                    </Grid>
-                                                </Border>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Border.Resources>
-                            <Grid>
-                            <!-- ① 余额视图（默认）：5h 进度条 + 余额% + 重置；ShowUsageChart=true 时隐藏 -->
-                            <Grid Visibility="{Binding ShowUsageChart, Converter={StaticResource InvBoolToVis}}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <!-- 左：Plan / API 标签（灰，跟 CPU/RAM 同字号同色） -->
-                                <TextBlock Grid.Column="0"
-                                           Text="{Binding PlanLabel}"
-                                           Foreground="#9AA0A6"
-                                           FontSize="11"
-                                           FontFamily="Consolas, Cascadia Code, Segoe UI"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,10,0"/>
-
-                                <!-- Plan 模式组：进度条 + 百分比 + 重置 -->
-                                <Grid Grid.Column="1"
-                                      Visibility="{Binding PlanIsApi, Converter={StaticResource InvBoolToVis}}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <ProgressBar Grid.Column="0"
-                                                 Style="{StaticResource PlanBar}"
-                                                 Value="{Binding PlanBarFraction}"
-                                                 VerticalAlignment="Center"
-                                                 Margin="0,0,10,0"/>
-
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding PlanPercentText}"
-                                               Foreground="#E0E0E0"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               FontFamily="Consolas, Cascadia Code, Segoe UI"
-                                               VerticalAlignment="Center"/>
-
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding PlanResetText}"
-                                               Foreground="#7C8A9A"
-                                               FontSize="10"
-                                               FontFamily="Consolas, Cascadia Code, Segoe UI"
-                                               VerticalAlignment="Center"
-                                               Margin="8,0,0,0"/>
-
-                                    <!-- 刷新按钮：点击立即重新探一次真实余额 + 重置时间 -->
-                                    <Button Grid.Column="3" Cursor="Hand" Margin="8,0,0,0"
-                                            FocusVisualStyle="{x:Null}" local:Anim.PressScale="True"
-                                            Command="{Binding RefreshUsageCommand}"
-                                            ToolTip="{Binding [Island_Refresh_Tip], Source={x:Static svc:Loc.Instance}}">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="Rb" Background="Transparent" CornerRadius="5" Padding="4,2">
-                                                    <TextBlock x:Name="Ico" Text="&#xE72C;" FontFamily="Segoe MDL2 Assets"
-                                                               FontSize="11" Foreground="#9AA0A6" VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Rb" Property="Background" Value="#2F2C28"/>
-                                                        <Setter TargetName="Ico" Property="Foreground" Value="#CC785C"/>
-                                                    </Trigger>
-                                                    <DataTrigger Binding="{Binding IsRefreshingUsage}" Value="True">
-                                                        <Setter TargetName="Ico" Property="Foreground" Value="#CC785C"/>
-                                                    </DataTrigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                </Grid>
-
-                                <!-- API 模式组：· 1.24M tokens（替代进度条组） -->
-                                <TextBlock Grid.Column="1"
-                                           Visibility="{Binding PlanIsApi, Converter={StaticResource BoolToVis}}"
-                                           Foreground="#E0E0E0"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           FontFamily="Consolas, Cascadia Code, Segoe UI"
-                                           VerticalAlignment="Center">
-                                    <Run Text="·" Foreground="#7C8A9A"/>
-                                    <Run Text="{Binding PlanValueText}"/>
-                                </TextBlock>
-                            </Grid>
-
-                            <!-- ② 七天 token 柱状图视图：ShowUsageChart=true 时显示，再次点击切回余额。
-                                 柱子用量越多绿色越深；右侧只显示七天总量数字。 -->
-                            <Grid Visibility="{Binding ShowUsageChart, Converter={StaticResource BoolToVis}}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="7天" Foreground="#9AA0A6" FontSize="11"
-                                           FontFamily="Consolas, Cascadia Code, Segoe UI"
-                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <ItemsControl Grid.Column="1" ItemsSource="{Binding UsageBars}"
-                                              VerticalAlignment="Center" HorizontalAlignment="Left">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Width="12" Height="24" Margin="0,0,3,0"
-                                                    Background="Transparent" ToolTip="{Binding Tooltip}">
-                                                <Border VerticalAlignment="Bottom" Height="{Binding BarHeight}"
-                                                        CornerRadius="2"
-                                                        Background="{Binding Color, Converter={StaticResource StrToBrush}}"/>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <TextBlock Grid.Column="2" Text="{Binding UsageTotalText}" Foreground="#7CC47F"
-                                           FontSize="11" FontWeight="SemiBold"
-                                           FontFamily="Consolas, Cascadia Code, Segoe UI"
-                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
-                            </Grid>
                             </Grid>
                         </Border>
 
@@ -830,7 +665,7 @@
                                                                FontSize="12"
                                                                FontWeight="SemiBold"
                                                                TextTrimming="CharacterEllipsis"
-                                                               MaxWidth="200"/>
+                                                               MaxWidth="350"/>
                                                     <TextBlock Text="{Binding Elapsed}"
                                                                Foreground="#484848"
                                                                FontSize="11"
@@ -1081,7 +916,7 @@
                                            Margin="10,0,0,0"
                                            VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
-                                           MaxWidth="280"/>
+                                           MaxWidth="400"/>
                                 <TextBlock Text="{Binding Elapsed}"
                                            Foreground="#48484A"
                                            FontSize="11"

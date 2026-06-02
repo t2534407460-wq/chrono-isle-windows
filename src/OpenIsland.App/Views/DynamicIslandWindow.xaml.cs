@@ -12,10 +12,10 @@ public partial class DynamicIslandWindow : Window
     private bool _isDragging;
     private Point _dragStartPoint;
 
-    // 普通模式岛宽 vs 权限提示时的拓宽宽度。等"丝滑"动画 0.5s ease-out 在两者间过渡。
-    // 加宽是为了让 "2. Yes, don't ask again for vibeisland.app this session" 这种长 label
-    // 整条容得下，不被截断。
+    // 普通模式岛宽 vs 展开/权限提示时的拓宽宽度。等"丝滑"动画 0.5s ease-out 在两者间过渡。
+    // 展开后宽度是折叠时的两倍（320→640），提供更宽敞的操作空间。
     private const double NormalWidth = 320;
+    private const double ExpandedWidth = 640;  // 展开后宽度
     private const double PermissionWidth = 640;
 
     // Notch 形态参数：仿 MacBook 刘海的横条；snap 阈值 = 拖到距屏顶 28px 内放手就吸附。
@@ -156,6 +156,70 @@ public partial class DynamicIslandWindow : Window
             Dispatcher.BeginInvoke(() => AnimateExpand(_viewModel.IsExpanded));
         else if (e.PropertyName == nameof(DynamicIslandViewModel.IsPermissionMode))
             Dispatcher.BeginInvoke(() => AnimateWidth(_viewModel.IsPermissionMode));
+        else if (e.PropertyName == nameof(DynamicIslandViewModel.IsNotificationVisible))
+            Dispatcher.BeginInvoke(() => AnimateNotification(_viewModel.IsNotificationVisible));
+    }
+
+    /// <summary>
+    /// 任务完成通知展开/收起动画。
+    /// 类似展开状态，但只显示通知内容，不影响现有的展开/收起功能。
+    /// </summary>
+    private void AnimateNotification(bool show)
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var dur = TimeSpan.FromMilliseconds(300);
+
+        if (show)
+        {
+            // 通知出现：使用固定宽度（与折叠状态一致），让文本自动换行
+            double targetWidth = NormalWidth;
+
+            // 从中心向外扩展宽度（如果当前宽度不同）
+            double currentWidth = ActualWidth > 0 ? ActualWidth : Width;
+            double widthDelta = targetWidth - currentWidth;
+            double targetLeft = Left - (widthDelta / 2);
+
+            AnimateWindowProp(WidthProperty, targetWidth, dur, ease);
+            AnimateWindowProp(LeftProperty, targetLeft, dur, ease);
+
+            // 展开通知区域：先显示，再动画高度
+            NotificationBorder.Visibility = Visibility.Visible;
+            NotificationBorder.Height = 0;
+            NotificationBorder.BeginAnimation(HeightProperty, new DoubleAnimation
+            {
+                To = 80, // 增加高度以支持换行显示
+                Duration = dur,
+                EasingFunction = ease
+            });
+        }
+        else
+        {
+            // 通知消失：先动画高度到0，再隐藏
+            NotificationBorder.BeginAnimation(HeightProperty, new DoubleAnimation
+            {
+                To = 0,
+                Duration = dur,
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.Stop
+            });
+
+            // 动画结束后隐藏
+            var hideTimer = new System.Windows.Threading.DispatcherTimer { Interval = dur };
+            hideTimer.Tick += (_, _) =>
+            {
+                hideTimer.Stop();
+                NotificationBorder.Visibility = Visibility.Collapsed;
+            };
+            hideTimer.Start();
+
+            // 恢复原始宽度
+            double currentWidth = ActualWidth > 0 ? ActualWidth : Width;
+            double widthDelta = NormalWidth - currentWidth;
+            double targetLeft = Left - (widthDelta / 2);
+
+            AnimateWindowProp(WidthProperty, NormalWidth, dur, ease);
+            AnimateWindowProp(LeftProperty, targetLeft, dur, ease);
+        }
     }
 
     /// <summary>
@@ -205,31 +269,31 @@ public partial class DynamicIslandWindow : Window
             _viewModel.IsExpanded = true; // 这会经 PropertyChanged 调一次 AnimateExpand
         }
 
-        // 同帧再触发一次 AnimateExpand，让高度动画跟宽度动画并肩起步、500ms 同步收尾 ——
-        // 之前这里走 Dispatcher.BeginInvoke(Background)，比 AnimateWidth 慢半拍，结果
-        // 退出权限时高度先收完再轮宽度，看起来卡顿。
-        if (_viewModel.IsExpanded)
-        {
-            AnimateExpand(true);
-        }
+        // 注意：权限模式切换时不再调用 AnimateExpand，避免位置计算冲突
+        // AnimateExpand 只在 IsExpanded 属性变化时由 OnViewModelPropertyChanged 触发
     }
 
     private void AnimateExpand(bool expand)
     {
         double targetHeight;
+        double targetWidth;
+        double currentWidth = ActualWidth > 0 ? ActualWidth : Width;
+        double currentLeft = Left;
+
         if (expand)
         {
             if (_viewModel.IsPermissionMode)
             {
                 // 权限面板：直接给兜底大值，不 measure（避免 layout pass 没追上时拿到旧内容尺寸）
                 targetHeight = 1200;
+                targetWidth = PermissionWidth;
             }
             else
             {
-                // 普通模式：用 *目标* 宽度 NormalWidth 而非 ActualWidth measure ——
-                // 退出权限模式时 Width 还在 640→320 动画中段，ActualWidth 拿到的是错的，
-                // 测出来的高度也错（窄列内容会变高）。按 320 measure 才是收回后的真实尺寸。
-                ExpandedContent.Measure(new Size(NormalWidth, double.PositiveInfinity));
+                // 普通模式：展开后宽度是折叠时的两倍（320→640）
+                targetWidth = ExpandedWidth;
+                // 用目标宽度 measure 内容，确保高度计算正确
+                ExpandedContent.Measure(new Size(ExpandedWidth, double.PositiveInfinity));
                 targetHeight = ExpandedContent.DesiredSize.Height;
                 if (targetHeight < 1) targetHeight = 600;
             }
@@ -237,17 +301,29 @@ public partial class DynamicIslandWindow : Window
         else
         {
             targetHeight = 0;
+            targetWidth = NormalWidth;
         }
 
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        // 计算新的 Left 位置，实现从中间向两侧展开的效果
+        // 展开时：向左扩展一半的宽度增量
+        // 收起时：向右收缩一半的宽度增量
+        double widthDelta = targetWidth - currentWidth;
+        double targetLeft = currentLeft - (widthDelta / 2);
 
-        // 高度动画时长跟 AnimateWidth 的 500ms 对齐 ——
-        // 之前 220ms 高度先收完，剩下"窄高已收 + 宽度还在收"那一截让消失看起来卡顿。
-        // 同步后高度跟宽度并肩走，视觉上像一团方块同步收缩。
+        // 使用更丝滑的动画：400ms + CubicEase EaseInOut
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+        // 宽度动画：展开时变宽，收起时变窄
+        AnimateWindowProp(WidthProperty, targetWidth, TimeSpan.FromMilliseconds(400), ease);
+
+        // Left 位置动画：实现从中间向两侧展开的效果
+        AnimateWindowProp(LeftProperty, targetLeft, TimeSpan.FromMilliseconds(400), ease);
+
+        // 高度动画：与宽度动画同步，400ms 完成
         ExpandedContent.BeginAnimation(MaxHeightProperty, new DoubleAnimation
         {
             To = targetHeight,
-            Duration = TimeSpan.FromMilliseconds(500),
+            Duration = TimeSpan.FromMilliseconds(400),
             EasingFunction = ease
         });
 
@@ -256,7 +332,7 @@ public partial class DynamicIslandWindow : Window
             new DoubleAnimation
             {
                 To = expand ? 270 : 90,
-                Duration = TimeSpan.FromMilliseconds(500),
+                Duration = TimeSpan.FromMilliseconds(400),
                 EasingFunction = ease
             });
     }

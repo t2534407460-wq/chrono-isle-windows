@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIsland.App.Services;
@@ -16,9 +17,20 @@ public partial class App : Application
     public IServiceProvider? ServiceProvider => _serviceProvider;
     private TrayIconService? _trayIcon;
     private HotkeyService? _hotkeyService;
+    private Mutex? _mutex;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // 单实例校验：使用 Mutex 确保灵动岛不能多开
+        _mutex = new Mutex(true, "OpenIsland_SingleInstance", out bool createdNew);
+        if (!createdNew)
+        {
+            // 已有实例在运行，关闭当前实例
+            MessageBox.Show("Open Island 已经在运行中！", "Open Island", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         // 配置依赖注入
@@ -77,6 +89,8 @@ public partial class App : Application
     {
         _hotkeyService?.Dispose();
         _trayIcon?.Dispose();
+        _mutex?.ReleaseMutex();
+        _mutex?.Dispose();
 
         if (_serviceProvider is IDisposable disposable)
         {

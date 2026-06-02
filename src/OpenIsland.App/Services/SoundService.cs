@@ -32,12 +32,21 @@ public static class SoundService
     /// </summary>
     private static bool ShouldPlay()
     {
-        if (!Enabled) return false;
+        if (!Enabled)
+        {
+            System.Diagnostics.Debug.WriteLine("[SoundService] ShouldPlay: Enabled=false, skip");
+            return false;
+        }
         lock (_gate)
         {
             var now = DateTime.UtcNow;
-            if (now - _lastPlayUtc < DebounceWindow) return false;
+            if (now - _lastPlayUtc < DebounceWindow)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SoundService] ShouldPlay: debounce, last={_lastPlayUtc}, now={now}, diff={(now - _lastPlayUtc).TotalMilliseconds}ms");
+                return false;
+            }
             _lastPlayUtc = now;
+            System.Diagnostics.Debug.WriteLine("[SoundService] ShouldPlay: OK, playing");
             return true;
         }
     }
@@ -50,10 +59,12 @@ public static class SoundService
         if (!ShouldPlay()) return;
         try
         {
+            System.Diagnostics.Debug.WriteLine("[SoundService] Playing SystemSounds.Asterisk");
             System.Media.SystemSounds.Asterisk.Play();
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[SoundService] Asterisk failed: {ex.Message}, trying MessageBeep");
             // 静默兜底
             try { MessageBeep(0x00000040); } catch { }
         }
