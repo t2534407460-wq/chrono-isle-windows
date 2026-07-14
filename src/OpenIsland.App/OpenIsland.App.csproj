@@ -1,48 +1,38 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>OpenIsland</AssemblyName>
     <RootNamespace>OpenIsland.App</RootNamespace>
-    <!-- exe / 任务栏 / Alt+Tab 图标 -->
     <ApplicationIcon>Assets\face.ico</ApplicationIcon>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.7" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
   </ItemGroup>
-
   <ItemGroup>
-    <!-- UIAutomationClient + UIAutomationTypes: ActivateClaudeDesktopWindow 内部用 UIA
-         在 Claude Desktop 侧边栏点击对应的 session 按钮（桌面端没有 URL scheme 支持
-         深链到具体 session，UIA 是唯一可行路径）。WindowsBase / PresentationCore 都
-         在 .NET 8 Desktop Pack 里。 -->
-    <Reference Include="UIAutomationClient" />
-    <Reference Include="UIAutomationTypes" />
+    <Compile Include="App.xaml.cs;GlobalAliases.cs;LifeModels.cs;MarkdownTextBlock.cs" />
+    <Compile Include="Services\LifeDataService.cs;Services\ProviderSettingsService.cs;Services\OpenAiChatService.cs;Services\AutoStartService.cs" />
+    <Compile Include="Services\LifePreferencesService.cs;Services\AssistantIntentService.cs;Services\AssistantActionService.cs;Services\ReminderService.cs;Services\WindowsNotificationService.cs;Services\RecurringReminderData.cs;Services\SingleReminderData.cs;Services\ConversationRouter.cs;Services\LocalAgendaQueryService.cs;Services\LifeTrayService.cs" />
+    <Compile Include="ViewModels\LifeViewModel.cs" />
+    <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs" />
   </ItemGroup>
-
   <ItemGroup>
-    <ProjectReference Include="..\OpenIsland.Core\OpenIsland.Core.csproj" />
+    <ApplicationDefinition Include="App.xaml" />
+    <Page Include="Views\LifeMainWindow.xaml;Views\LifeSettingsWindow.xaml;Views\LifeIslandWindow.xaml;Views\LifeManagementWindow.xaml" />
   </ItemGroup>
-
   <ItemGroup>
-    <Folder Include="Resources\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- 像素状态精灵 sprite sheet（Aseprite 导出的水平条带 PNG）。
-         嵌成 WPF Resource，pack URI 加载：pack://application:,,,/Assets/<state>.png -->
-    <Resource Include="Assets\*.png" />
-    <!-- 托盘 / 窗口图标：face.ico 也嵌成 Resource，TrayIconService 走 pack URI 读 -->
     <Resource Include="Assets\face.ico" />
+    <Resource Include="Assets\island-mascot.png" />
   </ItemGroup>
-
 </Project>

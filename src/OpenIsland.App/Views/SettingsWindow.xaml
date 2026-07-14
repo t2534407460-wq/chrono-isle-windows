@@ -134,53 +134,10 @@
                     <Button Content="{Binding [Settings_RemoveSel], Source={x:Static svc:Loc.Instance}}" Click="RemoveWorkspace_Click"/>
                 </StackPanel>
 
-                <!-- ── 模型 / Providers ── -->
+                <!-- ── AI 助手 / 模型 / Providers：占位，阶段 7 在此填充 LLM Provider 配置 UI ── -->
                 <TextBlock Text="{Binding [Settings_Models], Source={x:Static svc:Loc.Instance}}" FontSize="18" FontWeight="Bold" Foreground="#F2F2F7" Margin="0,26,0,0"/>
                 <TextBlock Margin="0,4,0,12" FontSize="12" Foreground="#8E8E93" TextWrapping="Wrap"
-                           Text="{Binding [Settings_Models_Desc], Source={x:Static svc:Loc.Instance}}"/>
-                <Border Background="#2C2C2E" CornerRadius="10" Padding="2">
-                    <ListBox x:Name="ModelsList" SelectionMode="Single" Height="96" DisplayMemberPath="Name"
-                             SelectionChanged="Models_SelectionChanged"/>
-                </Border>
-                <Button Content="{Binding [Settings_DeleteModel], Source={x:Static svc:Loc.Instance}}" Click="RemoveModel_Click" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-
-                <TextBlock Text="{Binding [Settings_AddModel], Source={x:Static svc:Loc.Instance}}" FontWeight="SemiBold" Foreground="#F2F2F7" Margin="0,18,0,6"/>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding [Settings_Preset], Source={x:Static svc:Loc.Instance}}" Style="{StaticResource FieldLabel}"/>
-                    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="PresetCombo"
-                              Style="{StaticResource ClaudeCombo}"
-                              DisplayMemberPath="Name" Margin="0,3"
-                              SelectionChanged="Preset_Changed"/>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding [Settings_Name], Source={x:Static svc:Loc.Instance}}" Style="{StaticResource FieldLabel}"/>
-                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="NameBox"/>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding [Settings_Address], Source={x:Static svc:Loc.Instance}}" Style="{StaticResource FieldLabel}"/>
-                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="BaseUrlBox"/>
-
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding [Settings_Model], Source={x:Static svc:Loc.Instance}}" Style="{StaticResource FieldLabel}"/>
-                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="ModelBox"/>
-
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="API Key" Style="{StaticResource FieldLabel}"/>
-                    <PasswordBox Grid.Row="4" Grid.Column="1" x:Name="ApiKeyBox"
-                                 Background="#2C2C2E" Foreground="#F2F2F7" BorderBrush="#3A3A3C"
-                                 BorderThickness="1" Padding="6,4" CaretBrush="#F2F2F7" Margin="0,3"
-                                 VerticalContentAlignment="Center"/>
-                </Grid>
-                <Button Content="{Binding [Settings_AddSave], Source={x:Static svc:Loc.Instance}}" Style="{StaticResource PrimaryButton}"
-                        HorizontalAlignment="Left" Margin="0,12,0,0" Click="AddModel_Click"/>
+                           Text="（AI 助手配置将在后续阶段接入：DeepSeek / 小米 MiMo 等 OpenAI 兼容服务）"/>
             </StackPanel>
         </ScrollViewer>
 

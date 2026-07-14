@@ -31,8 +31,6 @@ public class SessionManager : IDisposable
     private readonly BridgeServer _bridgeServer;
     private readonly SessionRegistry _registry;
     private readonly TerminalJumpService _terminalJumpService;
-    private readonly ClaudeTranscriptDiscovery _claudeDiscovery;
-    private readonly ClaudeTranscriptWatcher _claudeWatcher;
     private readonly ProcessMonitorService _processMonitor;
     private SessionState _state = new();
     private readonly object _stateLock = new();
@@ -44,11 +42,7 @@ public class SessionManager : IDisposable
     /// </summary>
     private readonly ConcurrentDictionary<string, string> _pendingHookClients = new();
     private readonly Timer _cleanupTimer;
-    // 安全网：FileSystemWatcher 内部缓冲在深目录树 + 大量 I/O 下会溢出（OnError），
-    // 丢失的事件由低频补扫覆盖。30s 间隔足够低，不会和 watcher 抢 I/O。
-    private readonly Timer _safetyScanTimer;
     private readonly Timer _processSyncTimer;
-    private int _isScanning; // 0 = idle, 1 = scanning
 
     /// <summary>
     /// 任务完成防抖：session 进 Idle 后挂个 3s 定时器，期间再翻 Running 就取消，
@@ -65,40 +59,26 @@ public class SessionManager : IDisposable
     public event EventHandler<AgentSession>? AttentionRequired;
 
     public SessionManager(BridgeServer bridgeServer, SessionRegistry registry, TerminalJumpService terminalJumpService,
-        ProcessMonitorService processMonitor, ClaudeTranscriptDiscovery claudeDiscovery, ClaudeTranscriptWatcher claudeWatcher)
+        ProcessMonitorService processMonitor)
     {
         _bridgeServer = bridgeServer;
         _registry = registry;
         _terminalJumpService = terminalJumpService;
         _processMonitor = processMonitor;
-        _claudeWatcher = claudeWatcher;
-        // 与 ClaudeTranscriptWatcher 共享同一个 discovery 实例，复用其增量解析缓存
-        _claudeDiscovery = claudeDiscovery;
 
         _bridgeServer.MessageReceived += OnBridgeMessageReceived;
         _bridgeServer.ClientConnected += OnClientConnected;
         _bridgeServer.ClientDisconnected += OnClientDisconnected;
         _processMonitor.RunningSessionsChanged += OnRunningSessionsChanged;
 
-        // Claude 会话现在由 watcher（FileSystemWatcher）驱动，事件直接送进 DispatchEventAsync
-        _claudeWatcher.EventEmitted += OnClaudeWatcherEvent;
-
         // 每分钟清理一次过期会话
         _cleanupTimer = new Timer(_ => CleanupStaleSessions(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
-
-        // 30 秒一次的低频补扫，对抗 FileSystemWatcher 缓冲溢出（深目录大量 I/O）丢失的事件
-        _safetyScanTimer = new Timer(_ => _ = ScanClaudeSessionsAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
         // 每2秒同步进程状态到会话状态
         _processSyncTimer = new Timer(_ => SyncProcessStatus(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
         // 加载持久化会话
         _ = LoadPersistedSessionsAsync();
-    }
-
-    private void OnClaudeWatcherEvent(object? sender, AgentEvent e)
-    {
-        _ = DispatchEventAsync(e);
     }
 
     /// <summary>
@@ -217,144 +197,6 @@ public class SessionManager : IDisposable
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// 扫描Claude Code会话文件
-    /// </summary>
-    private async Task ScanClaudeSessionsAsync()
-    {
-        // Prevent overlapping scans
-        if (Interlocked.CompareExchange(ref _isScanning, 1, 0) != 0)
-            return;
-
-        try
-        {
-            var sessions = await _claudeDiscovery.ScanSessionsAsync();
-            var updatedSessions = new List<AgentSession>();
-
-            lock (_stateLock)
-            {
-                foreach (var sessionInfo in sessions)
-                {
-                    // 转换为AgentSession
-                    var agentSession = sessionInfo.ToAgentSession();
-
-                    // 检查是否已存在（通过SourcePath匹配）
-                    var existingSession = _state.Sessions
-                        .FirstOrDefault(s => s.ClaudeMetadata?.TranscriptPath == sessionInfo.SourcePath);
-
-                    if (existingSession != null)
-                    {
-                        // 更新现有会话的元数据
-                        // 注意：ApplyClaudeMetadataUpdated 在 SessionState 里是整个 *替换*
-                        // ClaudeMetadata 而不是合并，所以这里 *必须* 把所有需要保留的字段
-                        // 都填齐 —— 漏一个就会被清成默认值，下游依赖该字段的逻辑全废。
-                        // 历史 bug：之前漏了 Entrypoint，扫描 tick（5s 一次）触发后桌面端 session
-                        // 的 "claude-desktop" 标记被清成 null，点会话卡片直接走错路径。
-                        var metadata = new ClaudeMetadata
-                        {
-                            TranscriptPath = sessionInfo.SourcePath,
-                            Model = sessionInfo.Model,
-                            Entrypoint = sessionInfo.Entrypoint,
-                            InputTokens = sessionInfo.Usage.InputTokens,
-                            OutputTokens = sessionInfo.Usage.OutputTokens,
-                            CacheReadTokens = sessionInfo.Usage.CacheReadTokens,
-                            CacheCreationTokens = sessionInfo.Usage.CacheCreationTokens,
-                            TotalCost = sessionInfo.TotalCost
-                        };
-
-                        _state = _state.Apply(new ClaudeSessionMetadataUpdated
-                        {
-                            SessionId = existingSession.Id,
-                            ClaudeMetadata = metadata
-                        });
-
-                        // 同时更新摘要和标题——只有当扫描结果是"真正的"标题
-                        // (customTitle 或首条用户消息) 才传 Title，否则保留现有标题
-                        // 避免用项目名后备覆盖更有信息量的标题
-                        _state = _state.Apply(new SessionActivityUpdated
-                        {
-                            SessionId = existingSession.Id,
-                            Summary = $"{sessionInfo.Summary} | Tokens: {sessionInfo.Usage.TotalTokens:N0} | Cost: ${sessionInfo.TotalCost:F4}",
-                            Phase = existingSession.Phase,
-                            Title = sessionInfo.HasRealTitle ? sessionInfo.Title : null
-                        });
-
-                        // 之前缺失 JumpTarget 时（旧版本扫描创建的会话），用扫描发现的 cwd 补上
-                        if (existingSession.JumpTarget == null)
-                        {
-                            var jumpTarget = sessionInfo.BuildJumpTarget();
-                            if (jumpTarget != null)
-                            {
-                                _state = _state.Apply(new JumpTargetUpdated
-                                {
-                                    SessionId = existingSession.Id,
-                                    JumpTarget = jumpTarget
-                                });
-                            }
-                        }
-
-                        // 持久化用最新状态（apply 之后），避免把扫描更新前的旧 title 写回磁盘
-                        if (_state.SessionsById.TryGetValue(existingSession.Id, out var refreshed))
-                            updatedSessions.Add(refreshed);
-                        else
-                            updatedSessions.Add(existingSession);
-                    }
-                    else
-                    {
-                        // 新建会话 —— Entrypoint 必填（cli / claude-desktop），
-                        // 否则 JumpToSessionAsync 的路由分流走不到桌面端激活。
-                        var metadata = new ClaudeMetadata
-                        {
-                            TranscriptPath = sessionInfo.SourcePath,
-                            Model = sessionInfo.Model,
-                            Entrypoint = sessionInfo.Entrypoint,
-                            InputTokens = sessionInfo.Usage.InputTokens,
-                            OutputTokens = sessionInfo.Usage.OutputTokens,
-                            CacheReadTokens = sessionInfo.Usage.CacheReadTokens,
-                            CacheCreationTokens = sessionInfo.Usage.CacheCreationTokens,
-                            TotalCost = sessionInfo.TotalCost
-                        };
-
-                        _state = _state.Apply(new SessionStarted
-                        {
-                            SessionId = agentSession.Id,
-                            Title = agentSession.Title,
-                            Tool = AgentTool.ClaudeCode,
-                            InitialPhase = agentSession.Phase,
-                            Summary = $"{sessionInfo.Summary} | Tokens: {sessionInfo.Usage.TotalTokens:N0} | Cost: ${sessionInfo.TotalCost:F4}",
-                            Timestamp = agentSession.UpdatedAt,
-                            JumpTarget = sessionInfo.BuildJumpTarget(),
-                            ClaudeMetadata = metadata
-                        });
-                        if (_state.SessionsById.TryGetValue(agentSession.Id, out var freshlyCreated))
-                            updatedSessions.Add(freshlyCreated);
-                        else
-                            updatedSessions.Add(agentSession);
-                    }
-                }
-            }
-
-            // 持久化更新的会话
-            foreach (var session in updatedSessions)
-            {
-                await _registry.UpsertAsync(session);
-            }
-
-            if (updatedSessions.Count > 0)
-            {
-                NotifySessionsChanged();
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Failed to scan Claude sessions: {ex.Message}");
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _isScanning, 0);
-        }
     }
 
     private async Task LoadPersistedSessionsAsync()
@@ -1190,112 +1032,6 @@ public class SessionManager : IDisposable
         catch { return false; }
     }
 
-    /// <summary>
-    /// 岛上卡片"切换模型"入口。
-    ///   - Claude 官方档：清掉 ~/.claude/settings.json 的第三方 env（新 CLI 会话回到 Anthropic 登录）。
-    ///   - Claude 模型档（opus/sonnet/haiku）：注入 /model（实时，CLI+Desktop，复用快捷回复注入）。
-    ///   - 第三方档：把 provider 的 env 写进 ~/.claude/settings.json（原子写 + 备份），重开终端后生效。
-    /// 活动档 Id 的持久化由调用方（VM 经 WorkspaceSettings）负责。
-    /// </summary>
-    public async Task<InjectResult> SwitchModelAsync(string sessionId, ModelProfile profile)
-    {
-        if (profile.Kind == ModelKind.ClaudeModel)
-        {
-            if (profile.Id == ModelProfile.OfficialClaudeId)
-            {
-                var cleared = await Task.Run(() => WriteClaudeProviderEnv(ClaudeModelEnv.ClearManaged));
-                return new InjectResult(cleared, cleared ? "switched-official" : "write-failed");
-            }
-
-            var cmd = ClaudeModelEnv.BuildModelCommand(profile);
-            if (string.IsNullOrEmpty(cmd))
-                return new InjectResult(false, "no-op");
-            return await SendQuickReplyAsync(sessionId, cmd); // 注入 /model（实时）
-        }
-
-        // 第三方：写 env（重开终端后生效）。空 key 直接拒绝，避免写出半截配置让下次会话起不来。
-        if (string.IsNullOrWhiteSpace(profile.ApiKey))
-            return new InjectResult(false, "no-key");
-        var wrote = await Task.Run(() => WriteClaudeProviderEnv(root => ClaudeModelEnv.ApplyThirdParty(root, profile)));
-        return new InjectResult(wrote, wrote ? "needs-restart" : "write-failed");
-    }
-
-    /// <summary>
-    /// 全局切换活动模型（写 ~/.claude/settings.json，对新 CLI 会话生效）—— 无需会话上下文。
-    ///   - Claude 档：SetOfficialModel（官方端点；内置 Opus/Sonnet/Haiku 带模型 id，官方档清空）。
-    ///   - 第三方档：ApplyThirdParty（写 env 块），空 key 直接拒绝。
-    /// </summary>
-    public async Task<InjectResult> SwitchGlobalModelAsync(ModelProfile profile)
-    {
-        if (profile.Kind == ModelKind.ClaudeModel)
-        {
-            var ok = await Task.Run(() => WriteClaudeProviderEnv(root => ClaudeModelEnv.SetOfficialModel(root, profile.Model)));
-            var reason = profile.Id == ModelProfile.OfficialClaudeId ? "switched-official" : "needs-restart";
-            return new InjectResult(ok, ok ? reason : "write-failed");
-        }
-
-        if (string.IsNullOrWhiteSpace(profile.ApiKey))
-            return new InjectResult(false, "no-key");
-        var wrote = await Task.Run(() => WriteClaudeProviderEnv(root => ClaudeModelEnv.ApplyThirdParty(root, profile)));
-        return new InjectResult(wrote, wrote ? "needs-restart" : "write-failed");
-    }
-
-    /// <summary>读 ~/.claude/settings.json → 应用变更 → 原子写回（temp + replace）+ 备份；保留其它字段。</summary>
-    private static bool WriteClaudeProviderEnv(Func<JsonObject, JsonObject> mutate)
-    {
-        // 与 AppendAllowRuleToSettings 共用同一把锁，串行化对 settings.json 的并发写。
-        lock (_claudeSettingsFileLock)
-        try
-        {
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var path = Path.Combine(userProfile, ".claude", "settings.json");
-
-            JsonObject root;
-            if (File.Exists(path))
-            {
-                var json = File.ReadAllText(path);
-                if (string.IsNullOrWhiteSpace(json))
-                {
-                    root = new JsonObject();
-                }
-                else if (JsonNode.Parse(json) is JsonObject obj)
-                {
-                    root = obj;
-                }
-                else
-                {
-                    // 有效 JSON 但不是对象（数组/标量）—— 不覆盖用户文件，中止。
-                    System.Diagnostics.Debug.WriteLine("WriteClaudeProviderEnv: settings.json is not a JSON object; aborting.");
-                    return false;
-                }
-            }
-            else
-            {
-                root = new JsonObject();
-            }
-
-            mutate(root);
-
-            var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-            // 单个滚动备份（避免每次切换在 ~/.claude 堆出无数 .backup.<时间戳> 文件）。
-            if (File.Exists(path))
-                File.Copy(path, path + ".openisland.bak", overwrite: true);
-
-            var tmp = path + ".tmp." + Guid.NewGuid().ToString("N");
-            File.WriteAllText(tmp, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-            if (File.Exists(path)) File.Replace(tmp, path, null);
-            else File.Move(tmp, path);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"WriteClaudeProviderEnv failed: {ex.Message}");
-            return false;
-        }
-    }
-
     public async Task JumpToSessionAsync(string sessionId)
     {
         var session = GetSession(sessionId);
@@ -1501,7 +1237,6 @@ public class SessionManager : IDisposable
     public void Dispose()
     {
         _cleanupTimer?.Dispose();
-        _safetyScanTimer?.Dispose();
         _processSyncTimer?.Dispose();
         // drain 完成防抖定时器：否则一个 pending 的 completion 定时器可能在 teardown 之后
         // 才回调 TaskCompleted（落到已释放的 VM/Dispatcher 上）。
@@ -1512,6 +1247,5 @@ public class SessionManager : IDisposable
         }
         _bridgeServer.MessageReceived -= OnBridgeMessageReceived;
         _processMonitor.RunningSessionsChanged -= OnRunningSessionsChanged;
-        _claudeWatcher.EventEmitted -= OnClaudeWatcherEvent;
     }
 }

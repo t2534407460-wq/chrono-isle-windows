@@ -26,7 +26,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     private readonly SessionManager _sessionManager;
     private readonly PopupWindowService _popupService;
     private readonly SystemStatsService _systemStats;
-    private readonly PlanUsageService _planUsage;
     private readonly WorkspaceSettings _settings;
     private readonly ScreenshotService _screenshot;
     private readonly System.Timers.Timer _greenStatusTimer;
@@ -71,22 +70,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isNotificationVisible;
     private System.Timers.Timer? _notificationTimer;
 
-    // ── Plan usage 行：Claude 订阅 5h 滚动窗口用量（API 模式只显示 token 数） ──
-    /// <summary>true = 走 API（按量付费），只显示 token 数，无进度条/重置。</summary>
-    [ObservableProperty] private bool _planIsApi;
-    /// <summary>左侧标签：Plan / API。</summary>
-    [ObservableProperty] private string _planLabel = "Plan";
-    /// <summary>Plan 模式百分比文本，如 "62%"。</summary>
-    [ObservableProperty] private string _planPercentText = "";
-    /// <summary>重置倒计时文本，如 "重置 2h13m"（无活动时空串）。</summary>
-    [ObservableProperty] private string _planResetText = "";
-    /// <summary>进度条填充比例 0..1。</summary>
-    [ObservableProperty] private double _planBarFraction;
-    /// <summary>API 模式 token 文本，如 "1.24M tokens"。</summary>
-    [ObservableProperty] private string _planValueText = "";
-    /// <summary>进度条颜色（hex 字符串，经 StrToBrush 转 Brush）：&lt;70 蓝 / 70-89 橙 / ≥90 红。</summary>
-    [ObservableProperty] private string _planBarColor = "#0A84FF";
-
     // ── 媒体控制栏：上一首 / 播放暂停 / 下一首 / 音量 ──
     private readonly MediaControlService _media;
     private bool _suppressVolumeWriteback;
@@ -124,64 +107,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
 
     /// <summary>区域截图：唤起全屏框选覆盖层，松手裁剪并复制到剪贴板（亦可用全局快捷键触发）。</summary>
     [RelayCommand] private void Screenshot() => _screenshot.Capture();
-
-    // ── 余额行 ↔ 最近七天 token 柱状图 切换 ──
-
-    /// <summary>false = 显示 5h 余额（默认）；true = 显示最近七天 token 柱状图。持久化，重启灵动岛恢复关闭时状态。</summary>
-    [ObservableProperty] private bool _showUsageChart;
-
-    /// <summary>七天柱状图的 7 根柱子（oldest→newest）。</summary>
-    public System.Collections.ObjectModel.ObservableCollection<UsageBar> UsageBars { get; } = new();
-
-    /// <summary>柱状图右侧只显示的"总量"数字（最近七天 token 合计）。</summary>
-    [ObservableProperty] private string _usageTotalText = "";
-
-    partial void OnShowUsageChartChanged(bool value)
-    {
-        if (value) RefreshUsageChart();
-    }
-
-    /// <summary>点余额行：在"余额"与"七天柱状图"之间切换，并落盘（下次启动恢复）。</summary>
-    [RelayCommand]
-    private void ToggleUsageView()
-    {
-        ShowUsageChart = !ShowUsageChart;     // OnShowUsageChartChanged 负责刷新柱子
-        _settings.SetShowUsageChart(ShowUsageChart);
-    }
-
-    /// <summary>重算最近七天每天 token 用量 → 柱高 + 颜色（用量越多绿色越深）+ 总量数字。</summary>
-    private void RefreshUsageChart()
-    {
-        var daily = DashboardStats.ComputeDailyTokens(_sessionManager.GetAllSessions(), 7);
-        ulong max = 0, total = 0;
-        foreach (var d in daily) { if (d.Tokens > max) max = d.Tokens; total += d.Tokens; }
-
-        UsageBars.Clear();
-        foreach (var d in daily)
-        {
-            double frac = max > 0 ? d.Tokens / (double)max : 0;
-            double h = d.Tokens > 0 ? Math.Max(3.0, frac * 22.0) : 1.5;
-            UsageBars.Add(new UsageBar
-            {
-                BarHeight = h,
-                Color = GreenForFraction(frac, d.Tokens > 0),
-                Tooltip = $"{d.Date:MM/dd}  {FormatTokens(d.Tokens)}"
-            });
-        }
-        UsageTotalText = FormatTokens(total);
-    }
-
-    /// <summary>用量占比 → 绿色深浅（占比越高越深）。无用量的日给极浅暗绿。</summary>
-    private static string GreenForFraction(double frac, bool hasUsage)
-    {
-        if (!hasUsage) return "#2A3A2E";
-        frac = Math.Clamp(frac, 0, 1);
-        int Lerp(int a, int b) => (int)Math.Round(a + (b - a) * frac);
-        int r = Lerp(0x66, 0x1B);   // 浅 #66BB6A → 深 #1B5E20
-        int g = Lerp(0xBB, 0x5E);
-        int b = Lerp(0x6A, 0x20);
-        return $"#{r:X2}{g:X2}{b:X2}";
-    }
 
     // ── 提示音开关（#3）：状态栏里的小喇叭按钮绑这里 ──
     /// <summary>提示音是否开启。初值取自 WorkspaceSettings.SoundEnabled（构造时设）。
@@ -235,12 +160,11 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
     /// 任一 Running→Running，否则 Idle。跟 StatusDotColor 同一处计算。</summary>
     [ObservableProperty] private SessionPhase _aggregatePhase = SessionPhase.Idle;
 
-    public DynamicIslandViewModel(SessionManager sessionManager, PopupWindowService popupService, SystemStatsService systemStats, MediaControlService media, PlanUsageService planUsage, WorkspaceSettings settings, ScreenshotService screenshot)
+    public DynamicIslandViewModel(SessionManager sessionManager, PopupWindowService popupService, SystemStatsService systemStats, MediaControlService media, WorkspaceSettings settings, ScreenshotService screenshot)
     {
         _sessionManager = sessionManager;
         _popupService = popupService;
         _systemStats = systemStats;
-        _planUsage = planUsage;
         _media = media;
         _settings = settings;
         _screenshot = screenshot;
@@ -252,13 +176,9 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         _soundEnabled = settings.SoundEnabled;
         SoundService.Enabled = settings.SoundEnabled;
 
-        // 余额行显示模式对齐持久化值（写 backing field 不触发落盘）。下次启动恢复关闭时的状态。
-        _showUsageChart = settings.ShowUsageChart;
-
         _sessionManager.SessionsChanged += OnSessionsChanged;
         _sessionManager.TaskCompleted += OnTaskCompleted;
         _systemStats.StatsUpdated += OnSystemStatsUpdated;
-        _planUsage.UsageUpdated += OnPlanUsageUpdated;
         // 启动时把滑块对齐到当前系统音量；之后跟着 SystemStats 的 1s tick 顺带同步，
         // 这样在别处（系统音量条/媒体键）改了音量，岛上滑块也会跟上。
         SyncVolumeFromSystem();
@@ -285,28 +205,18 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         _dateTimeTimer.AutoReset = true;
         _dateTimeTimer.Start();
 
-        // 语言切换：5h 余额行等动态文案立即按新语言重渲染（静态 XAML 文本走 indexer 绑定自动刷新）。
+        // 语言切换：静态 XAML 文本走 indexer 绑定自动刷新。
         Loc.Instance.LanguageChanged += OnLanguageChanged;
 
         RefreshSessions();
-        if (_showUsageChart) RefreshUsageChart(); // 启动即为柱状图模式时先把柱子算好
     }
 
     private void OnLanguageChanged()
     {
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
-        {
-            if (_lastPlan is { } s) OnPlanUsageUpdated(this, s);
-        });
+        // 目前无动态文案需要语言切换时重渲染；保留空实现以兼容 Loc 订阅约定。
     }
 
-    // ── 全局模型切换（音量条下方那一栏）：选中即切换，写 ~/.claude/settings.json，对新 CLI 会话生效 ──
-
-    [ObservableProperty] private string? _globalModelStatus;
-    [ObservableProperty] private bool _modelMenuOpen;
-    private bool _busyModel;
-
-    // 纯按钮 + 弹出列表：点列表里的某个模型即切换并收起菜单（不显示当前模型）。
+    // ── 全局模型切换：已移除（Claude 专有）；多 Agent 监控走 hooks，无需在这里切换模型 ──
 
     private void OnSystemStatsUpdated(object? sender, SystemStatsSnapshot s)
     {
@@ -362,76 +272,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         if (bytesPerSec < 1024) return $"{bytesPerSec:0}B";
         if (bytesPerSec < 1024 * 1024) return $"{bytesPerSec / 1024.0:0}K";
         return $"{bytesPerSec / (1024.0 * 1024.0):0.0}M";
-    }
-
-    /// <summary>刷新按钮转圈中（也用于防连点：进行中禁用按钮）。</summary>
-    [ObservableProperty] private bool _isRefreshingUsage;
-
-    /// <summary>5h 余额行的刷新按钮：立即重新探一次真实用量，刷新余额与重置时间。</summary>
-    [RelayCommand]
-    private async Task RefreshUsage()
-    {
-        if (IsRefreshingUsage) return;
-        IsRefreshingUsage = true;
-        try { await _planUsage.RefreshNowAsync(); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"RefreshUsage failed: {ex.Message}"); }
-        finally { IsRefreshingUsage = false; }
-    }
-
-    /// <summary>
-    /// Plan usage 快照 → UI 文本/进度条。marshal 到 UI 线程方式与 OnSystemStatsUpdated 一致。
-    /// API 模式只显示 token 数；Plan 模式显示百分比 + 进度条 + 重置倒计时，
-    /// 颜色阈值：&lt;70% 蓝 / 70-89% 橙 / ≥90% 红。
-    /// </summary>
-    private PlanUsageSnapshot? _lastPlan; // 缓存最近一帧，语言切换时按当前语言重渲染
-
-    private void OnPlanUsageUpdated(object? sender, PlanUsageSnapshot s)
-    {
-        _lastPlan = s;
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
-        {
-            if (s.IsApi)
-            {
-                PlanIsApi = true;
-                PlanLabel = "API";
-                PlanValueText = FormatTokens(s.UsedTokens) + " tokens";
-            }
-            else
-            {
-                PlanIsApi = false;
-                PlanLabel = "5h";
-                if (s.Indeterminate)
-                {
-                    // 还没拿到真实 5h 数据：显示"余 --"，中性灰、空条、无重置。绝不伪造百分比。
-                    PlanPercentText = Loc.Get("Balance_Unknown");
-                    PlanBarFraction = 0;
-                    PlanResetText = "";
-                    PlanBarColor = "#5A5A5E";
-                }
-                else
-                {
-                    // 显示「余额」（剩余），不是已用：余额 = 100% - 已用%。
-                    int remaining = Math.Clamp(100 - s.Percent, 0, 100);
-                    PlanPercentText = Loc.Format("Balance_Format", remaining);
-                    // 余额条：满=绿（额度多），随消耗下降，少时转橙/红。
-                    PlanBarFraction = Math.Clamp(1.0 - s.Fraction, 0, 1);
-                    PlanResetText = s.ResetIn is { } r && r > TimeSpan.Zero
-                        ? Loc.Format("Reset_Format", (int)r.TotalHours, r.Minutes)
-                        : "";
-                    PlanBarColor = remaining <= 10 ? "#E74C3C"
-                                 : remaining <= 30 ? "#FF9F0A"
-                                 : "#30D158";
-                }
-            }
-        });
-    }
-
-    /// <summary>token 数人类化：≥1e6 → "1.24M"，≥1e3 → "320K"，否则原值 "950"。</summary>
-    private static string FormatTokens(ulong t)
-    {
-        if (t >= 1_000_000UL) return $"{t / 1_000_000.0:0.##}M";
-        if (t >= 1_000UL) return $"{t / 1_000.0:0.#}K";
-        return t.ToString();
     }
 
     private void OnTaskCompleted(object? sender, AgentSession session)
@@ -561,7 +401,6 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
         {
             RefreshSessions();
-            if (ShowUsageChart) RefreshUsageChart(); // 柱状图模式下随会话变化刷新用量
         });
     }
 
@@ -797,19 +636,10 @@ public partial class DynamicIslandViewModel : ObservableObject, IDisposable
         _sessionManager.SessionsChanged -= OnSessionsChanged;
         _sessionManager.TaskCompleted -= OnTaskCompleted;
         _systemStats.StatsUpdated -= OnSystemStatsUpdated;
-        _planUsage.UsageUpdated -= OnPlanUsageUpdated;
         Loc.Instance.LanguageChanged -= OnLanguageChanged;
         _greenStatusTimer.Stop();
         _greenStatusTimer.Dispose();
     }
-}
-
-/// <summary>七天柱状图的一根柱子：高度(px) + 颜色(hex，用量越多绿色越深) + 悬浮提示。</summary>
-public sealed class UsageBar
-{
-    public double BarHeight { get; init; }
-    public string Color { get; init; } = "#4CAF50";
-    public string Tooltip { get; init; } = "";
 }
 
 public partial class IslandSessionItem : ObservableObject
