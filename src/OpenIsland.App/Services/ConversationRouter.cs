@@ -4,19 +4,34 @@ namespace OpenIsland.App.Services;
 
 public sealed class ConversationRouter
 {
-    static readonly string[] CreateWords = ["添加", "创建", "新建", "设置", "安排", "提醒我", "帮我记", "记得", "每天", "每周", "工作日"];
+    static readonly string[] CreateWords = ["添加", "创建", "新建", "设置", "安排", "拆解", "提醒我", "帮我记", "记得", "每天", "每周", "工作日"];
     static readonly string[] AgendaWords = ["待办", "提醒", "日程", "安排", "事项"];
     static readonly string[] QueryWords = ["查看", "查询", "多少", "哪些", "什么", "有没有", "有吗", "列表"];
+    static readonly string[] ExistingItemMutationWords = ["修改", "改到", "改为", "调整", "重新安排", "重排", "延后", "提前", "取消", "删除", "完成", "设为", "收到"];
     static readonly string[] QuestionWords = ["怎么", "如何", "为什么", "什么", "几", "吗", "？", "?"];
 
     public ConversationRoute Decide(string input, AssistantAction? activeDraft, DateTime now)
     {
         var text = input.Trim();
+        // A new, explicit operation on existing items must not be consumed as an
+        // answer to an older clarification. Otherwise a stale draft sends the
+        // request back to the creation-only model parser.
+        if (IsExistingItemMutation(text)) return new(ConversationRouteKind.ModificationClarification);
         if (activeDraft is not null) return new(ConversationRouteKind.CreateAction);
         if (IsCreateRequest(text)) return new(ConversationRouteKind.CreateAction);
         return TryQuery(text, now, out var query)
             ? new ConversationRoute(ConversationRouteKind.LocalQuery, query)
             : new ConversationRoute(ConversationRouteKind.GeneralChat);
+    }
+
+    static bool IsExistingItemMutation(string text)
+    {
+        if (QuestionWords.Any(text.Contains) || !AgendaWords.Any(text.Contains)) return false;
+        if (ExistingItemMutationWords.Any(text.Contains)) return true;
+
+        // A bulk selector plus a clock is a modification candidate, not an implicit new reminder.
+        return (text.Contains("所有", StringComparison.Ordinal) || text.Contains("全部", StringComparison.Ordinal)) &&
+            Regex.IsMatch(text, @"\d{1,2}\s*(点|:)");
     }
 
     static bool IsCreateRequest(string text)

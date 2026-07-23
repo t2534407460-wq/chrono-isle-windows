@@ -27,6 +27,23 @@ public sealed class WindowsNotificationService
             IsAvailable = false;
         }
     }
+    public void ShowNow(AgendaItem item)
+    {
+        if (!IsAvailable) return;
+        var content = new ToastContentBuilder()
+            .AddArgument("kind", item.Kind)
+            .AddArgument("id", item.Id)
+            .AddText(item.Kind switch { "event" => "日程提醒", "reminder" => "提醒", "recurring" => "周期提醒", _ => "待办提醒" })
+            .AddText(item.Title)
+            .GetToastContent();
+        var notification = new ToastNotification(content.GetXml())
+        {
+            Tag = TagFor(item),
+            Group = Group
+        };
+        ToastNotificationManagerCompat.CreateToastNotifier().Show(notification);
+    }
+
 
     public void Schedule(AgendaItem item)
     {

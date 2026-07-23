@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpenIsland.App.Services;
+using OpenIsland.App.Services.Productivity;
+using OpenIsland.App.Services.State;
 
 namespace OpenIsland.App.ViewModels;
 
@@ -13,6 +16,7 @@ public partial class LifeViewModel : ObservableObject
     readonly ReminderService reminders;
 
     [ObservableProperty] string chatInput = "";
+    readonly IIslandStateCoordinator islandState;
     [ObservableProperty] string status = "准备就绪";
     [ObservableProperty] ChatSession? selectedSession;
     [ObservableProperty] AssistantAction? pendingAction;
@@ -22,13 +26,14 @@ public partial class LifeViewModel : ObservableObject
     public ObservableCollection<ChatMessage> Messages { get; } = [];
     public bool HasPendingAction => PendingAction is not null;
 
-    public LifeViewModel(LifeDataService data, AssistantActionService actions, ProviderSettingsService settings, ReminderService reminders)
+    public LifeViewModel(LifeDataService data, AssistantActionService actions, ProviderSettingsService settings, ReminderService reminders, IIslandStateCoordinator islandState)
     {
         this.data = data;
         this.actions = actions;
         this.settings = settings;
         this.reminders = reminders;
         RefreshSessions();
+        this.islandState = islandState;
         if (Sessions.Count == 0) NewChat();
         else SelectedSession = Sessions[0];
     }
@@ -81,14 +86,34 @@ public partial class LifeViewModel : ObservableObject
         Status = "正在理解…";
         try
         {
-            var result = await actions.HandleAsync(settings.Load(), SelectedSession, history, text);
+            var stopwatch = Stopwatch.StartNew();
+            var handling = actions.HandleAsync(settings.Load(), SelectedSession, history, text);
+            var processingVisible = false;
+            if (await Task.WhenAny(handling, Task.Delay(300)) != handling)
+            {
+                processingVisible = IslandStateCoordinator.ShouldShowAiProcessing(stopwatch.Elapsed);
+                if (processingVisible)
+                    islandState.Publish(new IslandStateSnapshot("ai:processing", 35, "AI 正在处理…", null,
+                        TimeSpan.FromMilliseconds(300), 70, IslandAnimationLevel.Subtle), DateTimeOffset.UtcNow);
+            }
+            var result = await handling;
+            if (processingVisible)
+            {
+                if (result.IsFailure)
+                    islandState.Clear("ai:processing", DateTimeOffset.UtcNow);
+                else
+                    islandState.Publish(IslandStateCoordinator.AiSucceeded(
+                        result.PendingAction is null ? "AI 已生成建议" : "AI 已生成待确认操作", DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
+            }
             AddMessage("assistant", result.Reply);
+            if (result.RefreshReminders) reminders.RefreshSchedule();
             PendingAction = result.PendingAction?.Status == "awaiting_confirmation" ? result.PendingAction : null;
             PendingActionText = PendingAction is null ? "" : result.Reply;
             Status = result.IsFailure ? "未创建" : PendingAction is null ? "准备就绪" : "等待确认";
         }
         catch (Exception exception)
         {
+            islandState.Clear("ai:processing", DateTimeOffset.UtcNow);
             var message = $"处理失败：{exception.Message}。未创建任何事项。";
             AddMessage("assistant", message);
             Status = "未创建";
@@ -99,9 +124,23 @@ public partial class LifeViewModel : ObservableObject
     void ConfirmPendingAction()
     {
         if (PendingAction is null) return;
-        var result = actions.Confirm(PendingAction.Id);
+        ActionExecutionResult result;
+        var draft = actions.GetPendingDecompositionDraft(PendingAction.Id);
+        if (draft is not null)
+        {
+            var selection = DraftScheduleDialog.Show(draft);
+            if (selection is null) return;
+            result = actions.ConfirmDecompositionDraft(PendingAction.Id, selection.ItemIds, selection.ScheduleOverrides);
+        }
+        else result = actions.Confirm(PendingAction.Id);
         AddMessage("assistant", result.Message);
-        if (result.Succeeded && result.AgendaItem is not null) reminders.Schedule(result.AgendaItem);
+        if (result.Succeeded)
+        {
+            if (result.AgendaItem is not null)
+                reminders.Schedule(result.AgendaItem);
+            else
+                reminders.RefreshSchedule();
+        }
         PendingAction = null;
         PendingActionText = "";
         Status = result.Succeeded ? "已创建" : "未创建";

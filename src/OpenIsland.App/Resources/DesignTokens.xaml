@@ -1,0 +1,42 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Color x:Key="Color.Window">#0D0F12</Color>
+  <Color x:Key="Color.Card">#17191E</Color>
+  <Color x:Key="Color.Surface">#202229</Color>
+  <Color x:Key="Color.Hover">#292C34</Color>
+  <Color x:Key="Color.TextPrimary">#F2F4F7</Color>
+  <Color x:Key="Color.TextSecondary">#A5AAB4</Color>
+  <Color x:Key="Color.TextTertiary">#747A86</Color>
+  <Color x:Key="Color.Accent">#5B7CFA</Color>
+  <Color x:Key="Color.Success">#46C780</Color>
+  <Color x:Key="Color.Warning">#F2B84B</Color>
+  <Color x:Key="Color.Danger">#FF6868</Color>
+  <Color x:Key="Color.Reminder">#A78BFA</Color>
+  <Color x:Key="Color.Stroke">#1AFFFFFF</Color>
+
+  <SolidColorBrush x:Key="Brush.Window" Color="{StaticResource Color.Window}"/>
+  <SolidColorBrush x:Key="Brush.Card" Color="{StaticResource Color.Card}"/>
+  <SolidColorBrush x:Key="Brush.Surface" Color="{StaticResource Color.Surface}"/>
+  <SolidColorBrush x:Key="Brush.Hover" Color="{StaticResource Color.Hover}"/>
+  <SolidColorBrush x:Key="Brush.TextPrimary" Color="{StaticResource Color.TextPrimary}"/>
+  <SolidColorBrush x:Key="Brush.TextSecondary" Color="{StaticResource Color.TextSecondary}"/>
+  <SolidColorBrush x:Key="Brush.TextTertiary" Color="{StaticResource Color.TextTertiary}"/>
+  <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}"/>
+  <SolidColorBrush x:Key="Brush.Success" Color="{StaticResource Color.Success}"/>
+  <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource Color.Warning}"/>
+  <SolidColorBrush x:Key="Brush.Danger" Color="{StaticResource Color.Danger}"/>
+  <SolidColorBrush x:Key="Brush.Reminder" Color="{StaticResource Color.Reminder}"/>
+  <SolidColorBrush x:Key="Brush.Stroke" Color="{StaticResource Color.Stroke}"/>
+
+  <CornerRadius x:Key="Radius.Window">16</CornerRadius>
+  <CornerRadius x:Key="Radius.Card">16</CornerRadius>
+  <CornerRadius x:Key="Radius.Control">12</CornerRadius>
+  <CornerRadius x:Key="Radius.Button">10</CornerRadius>
+  <CornerRadius x:Key="Radius.Pill">999</CornerRadius>
+
+  <Thickness x:Key="Space.Page">24</Thickness>
+  <Thickness x:Key="Space.Card">16</Thickness>
+  <Thickness x:Key="Space.CardLarge">20</Thickness>
+  <Thickness x:Key="Space.Control">12,8</Thickness>
+  <FontFamily x:Key="Font.UI">Microsoft YaHei UI, Segoe UI Variable</FontFamily>
+</ResourceDictionary>

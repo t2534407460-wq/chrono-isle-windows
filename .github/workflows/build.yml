@@ -24,8 +24,13 @@ jobs:
       - name: Build (Release)
         run: dotnet build OpenIsland.sln -c Release --no-restore
 
+      - name: Test (Release)
+        run: dotnet test tests/OpenIsland.Tests/OpenIsland.Tests.csproj -c Release --no-build --no-restore
+
       # Smoke test 不在 sln 里 + 依赖运行机的 ~/.claude 数据
       # CI 上没有 transcript，跑只是验证它能编译通过 + 不崩
+      - name: UI automation contracts (Release)
+        run: dotnet test tests/OpenIsland.UiTests/OpenIsland.UiTests.csproj -c Release --no-build --no-restore
       - name: Smoke test compiles & runs
         run: dotnet run --project tests/OpenIsland.SmokeTest/OpenIsland.SmokeTest.csproj -c Release
         continue-on-error: true

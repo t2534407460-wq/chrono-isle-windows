@@ -5,7 +5,14 @@ using System.Text.Json;
 
 namespace OpenIsland.App.Services;
 
-public sealed class OpenAiChatService
+public interface IChatCompletionClient
+{
+    Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input);
+    Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false);
+    Task Test(ProviderSettings provider);
+}
+
+public sealed class OpenAiChatService : IChatCompletionClient
 {
     readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(90) };
 

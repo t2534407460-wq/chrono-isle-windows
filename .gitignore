@@ -29,3 +29,10 @@ desktop.ini
 # ─────────────────── Misc ───────────────────
 *.log
 *.tmp
+
+# ─────────────────── Local tooling and generated packages ───────────────────
+.codex/
+.codegraph/
+.mcp.json
+installer-output/
+tmp/

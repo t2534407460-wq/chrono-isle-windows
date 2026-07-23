@@ -1,3 +1,7 @@
+using OpenIsland.App.Services.Persistence;
+using OpenIsland.App.Services.Productivity;
+using OpenIsland.App.Services.Scheduling;
+
 namespace OpenIsland.App.Services;
 
 public sealed class ReminderService : IDisposable
@@ -6,14 +10,20 @@ public sealed class ReminderService : IDisposable
     readonly LifePreferencesService preferences;
     readonly WindowsNotificationService notifications;
     readonly System.Threading.Timer timer;
+    readonly ReminderPolicyService policy;
+    readonly FocusService? focus;
 
     public event EventHandler<AgendaItem>? ReminderDue;
+    public event EventHandler<DeferredNotificationSummary>? DeferredSummaryReleased;
 
-    public ReminderService(LifeDataService data, LifePreferencesService preferences, WindowsNotificationService notifications)
+    public ReminderService(LifeDataService data, LifePreferencesService preferences, WindowsNotificationService notifications, FocusService? focus = null)
     {
         this.data = data;
         this.preferences = preferences;
         this.notifications = notifications;
+        this.focus = focus;
+        var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
+        policy = new ReminderPolicyService(new ReminderDeliveryStore(runtime.WriteQueue));
         timer = new System.Threading.Timer(_ => Poll(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
@@ -28,13 +38,16 @@ public sealed class ReminderService : IDisposable
         foreach (var item in data.ReminderItems())
         {
             notifications.Remove(item);
-            if (preferences.Load().WindowsNotifications) notifications.Schedule(item);
+            var current = preferences.Load();
+            if (current.WindowsNotifications && !current.DoNotDisturbEnabled && !current.FullScreenSilentEnabled) notifications.Schedule(item);
         }
     }
 
     public void Schedule(AgendaItem item)
     {
-        if (preferences.Load().WindowsNotifications) notifications.Schedule(item);
+        var current = preferences.Load();
+        if (current.WindowsNotifications && !current.DoNotDisturbEnabled && !current.FullScreenSilentEnabled)
+            notifications.Schedule(item);
     }
 
     public void Delete(AgendaItem item) => Delete([item]);
@@ -50,10 +63,39 @@ public sealed class ReminderService : IDisposable
 
     public void Cancel(AgendaItem item) => notifications.Remove(item);
 
+    public bool IsDoNotDisturbEnabled => preferences.Load().DoNotDisturbEnabled;
+    public bool IsFullScreenSilentEnabled => preferences.Load().FullScreenSilentEnabled;
+
+    public void SetDoNotDisturb(bool enabled)
+    {
+        var current = preferences.Load();
+        if (current.DoNotDisturbEnabled == enabled) return;
+        preferences.Save(current with { DoNotDisturbEnabled = enabled });
+        RefreshSchedule();
+        if (!enabled)
+            DeferredSummaryReleased?.Invoke(this, policy.ReleaseDeferredSummary(DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N")));
+    }
+
+    public void SetFullScreenSilent(bool enabled)
+    {
+        var current = preferences.Load();
+        if (current.FullScreenSilentEnabled == enabled) return;
+        preferences.Save(current with { FullScreenSilentEnabled = enabled });
+        RefreshSchedule();
+    }
+
     void Poll()
     {
         var due = data.ClaimDueReminders(DateTime.Now);
-        foreach (var item in due) ReminderDue?.Invoke(this, item);
+        var current = preferences.Load();
+        foreach (var item in due)
+        {
+            var dueAt = item.RemindAt ?? item.StartsAt;
+            var context = new ReminderPresentationContext(current.FullScreenSilentEnabled, focus?.RestoreActive() is not null, current.DoNotDisturbEnabled);
+            var occurrenceKey = $"legacy:{item.Kind}:{item.Id}:{dueAt.ToUniversalTime():O}";
+            var decision = policy.Apply(new ReminderPolicyInput(item.Id, occurrenceKey, new DateTimeOffset(dueAt), ReminderPriority.Normal, context), DateTimeOffset.UtcNow);
+            if (decision.Kind != ReminderPolicyDecisionKind.Defer) ReminderDue?.Invoke(this, item);
+        }
         if (due.Count > 0) RefreshSchedule();
     }
 

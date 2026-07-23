@@ -34,6 +34,8 @@ public enum RecurrenceKind
 {
     Daily,
     Weekdays,
+    OfficialWorkdays,
+    StatutoryHolidays,
     Weekly
 }
 
@@ -94,9 +96,9 @@ public sealed record ProviderSettings(string BaseUrl, string Model, string ApiKe
     public static ProviderSettings Default => new("https://api.deepseek.com/v1", "deepseek-chat", "");
 }
 
-public sealed record LifePreferences(bool WindowsNotifications)
+public sealed record LifePreferences(bool WindowsNotifications, string AssistantPersona = "Direct", bool DoNotDisturbEnabled = false, bool FullScreenSilentEnabled = false)
 {
-    public static LifePreferences Default => new(true);
+    public static LifePreferences Default => new(true, "Direct");
 }
 
 public sealed record ModelMessage(string Role, string Content);
@@ -141,11 +143,28 @@ public enum ConversationRouteKind
 {
     CreateAction,
     LocalQuery,
+    ModificationClarification,
     GeneralChat
 }
 
 public sealed record LocalAgendaQuery(DateTime StartsAt, DateTime EndsAt, string Label);
 public sealed record ConversationRoute(ConversationRouteKind Kind, LocalAgendaQuery? Query = null);
 public sealed record LocalAgendaQueryResult(LocalAgendaQuery Query, IReadOnlyList<AgendaItem> Items, string ListText);
-public sealed record AssistantConversationResult(string Reply, AssistantAction? PendingAction, bool IsFailure);
+public sealed record AssistantConversationResult(string Reply, AssistantAction? PendingAction, bool IsFailure, bool RefreshReminders = false);
 public sealed record ActionExecutionResult(bool Succeeded, string Message, AgendaItem? AgendaItem);
+/// <summary>
+/// Immutable snapshot of a one-off reminder selected for a batch reschedule.
+/// The original reminder timestamp is part of the snapshot so a stale
+/// confirmation cannot overwrite a newer user edit.
+/// </summary>
+public sealed record HolidayReminderTarget(
+    string Id,
+    string Kind,
+    string Title,
+    DateTime OriginalRemindAt);
+
+public sealed record HolidayReminderTargetSet(
+    IReadOnlyList<HolidayReminderTarget> Targets,
+    int ExcludedRecurringOccurrences);
+
+public sealed record HolidayReminderBatchApplyResult(int AppliedCount);

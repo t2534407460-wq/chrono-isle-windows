@@ -29,7 +29,7 @@ public sealed class LifeAssistantTests
 
         Assert.Empty(data.Todos());
 
-        var executor = new AssistantActionService(data, new AssistantIntentService(new OpenAiChatService()), new ConversationRouter(), new LocalAgendaQueryService(data), new OpenAiChatService());
+        var executor = new AssistantActionService(data, new ChinaStatutoryHolidayCalendar(), new AssistantIntentService(new OpenAiChatService()), new ConversationRouter(), new LocalAgendaQueryService(data), new OpenAiChatService());
         var result = executor.Confirm(action.Id);
 
         Assert.True(result.Succeeded);
@@ -103,10 +103,23 @@ public sealed class LifeAssistantTests
         Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
         data.Save("soon", null, now.AddMinutes(30), null);
         Assert.Equal(IslandIndicatorState.DueSoonTodo, data.GetIslandIndicatorState(now));
-        data.Save("late", null, now.AddMinutes(-1), null);
+        data.Save("late", null, now.AddMinutes(-2), null);
         Assert.Equal(IslandIndicatorState.OverdueTodo, data.GetIslandIndicatorState(now));
     }
 
+    [Fact]
+    public void IndicatorState_AllowsOneMinuteCompletionGraceBeforeMarkingOverdue()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var now = new DateTime(2030, 1, 2, 10, 0, 0);
+
+        data.Save("刚到期", null, now.AddSeconds(-59), null);
+        Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
+
+        data.Save("已过宽限", null, now.AddSeconds(-61), null);
+        Assert.Equal(IslandIndicatorState.OverdueTodo, data.GetIslandIndicatorState(now));
+    }
     [Fact]
     public void CalendarIndicator_IgnoresRecurringRemindersAndUsesTemporaryItems()
     {
@@ -145,11 +158,151 @@ public sealed class LifeAssistantTests
         var now = new DateTime(2030, 1, 7, 10, 0, 0);
 
         Assert.Equal(ConversationRouteKind.CreateAction, router.Decide("\u660e\u5929\u5341\u70b9\u5f00\u4f1a", null, now).Kind);
+        Assert.Equal(ConversationRouteKind.CreateAction, router.Decide("\u5e2e\u6211\u62c6\u89e3\u6574\u7406\u623f\u95f4", null, now).Kind);
         Assert.Equal(ConversationRouteKind.LocalQuery, router.Decide("\u672c\u5468\u6709\u4ec0\u4e48\u63d0\u9192", null, now).Kind);
         Assert.Equal(ConversationRouteKind.LocalQuery, router.Decide("\u4eca\u5929\u6709\u5b89\u6392", null, now).Kind);
         Assert.Equal(ConversationRouteKind.GeneralChat, router.Decide("\u4eca\u5929\u661f\u671f\u51e0", null, now).Kind);
         Assert.Equal(ConversationRouteKind.GeneralChat, router.Decide("\u5982\u4f55\u6dfb\u52a0\u63d0\u9192", null, now).Kind);
     }
+    [Fact]
+    public async Task BulkExistingReminderMutation_SupersedesStaleClarificationWithoutChangingData()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        data.SaveRecurringReminder("weekend", null, new TimeOnly(9, 0), RecurrenceKind.Weekly,
+            [DayOfWeek.Saturday, DayOfWeek.Sunday]);
+        var session = data.NewSession();
+        var staleDraft = data.SaveAction(session.Id, "old draft", "{}", "clarifying");
+        const string input = "\u5c06\u6240\u6709\u7684\u5468\u672b\u548c\u8282\u5047\u65e5\u63d0\u9192\u6536\u52301\u70b9\u949f";
+        var router = new ConversationRouter();
+
+        Assert.Equal(ConversationRouteKind.ModificationClarification,
+            router.Decide(input, staleDraft, DateTime.Now).Kind);
+
+        var service = new AssistantActionService(data, new ChinaStatutoryHolidayCalendar(), new AssistantIntentService(new OpenAiChatService()),
+            router, new LocalAgendaQueryService(data), new OpenAiChatService());
+        var result = await service.HandleAsync(ProviderSettings.Default, session, [], input);
+
+        Assert.False(result.IsFailure);
+        Assert.Null(result.PendingAction);
+        Assert.Contains("01:00", result.Reply);
+        Assert.Contains("\u5DF2\u63A5\u5165 2025\u20132026 \u5E74", result.Reply);
+        Assert.Equal(new TimeOnly(9, 0), Assert.Single(data.RecurringReminders()).ReminderTime);
+        Assert.Null(data.ActiveClarification(session.Id));
+        Assert.Equal("superseded", data.Action(staleDraft.Id)!.Status);
+    }
+
+    [Fact]
+    public async Task HolidayReminderBatch_RequiresAnExplicitTimeThenReschedulesOnlyConfirmedOneOffTargets()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var holidayAt = new DateTime(2026, 2, 16, 9, 0, 0);
+        var holiday = data.SaveReminder("春节提醒", null, holidayAt);
+        var ordinary = data.SaveReminder("普通提醒", null, holidayAt.AddDays(20));
+        data.SaveRecurringReminder("每日提醒", null, new TimeOnly(9, 0), RecurrenceKind.Daily, []);
+        var session = data.NewSession();
+        var service = new AssistantActionService(
+            data,
+            new ChinaStatutoryHolidayCalendar(),
+            new AssistantIntentService(new OpenAiChatService()),
+            new ConversationRouter(),
+            new LocalAgendaQueryService(data),
+            new OpenAiChatService());
+
+        var start = await service.HandleAsync(
+            ProviderSettings.Default,
+            session,
+            [],
+            "将所有法定节假日提醒改到1点钟");
+
+        Assert.Null(start.PendingAction);
+        Assert.NotNull(data.ActiveHolidayReminderBatch(session.Id));
+        Assert.Contains("01:00", start.Reply);
+
+        var confirmation = await service.HandleAsync(ProviderSettings.Default, session, [], "01:00");
+
+        var pending = Assert.IsType<AssistantAction>(confirmation.PendingAction);
+        Assert.Equal("awaiting_confirmation", pending.Status);
+        var executed = service.Confirm(pending.Id);
+
+        Assert.True(executed.Succeeded);
+        var reminders = data.ReminderItems().ToDictionary(item => item.Id);
+        Assert.Equal(new TimeOnly(1, 0), TimeOnly.FromDateTime(reminders[holiday.Id].RemindAt!.Value));
+        Assert.Equal(holidayAt.Date, reminders[holiday.Id].RemindAt!.Value.Date);
+        Assert.Equal(new TimeOnly(9, 0), TimeOnly.FromDateTime(reminders[ordinary.Id].RemindAt!.Value));
+        Assert.Equal(new TimeOnly(9, 0), Assert.Single(data.RecurringReminders()).ReminderTime);
+        Assert.Equal("confirmed", data.Action(pending.Id)!.Status);
+    }
+
+    [Fact]
+    public async Task HolidayReminderBatch_RecoversTheOriginalRequestAfterAnOldClockOnlyReply()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var holidayAt = new DateTime(2026, 2, 16, 9, 0, 0);
+        var holiday = data.SaveReminder("春节提醒", null, holidayAt);
+        var session = data.NewSession();
+        var service = new AssistantActionService(
+            data,
+            new ChinaStatutoryHolidayCalendar(),
+            new AssistantIntentService(new OpenAiChatService()),
+            new ConversationRouter(),
+            new LocalAgendaQueryService(data),
+            new OpenAiChatService());
+        var history = new List<ChatMessage>
+        {
+            new("first", session.Id, "user", "将所有法定节假日提醒改到1点钟", DateTime.Now.AddMinutes(-2)),
+            new("second", session.Id, "assistant", "旧版本要求明确时间", DateTime.Now.AddMinutes(-1)),
+            new("third", session.Id, "user", "01:00", DateTime.Now.AddSeconds(-30)),
+            new("fourth", session.Id, "assistant", "旧版本未能执行", DateTime.Now.AddSeconds(-20))
+        };
+
+        var confirmation = await service.HandleAsync(ProviderSettings.Default, session, history, "01:00");
+
+        var pending = Assert.IsType<AssistantAction>(confirmation.PendingAction);
+        Assert.True(service.Confirm(pending.Id).Succeeded);
+        var updated = Assert.Single(data.ReminderItems().Where(item => item.Id == holiday.Id));
+        Assert.Equal(new TimeOnly(1, 0), TimeOnly.FromDateTime(updated.RemindAt!.Value));
+    }
+
+    [Fact]
+    public async Task OfficialSleepSchedule_CreatesSeparateWorkdayAndHolidayRemindersAfterConfirmation()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var session = data.NewSession();
+        var service = new AssistantActionService(
+            data,
+            new ChinaStatutoryHolidayCalendar(),
+            new AssistantIntentService(new OpenAiChatService()),
+            new ConversationRouter(),
+            new LocalAgendaQueryService(data),
+            new OpenAiChatService());
+        var response = await service.HandleAsync(
+            ProviderSettings.Default,
+            session,
+            [],
+            "所有工作日设置凌晨12点的睡觉提醒，节假日设置凌晨1点的睡觉提醒");
+        var pending = Assert.IsType<AssistantAction>(response.PendingAction);
+        Assert.Equal("awaiting_confirmation", pending.Status);
+        Assert.Empty(data.RecurringReminders());
+        Assert.True(service.Confirm(pending.Id).Succeeded);
+        var reminders = data.RecurringReminders();
+        var workdays = Assert.Single(reminders.Where(item => item.Recurrence == RecurrenceKind.OfficialWorkdays));
+        var holidays = Assert.Single(reminders.Where(item => item.Recurrence == RecurrenceKind.StatutoryHolidays));
+        Assert.Equal(new TimeOnly(0, 0), workdays.ReminderTime);
+        Assert.Equal(new TimeOnly(1, 0), holidays.ReminderTime);
+        Assert.NotNull(data.OccurrenceOn(workdays, new DateTime(2026, 2, 14)));
+        Assert.Null(data.OccurrenceOn(holidays, new DateTime(2026, 2, 14))); // 调休周六上班
+        Assert.NotNull(data.OccurrenceOn(holidays, new DateTime(2026, 7, 18))); // 普通周六也使用节假日时间
+        Assert.Null(data.OccurrenceOn(workdays, new DateTime(2026, 7, 18)));
+
+        Assert.Null(data.OccurrenceOn(workdays, new DateTime(2026, 2, 16)));
+        Assert.NotNull(data.OccurrenceOn(holidays, new DateTime(2026, 2, 16)));
+        Assert.Null(data.OccurrenceOn(holidays, new DateTime(2026, 2, 14)));
+    }
+
     sealed class TempDatabase : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"open-island-life-{Guid.NewGuid():N}.db");

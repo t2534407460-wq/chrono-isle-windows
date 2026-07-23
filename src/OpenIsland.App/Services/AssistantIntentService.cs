@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace OpenIsland.App.Services;
 
-public sealed class AssistantIntentService(OpenAiChatService chat)
+public sealed class AssistantIntentService(IChatCompletionClient chat)
 {
     const string SystemPrompt = """
         You are Island's local creation intent parser. Return one JSON object only: no Markdown, prose, or code fence.
@@ -168,8 +168,17 @@ public sealed class AssistantIntentService(OpenAiChatService chat)
         {
             var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OpenIsland");
             Directory.CreateDirectory(directory);
-            var entry = $"[{DateTime.Now:O}] stage={stage}{Environment.NewLine}exception={exception?.Message}{Environment.NewLine}raw={response}{Environment.NewLine}candidate={candidate}{Environment.NewLine}{Environment.NewLine}";
-            File.AppendAllText(Path.Combine(directory, "intent-json.log"), entry);
+            var path = Path.Combine(directory, "intent-json.log");
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(response)));
+            var entry = $"[{DateTime.Now:O}] stage={stage}{Environment.NewLine}" +
+                $"exceptionType={exception?.GetType().Name}{Environment.NewLine}" +
+                $"rawLength={response.Length}{Environment.NewLine}candidateLength={candidate?.Length ?? 0}{Environment.NewLine}" +
+                $"rawSha256={hash}{Environment.NewLine}{Environment.NewLine}";
+            if (File.Exists(path) && new FileInfo(path).Length >= 256 * 1024)
+                File.WriteAllText(path, entry);
+            else
+                File.AppendAllText(path, entry);
         }
         catch { }
     }
