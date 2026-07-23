@@ -112,7 +112,9 @@ public sealed class AssistantActionService
         string input,
         AssistantAction? activeDraft)
     {
-        var parsed = await commandParser.AnalyzeAsync(provider, history, input);
+        var parsed = TryParseExplicitSingleReminder(input, DateTime.Now, out var localReminder)
+            ? new AssistantCommandParseResult(localReminder, string.Empty, null)
+            : await commandParser.AnalyzeAsync(provider, history, input);
         if (!parsed.IsValid) return new(parsed.ErrorMessage!, null, true);
         if (parsed.Envelope!.Command == AssistantCommandName.DecomposeGoal)
             return PrepareDecompositionDraft(session, input, (DecomposeGoalArgumentsV1)parsed.Envelope.Arguments, activeDraft);
@@ -139,6 +141,53 @@ public sealed class AssistantActionService
         };
     }
 
+    static bool TryParseExplicitSingleReminder(string input, DateTime now, out AssistantCommandEnvelope envelope)
+    {
+        envelope = default!;
+        if (AssistantAmbiguityLexicon.FindMatches(input).Count > 0 ||
+            input.Contains("每天", StringComparison.Ordinal) || input.Contains("每周", StringComparison.Ordinal) ||
+            input.Contains("工作日", StringComparison.Ordinal) || input.Contains("节假日", StringComparison.Ordinal))
+            return false;
+
+        var match = Regex.Match(input, @"^\s*(?:(?<date>今天|明天|后天)\s*)?(?<hour>\d{1,2})\s*(?:(?:点|时)\s*(?:(?<half>半)|(?<minute>\d{1,2})\s*分?)?|:\s*(?<colonMinute>\d{2}))\s*(?<trigger>提醒(?:我)?|叫我|记得)\s*(?<title>.+?)\s*[。！？!?]?\s*$");
+        if (!match.Success) return false;
+
+        if (!int.TryParse(match.Groups["hour"].Value, out var hour) || hour is < 0 or > 23)
+            return false;
+        var minuteText = match.Groups["minute"].Success
+            ? match.Groups["minute"].Value
+            : match.Groups["colonMinute"].Value;
+        var minute = match.Groups["half"].Success ? 30 : string.IsNullOrEmpty(minuteText) ? 0 : int.Parse(minuteText);
+        if (minute is < 0 or > 59) return false;
+
+        var title = match.Groups["title"].Value.Trim();
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 200) return false;
+
+        var date = now.Date.AddDays(match.Groups["date"].Value switch
+        {
+            "明天" => 1,
+            "后天" => 2,
+            _ => 0
+        });
+        var scheduled = date.AddHours(hour).AddMinutes(minute);
+        if (!match.Groups["date"].Success && scheduled <= now) scheduled = scheduled.AddDays(1);
+        if (match.Groups["date"].Value == "今天" && scheduled <= now) return false;
+
+        var originalTime = input[..match.Groups["trigger"].Index].Trim();
+        envelope = new AssistantCommandEnvelope(
+            AssistantCommandSchema.V1,
+            AssistantCommandName.CreateReminder,
+            new CreateReminderArgumentsV1(
+                title,
+                null,
+                new AssistantTimeExpressionV1(DateOnly.FromDateTime(scheduled), TimeOnly.FromDateTime(scheduled), null, null, originalTime),
+                null,
+                null,
+                null),
+            [],
+            []);
+        return true;
+    }
     async Task<AssistantConversationResult> HandleLocalQueryAsync(
         ProviderSettings provider,
         IReadOnlyList<ChatMessage> history,
@@ -455,7 +504,30 @@ public sealed class AssistantActionService
     };
 
     static string PipelineSuccessText(AssistantCommandEnvelope envelope, AssistantCommandPipelineResult result) =>
-        $"已通过本地安全命令执行：{AssistantCommandEnvelopeJson.CommandName(envelope.Command)}。";
+        envelope.Arguments switch
+        {
+            CreateReminderArgumentsV1 { Title: { } title, Remind: { } remind } =>
+                $"已设置提醒：{title}（{FormatTime(remind)}）",
+            CreateTodoArgumentsV1 { Title: { } title, Due: { } due } =>
+                $"已添加待办：{title}（截止：{FormatTime(due)}）",
+            CreateTodoArgumentsV1 { Title: { } title } => $"已添加待办：{title}",
+            CreateEventArgumentsV1 { Title: { } title, Start: { } start } =>
+                $"已添加日程：{title}（{FormatTime(start)}）",
+            CreateRecurringTaskArgumentsV1 { Title: { } title } => $"已添加重复事项：{title}",
+            _ => "已完成操作。"
+        };
+
+    static string FormatTime(AssistantTimeExpressionV1 time)
+    {
+        if (time.LocalDate is { } date && time.LocalTime is { } clock)
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var label = date == today ? "今天" : date == today.AddDays(1) ? "明天" : $"{date:yyyy年M月d日}";
+            return $"{label} {clock:HH:mm}";
+        }
+
+        return time.OriginalText?.Trim() ?? "已安排";
+    }
 
     static string PipelineConfirmedText(string command, AssistantCommandPipelineResult result) =>
         $"已确认并执行：{command}。";
