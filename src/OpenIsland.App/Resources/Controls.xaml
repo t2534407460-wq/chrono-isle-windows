@@ -57,11 +57,18 @@
     <Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="12,8"/><Setter Property="FontSize" Value="13"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
-      <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource Radius.Control}">
-        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+      <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource Radius.Control}" Padding="{TemplateBinding Padding}">
+        <ScrollViewer x:Name="PART_ContentHost"/>
       </Border>
       <ControlTemplate.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource Brush.Accent}"/></Trigger></ControlTemplate.Triggers>
     </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="TextBox.ChatComposer" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+    <Setter Property="Padding" Value="8,4"/>
+    <Setter Property="MinHeight" Value="38"/>
+    <Setter Property="MaxHeight" Value="128"/>
+    <Setter Property="VerticalContentAlignment" Value="Top"/>
+    <Setter Property="VerticalScrollBarVisibility" Value="Disabled"/>
   </Style>
   <Style TargetType="PasswordBox">
     <Setter Property="Background" Value="{StaticResource Brush.Surface}"/><Setter Property="Foreground" Value="{StaticResource Brush.TextPrimary}"/>

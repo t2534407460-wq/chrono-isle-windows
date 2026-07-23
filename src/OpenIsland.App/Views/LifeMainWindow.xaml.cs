@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenIsland.App.Views;
@@ -69,10 +70,23 @@ public partial class LifeMainWindow : Window
         }
         return false;
     }
-    void ChatInput_TextChanged(object sender, TextChangedEventArgs e)
+    void ChatInput_TextChanged(object sender, TextChangedEventArgs e) => ResizeChatInput(sender as TextBox);
+
+    void ChatInput_SizeChanged(object sender, SizeChangedEventArgs e) => ResizeChatInput(sender as TextBox);
+
+    static void ResizeChatInput(TextBox? box)
     {
-        if (sender is not TextBox box) return;
-        var lines = Math.Max(1, box.LineCount);
-        box.Height = Math.Min(120, Math.Max(40, lines * 22 + 12));
+        if (box is null || !box.IsLoaded) return;
+        box.Dispatcher.BeginInvoke(() =>
+        {
+            var lineHeight = Math.Max(20d, box.FontSize * 1.5d);
+            var lines = Math.Max(1, box.LineCount);
+            var desiredHeight = Math.Clamp(lines * lineHeight + box.Padding.Top + box.Padding.Bottom, box.MinHeight, box.MaxHeight);
+            if (double.IsNaN(box.Height) || Math.Abs(box.Height - desiredHeight) > .1)
+                box.Height = desiredHeight;
+            box.VerticalScrollBarVisibility = desiredHeight >= box.MaxHeight
+                ? ScrollBarVisibility.Auto
+                : ScrollBarVisibility.Disabled;
+        }, DispatcherPriority.Background);
     }
 }

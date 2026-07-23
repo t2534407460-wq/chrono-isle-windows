@@ -149,11 +149,16 @@ public sealed class AssistantActionService
             input.Contains("工作日", StringComparison.Ordinal) || input.Contains("节假日", StringComparison.Ordinal))
             return false;
 
-        var match = Regex.Match(input, @"^\s*(?:(?<date>今天|明天|后天)\s*)?(?<hour>\d{1,2})\s*(?:(?:点|时)\s*(?:(?<half>半)|(?<minute>\d{1,2})\s*分?)?|:\s*(?<colonMinute>\d{2}))\s*(?<trigger>提醒(?:我)?|叫我|记得)\s*(?<title>.+?)\s*[。！？!?]?\s*$");
+        const string timePattern = @"(?<time>(?:(?<date>今天|明天|后天)\s*)?(?<period>凌晨|上午|中午)?\s*(?<hour>\d{1,2})\s*(?:(?:点|时)\s*(?:(?<half>半)|(?<minute>\d{1,2})\s*分?)?|:\s*(?<colonMinute>\d{2})))";
+        var match = Regex.Match(input, $@"^\s*{timePattern}\s*(?:提醒(?:我)?|叫我|记得)\s*(?<title>.+?)\s*[。！？!?]?\s*$");
+        if (!match.Success)
+            match = Regex.Match(input, $@"^\s*(?:提醒(?:我)?|叫我|记得)\s*{timePattern}\s*(?<title>.+?)\s*[。！？!?]?\s*$");
         if (!match.Success) return false;
 
         if (!int.TryParse(match.Groups["hour"].Value, out var hour) || hour is < 0 or > 23)
             return false;
+        if (match.Groups["period"].Value == "凌晨" && hour == 12) hour = 0;
+        if (match.Groups["period"].Value == "中午" && hour is >= 1 and <= 11) hour += 12;
         var minuteText = match.Groups["minute"].Success
             ? match.Groups["minute"].Value
             : match.Groups["colonMinute"].Value;
@@ -173,7 +178,7 @@ public sealed class AssistantActionService
         if (!match.Groups["date"].Success && scheduled <= now) scheduled = scheduled.AddDays(1);
         if (match.Groups["date"].Value == "今天" && scheduled <= now) return false;
 
-        var originalTime = input[..match.Groups["trigger"].Index].Trim();
+        var originalTime = match.Groups["time"].Value.Trim();
         envelope = new AssistantCommandEnvelope(
             AssistantCommandSchema.V1,
             AssistantCommandName.CreateReminder,

@@ -105,6 +105,29 @@ public sealed class AssistantChatCommandBridgeTests : IDisposable
         Assert.Contains("已设置提醒：去洗澡", result.Reply);
         Assert.DoesNotContain("create_reminder", result.Reply);
     }
+    [Fact]
+    public async Task Explicit_prefix_reminder_accepts_midnight_clock()
+    {
+        var data = new LifeDataService(path);
+        var session = data.NewSession();
+        var service = new AssistantActionService(
+            data,
+            new ChinaStatutoryHolidayCalendar(),
+            new ConversationRouter(),
+            new LocalAgendaQueryService(data),
+            new FakeChatCompletionClient("not valid command json"));
+
+        var result = await service.HandleAsync(
+            ProviderSettings.Default,
+            session,
+            [],
+            "提醒我凌晨12点45去洗澡");
+
+        var reminder = Assert.Single(data.ReminderItems());
+        Assert.False(result.IsFailure);
+        Assert.Equal("去洗澡", reminder.Title);
+        Assert.Equal(new TimeOnly(0, 45), TimeOnly.FromDateTime(reminder.RemindAt!.Value));
+    }
     sealed class FakeChatCompletionClient(string response) : IChatCompletionClient
     {
         public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) => Task.FromResult(response);
