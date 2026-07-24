@@ -15,7 +15,8 @@ public sealed record TodayDashboardItem(
     long RowVersion,
     DateTimeOffset? ScheduledAtUtc,
     LifePriority Priority,
-    bool IsReadOnly);
+    bool IsReadOnly,
+    int OverdueGraceMinutes = 5);
 
 public sealed record TodayDashboardSnapshot(
     DateTimeOffset GeneratedAtUtc,
@@ -73,7 +74,7 @@ public sealed class TodayDashboardService
             .OrderBy(item => item.ScheduledAtUtc).ThenBy(item => item.Title, StringComparer.CurrentCulture)
             .ToArray();
         var overdue = active.Where(item => item.Kind is LifeItemKind.Todo or LifeItemKind.Reminder &&
-                                           item.ScheduledAtUtc < nowUtc.Subtract(TimeSpan.FromMinutes(1)))
+                                           item.ScheduledAtUtc < nowUtc.Subtract(TimeSpan.FromMinutes(item.OverdueGraceMinutes)))
             .OrderBy(item => item.ScheduledAtUtc).ThenByDescending(item => item.Priority)
             .ToArray();
         var inbox = active.Where(item => item.Kind == LifeItemKind.Todo && item.ScheduledAtUtc is null)
@@ -183,7 +184,7 @@ public sealed class TodayDashboardService
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id,kind,title,row_version,due_utc_instant,remind_utc_instant,start_utc_instant,
-                   COALESCE(priority,'Normal'),is_readonly
+                   COALESCE(priority,'Normal'),is_readonly,COALESCE(overdue_grace_minutes,5)
             FROM life_items
             WHERE deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored')
             """;
@@ -200,7 +201,7 @@ public sealed class TodayDashboardService
             };
             items.Add(new(reader.GetString(0), kind, reader.GetString(2), reader.GetInt64(3), scheduled,
                 Enum.TryParse<LifePriority>(reader.GetString(7), out var priority) ? priority : LifePriority.Normal,
-                reader.GetInt64(8) != 0));
+                reader.GetInt64(8) != 0, Math.Max(0, reader.GetInt32(9))));
         }
         return items;
     }
@@ -210,7 +211,7 @@ public sealed class TodayDashboardService
         var stored = active.FirstOrDefault(candidate => candidate.Id == item.Id);
         var scheduled = new DateTimeOffset(DateTime.SpecifyKind(item.StartsAt, DateTimeKind.Local)).ToUniversalTime();
         return new(item.Id, LifeItemKind.Reminder, item.Title, stored?.RowVersion ?? 0, scheduled,
-            stored?.Priority ?? LifePriority.Normal, stored?.IsReadOnly ?? false);
+            stored?.Priority ?? LifePriority.Normal, stored?.IsReadOnly ?? false, stored?.OverdueGraceMinutes ?? 5);
     }
 
     static (bool IsInbox, bool IsReadOnly, long RowVersion)? ReadMutationState(IUnitOfWork uow, string id)

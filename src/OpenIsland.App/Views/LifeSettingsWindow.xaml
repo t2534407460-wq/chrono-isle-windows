@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Island 设置" Width="680" Height="680" MinWidth="560" MinHeight="520"
         Background="Transparent" Foreground="{StaticResource Brush.TextPrimary}"
-        FontFamily="{StaticResource Font.UI}" WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource Font.UI}" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize">
   <WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="8" CornerRadius="16" UseAeroCaptionButtons="False"/></WindowChrome.WindowChrome>
   <Window.Resources>

@@ -10,6 +10,17 @@ namespace OpenIsland.Tests;
 
 public sealed class TodayDashboardServiceTests
 {
+    [Theory]
+    [InlineData(LifeItemKind.Todo, "todo")]
+    [InlineData(LifeItemKind.Reminder, "reminder")]
+    [InlineData(LifeItemKind.Event, "event")]
+    public void NavigationTarget_ConvertsDashboardKindsToManagementKinds(LifeItemKind kind, string expected)
+    {
+        var item = new TodayDashboardItem("item", kind, "title", 1, null, LifePriority.Normal, false);
+
+        Assert.Equal(expected, ItemNavigationTarget.From(item.Id, item.Kind).Kind);
+    }
+
     [Fact]
     public void SnapshotUsesFreshOfficialWorkdayOccurrenceForNextAction()
     {
@@ -42,6 +53,18 @@ public sealed class TodayDashboardServiceTests
         Assert.Single(snapshot.Overdue, item => item.Id == "overdue");
         Assert.Single(snapshot.Inbox, item => item.Id == "inbox");
         Assert.Equal("overdue", snapshot.SuggestedItemIds[0]);
+    }
+
+    [Fact]
+    public void Snapshot_UsesEachItemsConfiguredOverdueGracePeriod()
+    {
+        using var database = new DatabaseScope();
+        var now = new DateTimeOffset(2026, 7, 21, 10, 0, 0, TimeSpan.Zero);
+        database.Insert("grace", "Todo", "still within grace", due: now.AddMinutes(-6), overdueGrace: 10);
+
+        var snapshot = database.Service.GetSnapshot(now);
+
+        Assert.Empty(snapshot.Overdue);
     }
 
 
@@ -116,7 +139,8 @@ public sealed class TodayDashboardServiceTests
             DateTimeOffset? start = null,
             DateTimeOffset? end = null,
             string priority = "Normal",
-            bool isReadOnly = false)
+            bool isReadOnly = false,
+            int overdueGrace = 5)
         {
             queue.Execute(uow =>
             {
@@ -127,11 +151,11 @@ public sealed class TodayDashboardServiceTests
                       id,kind,title,status,row_version,
                       due_utc_instant,due_time_semantics,remind_utc_instant,remind_time_semantics,
                       start_utc_instant,start_time_semantics,end_utc_instant,end_time_semantics,
-                      origin_type,is_readonly,readonly_reason,created_at,updated_at,priority)
+                      origin_type,is_readonly,readonly_reason,created_at,updated_at,priority,overdue_grace_minutes)
                     VALUES($id,$kind,$title,'Pending',1,
                       $due,$dueSemantics,$remind,$remindSemantics,
                       $start,$startSemantics,$end,$endSemantics,
-                      $origin,$readonly,$reason,$now,$now,$priority)
+                      $origin,$readonly,$reason,$now,$now,$priority,$grace)
                     """;
                 command.Parameters.AddWithValue("$id", id);
                 command.Parameters.AddWithValue("$kind", kind);
@@ -145,6 +169,7 @@ public sealed class TodayDashboardServiceTests
                 command.Parameters.AddWithValue("$reason", isReadOnly ? "Unsupported external semantics" : DBNull.Value);
                 command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
                 command.Parameters.AddWithValue("$priority", priority);
+                command.Parameters.AddWithValue("$grace", overdueGrace);
                 command.ExecuteNonQuery();
             });
         }

@@ -20,10 +20,7 @@ public partial class LifeMainWindow : Window
 
     public void OpenSettings()
     {
-        services.GetRequiredService<LifeIslandWindow>().CollapsePanel();
-        var settings = services.GetRequiredService<LifeSettingsWindow>();
-        settings.Owner = this;
-        settings.ShowDialog();
+        ((App)Application.Current).OpenLifeSettings();
     }
 
     public void SubmitQuickInput(string input)
@@ -46,12 +43,11 @@ public partial class LifeMainWindow : Window
     void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
 
-    void Manage_Click(object sender, RoutedEventArgs e)
+    void Manage_Click(object sender, RoutedEventArgs e) => OpenManagement();
+
+    public void OpenManagement(ItemNavigationTarget? target = null)
     {
-        services.GetRequiredService<LifeIslandWindow>().CollapsePanel();
-        var window = services.GetRequiredService<LifeManagementWindow>();
-        window.Owner = this;
-        window.ShowDialog();
+        ((App)Application.Current).OpenLifeManagement(target);
     }
 
     void Today_Click(object sender, RoutedEventArgs e) => services.GetRequiredService<LifeIslandWindow>().OpenTodayPanel();

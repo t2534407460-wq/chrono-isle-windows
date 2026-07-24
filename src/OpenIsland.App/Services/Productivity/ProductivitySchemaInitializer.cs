@@ -21,6 +21,7 @@ public sealed class ProductivitySchemaInitializer
         AddColumn(db, tx, "parent_item_id", "TEXT CHECK(parent_item_id IS NULL OR parent_item_id <> id)");
         AddColumn(db, tx, "completed_at_utc", "TEXT CHECK(completed_at_utc IS NULL OR julianday(completed_at_utc) IS NOT NULL)");
         AddColumn(db, tx, "deferred_count", "INTEGER NOT NULL DEFAULT 0 CHECK(deferred_count >= 0)");
+        AddColumn(db, tx, "overdue_grace_minutes", "INTEGER NOT NULL DEFAULT 5 CHECK(overdue_grace_minutes >= 0)");
 
         Execute(db, tx, """
             CREATE TABLE IF NOT EXISTS command_drafts(

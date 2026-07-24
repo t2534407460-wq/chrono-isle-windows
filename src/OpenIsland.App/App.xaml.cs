@@ -17,6 +17,8 @@ public partial class App : System.Windows.Application
 {
     ServiceProvider? services;
     LifeMainWindow? main;
+    Window? standalonePage;
+    bool restoreMainAfterStandalonePage;
     bool openingMain;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -88,7 +90,9 @@ public partial class App : System.Windows.Application
 
         var island = services.GetRequiredService<LifeIslandWindow>();
         island.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
-        island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(() => { OpenMain(); main?.OpenSettings(); });
+        island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
+        island.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
+        island.ItemDetailsRequested += (_, target) => Dispatcher.BeginInvoke(() => OpenLifeManagement(target));
         island.ChatRequested += (_, text) => Dispatcher.BeginInvoke(() =>
         {
             OpenMain();
@@ -98,7 +102,7 @@ public partial class App : System.Windows.Application
             Dispatcher.BeginInvoke(() => island.ShowReminder(item.Kind, item.Id));
         var tray = services.GetRequiredService<LifeTrayService>();
         tray.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
-        tray.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(() => { OpenMain(); main?.OpenSettings(); });
+        tray.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
         tray.ExitRequested += (_, _) => Dispatcher.BeginInvoke(Shutdown);
         tray.Initialize();
         island.Show();
@@ -107,6 +111,7 @@ public partial class App : System.Windows.Application
 
     void OpenMain()
     {
+        CloseStandalonePage();
         if (openingMain) return;
         openingMain = true;
         try
@@ -122,6 +127,48 @@ public partial class App : System.Windows.Application
             main.Focus();
         }
         finally { openingMain = false; }
+    }
+
+    public void OpenLifeSettings()
+    {
+        var page = services!.GetRequiredService<LifeSettingsWindow>();
+        OpenStandalonePage(page);
+    }
+
+    public void OpenLifeManagement(ItemNavigationTarget? target = null)
+    {
+        var page = services!.GetRequiredService<LifeManagementWindow>();
+        if (target is not null) page.OpenItem(target);
+        OpenStandalonePage(page);
+    }
+
+    void OpenStandalonePage(Window page)
+    {
+        services!.GetRequiredService<LifeIslandWindow>().CollapsePanel();
+        var shouldRestoreMain = main?.IsVisible == true || restoreMainAfterStandalonePage;
+        CloseStandalonePage();
+        if (main?.IsVisible == true) main.Hide();
+
+        standalonePage = page;
+        restoreMainAfterStandalonePage = shouldRestoreMain;
+        page.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(standalonePage, page)) return;
+            standalonePage = null;
+            var restoreMain = restoreMainAfterStandalonePage;
+            restoreMainAfterStandalonePage = false;
+            if (restoreMain) OpenMain();
+        };
+        page.Show();
+        page.Activate();
+    }
+
+    void CloseStandalonePage()
+    {
+        if (standalonePage is not { } page) return;
+        standalonePage = null;
+        restoreMainAfterStandalonePage = false;
+        page.Close();
     }
 
     void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

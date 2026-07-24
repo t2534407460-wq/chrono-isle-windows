@@ -128,6 +128,7 @@ public sealed class ReportService : IReportService
         var columns = Columns(u, "life_items");
         var completedAt = columns.Contains("completed_at_utc") ? "completed_at_utc" : "updated_at";
         var priority = columns.Contains("priority") ? "priority" : "NULL";
+        var overdueGrace = columns.Contains("overdue_grace_minutes") ? "COALESCE(overdue_grace_minutes,5)" : "5";
         var deferredExpression = columns.Contains("postponement_count")
             ? "CASE WHEN status='Deferred' OR postponement_count>0 THEN 1 ELSE 0 END"
             : "CASE WHEN status='Deferred' THEN 1 ELSE 0 END";
@@ -136,7 +137,7 @@ public sealed class ReportService : IReportService
 
         var created = Scalar(u, "SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND created_at >= $start AND created_at < $end", period);
         var completed = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND status='Completed' AND {completedAt} >= $start AND {completedAt} < $end", period);
-        var overdue = Scalar(u, "SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored') AND due_utc_instant IS NOT NULL AND due_utc_instant < $end", period);
+        var overdue = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored') AND due_utc_instant IS NOT NULL AND julianday(due_utc_instant) + {overdueGrace} / 1440.0 < julianday($end)", period);
         var deferred = Scalar(u, $"SELECT COALESCE(SUM({deferredExpression}),0) FROM life_items WHERE deleted_at IS NULL AND updated_at >= $start AND updated_at < $end", period);
         var high = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND {priority} IN ('High','Urgent') AND updated_at >= $start AND updated_at < $end", period);
 

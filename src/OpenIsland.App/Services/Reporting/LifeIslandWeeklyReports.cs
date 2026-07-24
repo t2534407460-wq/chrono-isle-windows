@@ -75,7 +75,8 @@ public partial class LifeIslandWindow
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(9),
             Padding = new Thickness(10),
-            Margin = new Thickness(8, 0, 8, 8),
+            Margin = new Thickness(12, 0, 12, 8),
+            Visibility = Visibility.Collapsed,
             Child = content
         };
         ExpandedContent.Children.Insert(Math.Min(3, ExpandedContent.Children.Count), weeklyReportPanel);

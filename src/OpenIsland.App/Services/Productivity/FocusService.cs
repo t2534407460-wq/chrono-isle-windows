@@ -38,8 +38,20 @@ public sealed class FocusService : IFocusService
         if (string.IsNullOrWhiteSpace(todoId)) throw new ArgumentException("A todo id is required.", nameof(todoId));
         if (intendedMinutes <= 0) throw new ArgumentOutOfRangeException(nameof(intendedMinutes));
         var session = new FocusSession(Guid.NewGuid().ToString("N"), todoId, clock(), intendedMinutes);
-        writeQueue.Execute(uow =>
+        return writeQueue.Execute(uow =>
         {
+            using var active = uow.Connection.CreateCommand();
+            active.Transaction = uow.Transaction;
+            active.CommandText = "SELECT id,item_id,started_at_utc,intended_minutes,paused_at_utc,accumulated_paused_seconds FROM focus_sessions WHERE ended_at_utc IS NULL LIMIT 1";
+            using var reader = active.ExecuteReader();
+            if (reader.Read())
+            {
+                var existing = new FocusSession(reader.GetString(0), reader.GetString(1), Parse(reader.GetString(2)), reader.GetInt32(3),
+                    null, null, reader.IsDBNull(4) ? null : Parse(reader.GetString(4)), reader.GetInt32(5));
+                if (existing.ItemId == todoId) return existing;
+                throw new InvalidOperationException("已有进行中的专注，请先结束当前专注后再开始新的专注。");
+            }
+            reader.Close();
             using var validate = uow.Connection.CreateCommand();
             validate.Transaction = uow.Transaction;
             validate.CommandText = "SELECT COUNT(*) FROM life_items WHERE id=$id AND kind='Todo' AND is_readonly=0 AND deleted_at IS NULL AND status NOT IN ('Completed','Cancelled')";
@@ -52,8 +64,8 @@ public sealed class FocusService : IFocusService
             insert.Parameters.AddWithValue("$id", session.Id); insert.Parameters.AddWithValue("$item", todoId);
             insert.Parameters.AddWithValue("$started", Iso(session.StartedAtUtc)); insert.Parameters.AddWithValue("$minutes", intendedMinutes);
             insert.ExecuteNonQuery();
+            return session;
         });
-        return session;
     }
 
     public FocusSession? RestoreActive()

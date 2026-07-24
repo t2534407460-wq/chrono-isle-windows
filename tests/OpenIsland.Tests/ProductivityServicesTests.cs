@@ -10,6 +10,33 @@ public sealed class ProductivityServicesTests
 {
     static readonly DateTimeOffset Now = new(2026, 7, 16, 8, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(LifePriority.Low, "低")]
+    [InlineData(LifePriority.Normal, "普通")]
+    [InlineData(LifePriority.High, "高")]
+    [InlineData(LifePriority.Urgent, "紧急")]
+    public void DisplayLabels_UsesChinesePriorityNames(LifePriority value, string expected) =>
+        Assert.Equal(expected, TaskDisplayLabels.Priority(value));
+
+    [Theory]
+    [InlineData(EnergyLevel.Low, "低精力")]
+    [InlineData(EnergyLevel.Medium, "中等精力")]
+    [InlineData(EnergyLevel.High, "高精力")]
+    public void DisplayLabels_UsesChineseEnergyNames(EnergyLevel value, string expected) =>
+        Assert.Equal(expected, TaskDisplayLabels.Energy(value));
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(5, 4)]
+    public void PositiveMinuteStepper_DecreaseNeverDropsBelowOne(int value, int expected) =>
+        Assert.Equal(expected, TaskAttributeNumbers.Decrease(value));
+
+    [Theory]
+    [InlineData(1, 2)]
+    [InlineData(5, 6)]
+    public void PositiveMinuteStepper_IncreaseAddsOne(int value, int expected) =>
+        Assert.Equal(expected, TaskAttributeNumbers.Increase(value));
+
     [Fact]
     public void Draft_PersistsAcrossStoreRestart_AndRejectsMoreThanTenItems()
     {
@@ -59,6 +86,20 @@ public sealed class ProductivityServicesTests
         Assert.True(result.ShouldAskToCompleteItem);
         Assert.Null(service.RestoreActive());
     }
+
+    [Fact]
+    public void Focus_StartForActiveTodo_ReturnsTheExistingSession()
+    {
+        using var scope = new DatabaseScope();
+        scope.InsertTodo("todo", "work");
+        var service = scope.Focus(() => Now);
+
+        var started = service.Start("todo", 25);
+        var resumed = service.Start("todo", 25);
+
+        Assert.Equal(started.Id, resumed.Id);
+    }
+
     [Fact]
     public void Focus_PauseResume_PersistsAcrossRestart_AndExcludesPausedTime()
     {
@@ -95,7 +136,7 @@ public sealed class ProductivityServicesTests
         scope.InsertTodo("todo", "work");
         var service = scope.Attributes();
         var original = service.Get("todo")!;
-        var changed = original with { Priority = LifePriority.High, Category = "工作", EstimatedMinutes = 25, Energy = EnergyLevel.High };
+        var changed = original with { Priority = LifePriority.High, Category = "工作", EstimatedMinutes = 25, Energy = EnergyLevel.High, OverdueGraceMinutes = 12 };
 
         Assert.Equal(TaskAttributesUpdateResult.Succeeded, service.Update(changed));
         Assert.Equal(TaskAttributesUpdateResult.ConcurrentConflict, service.Update(changed));
@@ -104,6 +145,7 @@ public sealed class ProductivityServicesTests
         Assert.Equal("工作", stored.Category);
         Assert.Equal(25, stored.EstimatedMinutes);
         Assert.Equal(EnergyLevel.High, stored.Energy);
+        Assert.Equal(12, stored.OverdueGraceMinutes);
         scope.SetTaskMetadata("todo", "parent", Now, 2);
         var metadata = service.Get("todo")!;
         Assert.Equal("parent", metadata.ParentItemId);

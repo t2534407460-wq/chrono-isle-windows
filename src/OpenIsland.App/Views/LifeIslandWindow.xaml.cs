@@ -16,8 +16,9 @@ namespace OpenIsland.App.Views;
 
 public partial class LifeIslandWindow : Window
 {
-    const double CollapsedWidth = 420;
-    const double ExpandedWidth = 650;
+    const double CollapsedWidth = 294;
+    const double CollapsedMaxWidth = CollapsedWidth * 1.5;
+    const double ExpandedWidth = 620;
     const double SnapThreshold = 28;
     const double UnsnapThreshold = 48;
     readonly IIslandStateCoordinator islandState;
@@ -35,13 +36,16 @@ public partial class LifeIslandWindow : Window
     string? focusTitle;
     Border? todayPanel;
     StackPanel? todayDashboardContent;
-    readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromMinutes(1) };
+    readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer collapseTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     DateTime displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     DateTime selectedDate = DateTime.Today;
+    DateTime nextArchiveSweep = DateTime.MinValue;
     bool dragging;
     bool dragged;
     bool expanded;
+    bool pointerHover;
+    int windowBoundsAnimationVersion;
     bool notch;
     string? reminderBannerKind;
     string? reminderBannerItemId;
@@ -49,11 +53,15 @@ public partial class LifeIslandWindow : Window
     System.Windows.Point dragStart;
     bool addingReminder = true;
 
-    enum IslandQuickAction { AddTodo, AddReminder, StartFocus, ViewToday, AskAi, Settings, PauseReminders, ToggleDoNotDisturb }
+    enum IslandQuickAction { AddTodo, AddReminder, StartFocus, ViewToday, AskAi, ManageItems, Settings, PauseReminders, ToggleDoNotDisturb }
     public event EventHandler? OpenRequested;
     public event EventHandler? SettingsRequested;
+    public event EventHandler? ManageRequested;
+    public event EventHandler<ItemNavigationTarget>? ItemDetailsRequested;
     public event EventHandler<string>? ChatRequested;
     int recommendationMinutes = 30;
+    int recommendationDurationValue = 30;
+    int recommendationDurationUnitMinutes = 1;
     EnergyLevel recommendationEnergy = EnergyLevel.Medium;
     DateOnly? automaticWeeklyReportDate;
     bool nextWeekPlanVisible;
@@ -148,6 +156,11 @@ public partial class LifeIslandWindow : Window
 
     void Refresh()
     {
+        if (DateTime.Now >= nextArchiveSweep)
+        {
+            nextArchiveSweep = DateTime.Now.AddMinutes(1);
+            data.ArchiveCompletedAndOverdue();
+        }
         if (reminderBannerKind is not null && reminderBannerItemId is not null &&
             data.FindAgendaItem(reminderBannerKind, reminderBannerItemId) is null)
         {
@@ -157,10 +170,12 @@ public partial class LifeIslandWindow : Window
             reminderBannerItem = null;
         }
 
-        Clock.Text = DateTime.Now.ToString("HH:mm");
+        Clock.Text = DateTime.Now.ToString("HH:mm:ss");
         if (!TryRenderFocusSummary())
         {
-            StatusLight.Fill = IndicatorBrush(data.GetIslandIndicatorState(DateTime.Now));
+            var indicator = data.GetIslandIndicatorState(DateTime.Now);
+            StatusLight.Fill = IndicatorBrush(indicator);
+            StatusLight.ToolTip = IndicatorTooltip(indicator);
             var now = DateTimeOffset.UtcNow;
             var transient = islandState.Current;
             if (transient?.ExpiresAt is not null && transient.ExpiresAt <= now)
@@ -172,41 +187,49 @@ public partial class LifeIslandWindow : Window
             if (conflicts.Count > 0)
             {
                 StatusLight.Fill = new SolidColorBrush(Color.FromRgb(255, 69, 58));
-                Summary.Text = $"日程冲突 · 今日 {conflicts.Count} 组重叠 · {TodayCompletionText()}";
+                StatusLight.ToolTip = "红色：今日存在日程冲突。";
+                Summary.Text = $"日程冲突 · 今日 {conflicts.Count} 组重叠";
             }
             else if (transient is not null)
             {
                 StatusLight.Fill = transient.StateKey == "ai:processing"
                     ? new SolidColorBrush(Color.FromRgb(94, 92, 230))
                     : new SolidColorBrush(Color.FromRgb(48, 209, 88));
+                StatusLight.ToolTip = transient.StateKey == "ai:processing"
+                    ? "紫色：AI 正在处理请求。"
+                    : "绿色：当前状态正常。";
                 Summary.Text = transient.DisplayText;
             }
             else
             {
                 var next = data.NextAgenda();
                 Summary.Text = next is null
-                    ? $"今天暂无安排 · {TodayCompletionText()}"
-                    : $"下一项 · {next.StartsAt:HH:mm} {next.Title} · {TodayCompletionText()}";
+                    ? "今天暂无安排"
+                    : $"下一项 · {next.StartsAt:HH:mm} {next.Title}";
             }
         }
+        ResizeCollapsedToContent();
         BuildCalendar();
         BuildDayAgenda();
-        BuildTodayDashboard();
+        if (!HasOpenDropDown()) BuildTodayDashboard();
     }
 
-    string TodayCompletionText()
-    {
-        var progress = TodayCompletionProgressCalculator.Calculate(data.Todos(), DateTime.Today);
-        return $"今日 {progress.Completed}/{progress.Total}";
-    }
-
-    static System.Windows.Media.Brush IndicatorBrush(IslandIndicatorState state) => state switch
+    internal static System.Windows.Media.Brush IndicatorBrush(IslandIndicatorState state) => state switch
     {
         IslandIndicatorState.OverdueTodo => new SolidColorBrush(Color.FromRgb(255, 69, 58)),
         IslandIndicatorState.DueSoonTodo => new SolidColorBrush(Color.FromRgb(255, 159, 10)),
-        IslandIndicatorState.PendingTodo => new SolidColorBrush(Color.FromRgb(174, 174, 178)),
-        IslandIndicatorState.ReminderOnly => new SolidColorBrush(Color.FromRgb(255, 214, 10)),
+        IslandIndicatorState.PendingTodo => new SolidColorBrush(Color.FromRgb(255, 214, 10)),
+        IslandIndicatorState.ReminderOnly => new SolidColorBrush(Color.FromRgb(10, 132, 255)),
         _ => new SolidColorBrush(Color.FromRgb(48, 209, 88))
+    };
+
+    internal static string IndicatorTooltip(IslandIndicatorState state) => state switch
+    {
+        IslandIndicatorState.OverdueTodo => "红色：有待办已超过设置的超时宽限。",
+        IslandIndicatorState.DueSoonTodo => "橙色：有未完成待办，将在未来 1 小时内到期。",
+        IslandIndicatorState.PendingTodo => "黄色：有未完成待办，且不在未来 1 小时内到期，也未逾期。",
+        IslandIndicatorState.ReminderOnly => "蓝色：只有提醒或日程，没有待办。",
+        _ => "绿色：没有待办，当前空闲。"
     };
 
     void RefreshFocusSummary()
@@ -237,6 +260,7 @@ public partial class LifeIslandWindow : Window
         StatusLight.Fill = remaining > 0
             ? new SolidColorBrush(Color.FromRgb(174, 174, 178))
             : new SolidColorBrush(Color.FromRgb(255, 159, 10));
+        StatusLight.ToolTip = remaining > 0 ? "灰色：正在专注。" : "橙色：专注时间已到。";
         Summary.Text = current.IsPaused
             ? $"专注已暂停 · {focusTitle}"
             : remaining > 0
@@ -433,7 +457,8 @@ public partial class LifeIslandWindow : Window
             Child = panel
         };
         ExpandedContent.Children.Insert(3, todayPanel);
-        CalendarPanel.Visibility = Visibility.Collapsed;
+        todayPanel.Visibility = Visibility.Collapsed;
+        CalendarPanel.Visibility = Visibility.Visible;
         BuildTodayDashboard();
     }
 
@@ -491,7 +516,7 @@ public partial class LifeIslandWindow : Window
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
-        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.AskAi, IslandQuickAction.Settings })
+        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.AskAi, IslandQuickAction.ManageItems, IslandQuickAction.Settings })
         {
             var button = new Button { Content = QuickActionLabel(action), Style = (Style)FindResource("IslandQuick") };
             button.Click += (_, _) => RunQuickAction(action);
@@ -520,29 +545,46 @@ public partial class LifeIslandWindow : Window
         quickRow.Children.Add(quickInput);
         todayDashboardContent.Children.Add(quickRow);
 
-        todayDashboardContent.Children.Add(new TextBlock { Text = "今日概览", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = 17 });
-        todayDashboardContent.Children.Add(new TextBlock
-        {
-            Text = snapshot.NextAction is null ? "下一行动：暂无已安排事项" : $"下一行动：{DashboardTime(snapshot.NextAction)} {snapshot.NextAction.Title}",
-            Foreground = new SolidColorBrush(Color.FromRgb(159, 217, 161)), Margin = new Thickness(0, 5, 0, 11), TextTrimming = TextTrimming.CharacterEllipsis
-        });
         var counts = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 13) };
         counts.Children.Add(DashboardCount("今日", snapshot.Today.Count, Color.FromRgb(174, 174, 178)));
         counts.Children.Add(DashboardCount("逾期", snapshot.Overdue.Count, Color.FromRgb(255, 69, 58)));
         counts.Children.Add(DashboardCount("待整理", snapshot.Inbox.Count, Color.FromRgb(255, 159, 10)));
         todayDashboardContent.Children.Add(counts);
-        var recommendationRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 5) };
-        recommendationRow.Children.Add(new TextBlock { Text = "可用时间", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
-        var minutes = new System.Windows.Controls.ComboBox { Width = 62, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = new[] { 5, 15, 30, 60 }, SelectedItem = recommendationMinutes, Margin = new Thickness(0, 0, 6, 0) };
-        recommendationRow.Children.Add(minutes);
-        recommendationRow.Children.Add(new TextBlock { Text = "分钟 · 能量", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
-        var energy = new System.Windows.Controls.ComboBox { Width = 82, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = Enum.GetValues<EnergyLevel>(), SelectedItem = recommendationEnergy, Margin = new Thickness(0, 0, 6, 0) };
+        var recommendationRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 5) };
+        recommendationRow.Children.Add(new TextBlock { Text = "可用时间", Width = 64, Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        var duration = PositiveNumberStepper(recommendationDurationValue, value =>
+        {
+            recommendationDurationValue = value;
+            UpdateRecommendationMinutes();
+            Touch();
+        });
+        recommendationRow.Children.Add(duration);
+        var durationUnitOptions = new[]
+        {
+            new ComboBoxItem { Content = "分钟", Tag = 1 },
+            new ComboBoxItem { Content = "小时", Tag = 60 }
+        };
+        var durationUnit = new System.Windows.Controls.ComboBox { Width = 72, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = durationUnitOptions, SelectedIndex = recommendationDurationUnitMinutes == 60 ? 1 : 0, Margin = new Thickness(0, 0, 10, 0), ToolTip = "时间单位" };
+        durationUnit.SelectionChanged += (_, _) =>
+        {
+            if (durationUnit.SelectedItem is ComboBoxItem { Tag: int unitMinutes }) recommendationDurationUnitMinutes = unitMinutes;
+            UpdateRecommendationMinutes();
+            Touch();
+        };
+        recommendationRow.Children.Add(durationUnit);
+        recommendationRow.Children.Add(new TextBlock { Text = "能量", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
+        var energyOptions = Enum.GetValues<EnergyLevel>().Select(value => new ComboBoxItem { Content = TaskDisplayLabels.Energy(value), Tag = value }).ToArray();
+        var energy = new System.Windows.Controls.ComboBox { Width = 110, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = energyOptions, SelectedItem = energyOptions.Single(item => (EnergyLevel)item.Tag == recommendationEnergy), Margin = new Thickness(0, 0, 10, 0) };
+        energy.SelectionChanged += (_, _) =>
+        {
+            if (energy.SelectedItem is ComboBoxItem { Tag: EnergyLevel value }) recommendationEnergy = value;
+            Touch();
+        };
         recommendationRow.Children.Add(energy);
         var recommend = new Button { Content = "给我推荐", Style = (Style)FindResource("IslandType"), Padding = new Thickness(7, 2, 7, 2), FontSize = 10 };
         recommend.Click += (_, _) =>
         {
-            if (minutes.SelectedItem is int selectedMinutes) recommendationMinutes = selectedMinutes;
-            if (energy.SelectedItem is EnergyLevel selectedEnergy) recommendationEnergy = selectedEnergy;
+            if (energy.SelectedItem is ComboBoxItem { Tag: EnergyLevel selectedEnergy }) recommendationEnergy = selectedEnergy;
             BuildTodayDashboard();
         };
         recommendationRow.Children.Add(recommend);
@@ -620,6 +662,7 @@ public partial class LifeIslandWindow : Window
         IslandQuickAction.StartFocus => "◎ 专注模式",
         IslandQuickAction.ViewToday => "▣ 查看今天",
         IslandQuickAction.AskAi => "✦ 问 AI",
+        IslandQuickAction.ManageItems => "事项管理",
         IslandQuickAction.Settings => "设置",
         IslandQuickAction.PauseReminders => "暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "勿扰模式",
@@ -654,6 +697,7 @@ public partial class LifeIslandWindow : Window
                 break;
             case IslandQuickAction.ViewToday: ShowTodayDashboard(); break;
             case IslandQuickAction.AskAi: OpenAssistant(); break;
+            case IslandQuickAction.ManageItems: OpenManagement(); break;
             case IslandQuickAction.Settings: OpenSettings(); break;
             case IslandQuickAction.PauseReminders: reminders.SetDoNotDisturb(true); BuildTodayDashboard(); break;
             case IslandQuickAction.ToggleDoNotDisturb: reminders.SetDoNotDisturb(!reminders.IsDoNotDisturbEnabled); BuildTodayDashboard(); break;
@@ -879,7 +923,45 @@ public partial class LifeIslandWindow : Window
         }
     };
 
-    static Border DashboardOverviewCard(string title, IReadOnlyList<TodayDashboardItem> items, string emptyText, Color accent)
+    Grid PositiveNumberStepper(int initialValue, Action<int> valueChanged)
+    {
+        var value = Math.Max(1, initialValue);
+        var box = new TextBox
+        {
+            Width = 56,
+            Height = 28,
+            Text = value.ToString(),
+            IsReadOnly = true,
+            IsTabStop = false,
+            TextAlignment = TextAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Style = (Style)FindResource("IslandTextInput")
+        };
+        var arrows = new StackPanel { Orientation = System.Windows.Controls.Orientation.Vertical, Margin = new Thickness(4, 0, 8, 0) };
+        void SetValue(int next)
+        {
+            value = Math.Max(1, next);
+            box.Text = value.ToString();
+            valueChanged(value);
+        }
+        var up = new Button { Content = "▲", Width = 18, Height = 13, MinHeight = 13, Padding = new Thickness(0), FontSize = 8, Style = (Style)FindResource("IslandPrimary") };
+        var down = new Button { Content = "▼", Width = 18, Height = 13, MinHeight = 13, Padding = new Thickness(0), FontSize = 8, Style = (Style)FindResource("IslandPrimary") };
+        up.Click += (_, _) => SetValue(value + 1);
+        down.Click += (_, _) => SetValue(value - 1);
+        arrows.Children.Add(up);
+        arrows.Children.Add(down);
+        var stepper = new Grid { Margin = new Thickness(0, 0, 10, 0) };
+        stepper.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        stepper.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        stepper.Children.Add(box);
+        Grid.SetColumn(arrows, 1);
+        stepper.Children.Add(arrows);
+        return stepper;
+    }
+
+    void UpdateRecommendationMinutes() => recommendationMinutes = checked(recommendationDurationValue * recommendationDurationUnitMinutes);
+
+    Border DashboardOverviewCard(string title, IReadOnlyList<TodayDashboardItem> items, string emptyText, Color accent)
     {
         var content = new StackPanel();
         content.Children.Add(new TextBlock { Text = title, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = 12 });
@@ -887,9 +969,16 @@ public partial class LifeIslandWindow : Window
             content.Children.Add(new TextBlock { Text = emptyText, Foreground = new SolidColorBrush(Color.FromRgb(142, 142, 147)), FontSize = 11, Margin = new Thickness(0, 9, 0, 0), TextWrapping = TextWrapping.Wrap });
         else
             foreach (var item in items.Take(2))
-                content.Children.Add(new TextBlock { Text = $"{DashboardTime(item)}  {item.Title}", Foreground = new SolidColorBrush(Color.FromRgb(229, 229, 234)), FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+            {
+                var itemText = new TextBlock { Text = $"{DashboardTime(item)}  {item.Title}", Foreground = new SolidColorBrush(Color.FromRgb(229, 229, 234)), FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "查看事项详情" };
+                var target = ItemNavigationTarget.From(item.Id, item.Kind);
+                itemText.MouseLeftButtonUp += (_, _) => OpenItemDetails(target);
+                content.Children.Add(itemText);
+            }
         return new Border { Background = new SolidColorBrush(Color.FromRgb(28, 28, 30)), BorderBrush = new SolidColorBrush(Color.FromRgb(58, 58, 60)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 8, 0), Child = content, Tag = accent };
     }
+
+    void OpenItemDetails(ItemNavigationTarget target) => ItemDetailsRequested?.Invoke(this, target);
 
     static string DashboardTime(TodayDashboardItem item) => item.ScheduledAtUtc?.ToLocalTime().ToString("HH:mm") ?? "待安排";
 
@@ -928,7 +1017,6 @@ public partial class LifeIslandWindow : Window
 
     void CalendarTab_Click(object sender, RoutedEventArgs e) => ShowCalendarDashboard();
 
-
     void ShowCalendarDashboard()
     {
         if (todayPanel is null) return;
@@ -959,7 +1047,7 @@ public partial class LifeIslandWindow : Window
             var button = new Button
             {
                 Tag = day,
-                Height = 42,
+                Height = 38,
                 Style = (Style)FindResource("IslandDay"),
                 Background = day.Date == selectedDate.Date ? new SolidColorBrush(Color.FromRgb(72, 72, 74)) : Brushes.Transparent,
                 Foreground = day.Date == selectedDate.Date ? Brushes.White : CalendarForeground(inMonth, officialDay),
@@ -979,7 +1067,7 @@ public partial class LifeIslandWindow : Window
                 button.ToolTip = officialDay.Name;
             }
             if (indicator != IslandIndicatorState.Idle)
-                metadata.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = IndicatorBrush(indicator), Stroke = day.Date == selectedDate.Date ? Brushes.White : null, StrokeThickness = day.Date == selectedDate.Date ? 1 : 0, Margin = new Thickness(officialDay.Kind == OfficialCalendarDayKind.None ? 0 : 3, 3, 0, 0) });
+                metadata.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = IndicatorBrush(indicator), ToolTip = IndicatorTooltip(indicator), Stroke = day.Date == selectedDate.Date ? Brushes.White : null, StrokeThickness = day.Date == selectedDate.Date ? 1 : 0, Margin = new Thickness(officialDay.Kind == OfficialCalendarDayKind.None ? 0 : 3, 3, 0, 0) });
             if (metadata.Children.Count > 0)
                 content.Children.Add(metadata);
             button.Content = content;
@@ -1007,21 +1095,34 @@ public partial class LifeIslandWindow : Window
 
         foreach (var item in items)
         {
-            var row = new Border { Background = new SolidColorBrush(Color.FromRgb(36, 36, 40)), CornerRadius = new CornerRadius(7), Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 5) };
+            var row = new Border { Background = new SolidColorBrush(Color.FromRgb(36, 36, 40)), CornerRadius = new CornerRadius(7), Padding = new Thickness(8), Margin = new Thickness(0, 0, 0, 5), Cursor = System.Windows.Input.Cursors.Hand };
+            var target = ItemNavigationTarget.From(item);
+            row.MouseLeftButtonUp += (_, eventArgs) =>
+            {
+                if (IsInteractiveSource(eventArgs.OriginalSource as DependencyObject)) return;
+                OpenItemDetails(target);
+            };
             var panel = new DockPanel { LastChildFill = false };
             if (item.Kind == "todo")
             {
-                var complete = new Button { Content = item.IsCompleted ? "✓" : "○", Width = 25, Height = 25, Padding = new Thickness(0), Background = item.IsCompleted ? new SolidColorBrush(Color.FromRgb(70, 101, 75)) : new SolidColorBrush(Color.FromRgb(58, 58, 62)), Tag = item };
+                var complete = new Button { Content = item.IsCompleted ? "✓" : "", Style = (Style)FindResource("IslandComplete"), Background = item.IsCompleted ? new SolidColorBrush(Color.FromRgb(70, 101, 75)) : Brushes.Transparent, BorderBrush = item.IsCompleted ? new SolidColorBrush(Color.FromRgb(110, 185, 119)) : new SolidColorBrush(Color.FromRgb(123, 125, 133)), Tag = item };
                 complete.Click += CompleteTodo_Click;
                 DockPanel.SetDock(complete, Dock.Left);
                 panel.Children.Add(complete);
             }
             var copy = new StackPanel { Margin = new Thickness(item.Kind == "todo" ? 8 : 0, 0, 0, 0) };
+            var indicator = data.GetAgendaItemIndicatorState(item, DateTime.Now);
             var time = item.Kind == "event" && item.EndsAt is not null ? $"{item.StartsAt:HH:mm}–{item.EndsAt:HH:mm}" : item.StartsAt.TimeOfDay == TimeSpan.Zero ? "待办" : item.StartsAt.ToString("HH:mm");
-            copy.Children.Add(new TextBlock { Text = time, Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), FontSize = 11 });
+            var timeRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+            timeRow.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = IndicatorBrush(indicator), ToolTip = IndicatorTooltip(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+            timeRow.Children.Add(new TextBlock { Text = time, Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), FontSize = 11 });
+            copy.Children.Add(timeRow);
             copy.Children.Add(new TextBlock { Text = item.Title, Foreground = item.IsCompleted ? new SolidColorBrush(Color.FromRgb(142, 142, 147)) : Brushes.White, TextDecorations = item.IsCompleted ? TextDecorations.Strikethrough : null });
             panel.Children.Add(copy);
-            var remove = new Button { Content = "\u00D7", Width = 26, Height = 25, Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(0), Background = new SolidColorBrush(Color.FromRgb(58, 58, 62)), Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120)), Tag = item, ToolTip = item.Kind == "recurring" ? "删除整个周期计划" : "删除" };
+            var remove = new Button { Margin = new Thickness(10, 0, 0, 0), Style = (Style)FindResource("IslandDeleteButton"), Tag = item, ToolTip = item.Kind == "recurring" ? "删除整个周期计划" : "删除" };
+            var deleteIcon = new System.Windows.Shapes.Path { Data = Geometry.Parse("M 2 2 L 10 10 M 10 2 L 2 10"), StrokeThickness = 1.5, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+            deleteIcon.SetBinding(System.Windows.Shapes.Shape.StrokeProperty, new System.Windows.Data.Binding(nameof(Button.Foreground)) { Source = remove });
+            remove.Content = new Viewbox { Width = 12, Height = 12, Child = deleteIcon };
             remove.Click += DeleteAgenda_Click;
             DockPanel.SetDock(remove, Dock.Right);
             panel.Children.Add(remove);
@@ -1064,12 +1165,6 @@ public partial class LifeIslandWindow : Window
         if (dragged) SnapToTop();
     }
 
-    void IslandSurface_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.Handled || IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
-        ToggleExpanded();
-    }
-
     static bool IsInteractiveSource(DependencyObject? source)
     {
         for (var current = source; current is not null; current = current switch
@@ -1093,12 +1188,8 @@ public partial class LifeIslandWindow : Window
     void Expand()
     {
         if (expanded) return;
-        ResizeIsland(ExpandedWidth);
         expanded = true;
-        ExpandedContent.Opacity = 0;
-        ExpandedContent.Visibility = Visibility.Visible;
-        ExpandedContent.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
-        ChevronRotate.Angle = 90;
+        AnimateExpandedState(true);
         Touch();
     }
 
@@ -1106,28 +1197,128 @@ public partial class LifeIslandWindow : Window
     {
         if (!expanded) return;
         expanded = false;
-        ExpandedContent.Visibility = Visibility.Collapsed;
-        ChevronRotate.Angle = 0;
-        ResizeIsland(CollapsedWidth);
+        AnimateExpandedState(false);
         collapseTimer.Stop();
     }
 
-    void ResizeIsland(double width)
+    void AnimateExpandedState(bool expand)
     {
-        var delta = width - Width;
-        Width = width;
-        Left -= delta / 2;
+        const double contentMinHeight = 620;
+        var duration = TimeSpan.FromMilliseconds(400);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var fromWidth = ActualWidth;
+        var fromLeft = Left;
+        var targetWidth = expand ? ExpandedWidth : pointerHover ? CollapsedWidthForSummary() : CollapsedWidth;
+        var delta = targetWidth - fromWidth;
+        var targetLeft = fromLeft - delta / 2;
+
+        var targetHeight = 0d;
+        if (expand)
+        {
+            ExpandedContent.Visibility = Visibility.Visible;
+            ExpandedScrollViewer.MinHeight = 0;
+            ExpandedScrollViewer.MaxHeight = double.PositiveInfinity;
+            ExpandedContent.Measure(new System.Windows.Size(ExpandedWidth, double.PositiveInfinity));
+            var contentMaxHeight = Math.Max(contentMinHeight, SystemParameters.WorkArea.Height - Header.ActualHeight - 24);
+            targetHeight = Math.Clamp(ExpandedContent.DesiredSize.Height, contentMinHeight, contentMaxHeight);
+            ExpandedScrollViewer.MaxHeight = 0;
+        }
+        else ExpandedScrollViewer.MinHeight = 0;
+
+        AnimateWindowBounds(targetWidth, targetLeft, duration, easing);
+
+        var contentAnimation = new DoubleAnimation { To = targetHeight, Duration = duration, EasingFunction = easing, FillBehavior = FillBehavior.Stop };
+        contentAnimation.Completed += (_, _) =>
+        {
+            ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, null);
+            ExpandedScrollViewer.MaxHeight = targetHeight;
+            if (expand) ExpandedScrollViewer.MinHeight = contentMinHeight;
+            else ExpandedContent.Visibility = Visibility.Collapsed;
+        };
+        ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, contentAnimation);
+
+        var chevronAnimation = new DoubleAnimation { To = expand ? 90 : 0, Duration = duration, EasingFunction = easing, FillBehavior = FillBehavior.Stop };
+        chevronAnimation.Completed += (_, _) =>
+        {
+            ChevronRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+            ChevronRotate.Angle = expand ? 90 : 0;
+        };
+        ChevronRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, chevronAnimation);
+    }
+
+    void AnimateWindowBounds(double targetWidth, double targetLeft, TimeSpan duration, IEasingFunction easing)
+    {
+        var version = ++windowBoundsAnimationVersion;
+        AnimateWindowProperty(WidthProperty, targetWidth, duration, easing, version);
+        AnimateWindowProperty(LeftProperty, targetLeft, duration, easing, version);
+    }
+
+    void AnimateWindowProperty(DependencyProperty property, double target, TimeSpan duration, IEasingFunction easing, int version)
+    {
+        var animation = new DoubleAnimation { To = target, Duration = duration, EasingFunction = easing, FillBehavior = FillBehavior.Stop };
+        animation.Completed += (_, _) =>
+        {
+            if (version != windowBoundsAnimationVersion) return;
+            BeginAnimation(property, null);
+            SetValue(property, target);
+        };
+        BeginAnimation(property, animation);
+    }
+
+    void ResizeCollapsedToContent()
+    {
+        if (expanded) return;
+        var targetWidth = pointerHover ? CollapsedWidthForSummary() : CollapsedWidth;
+        if (Math.Abs(targetWidth - Width) < 0.5) return;
+        var delta = targetWidth - Width;
+        var duration = TimeSpan.FromMilliseconds(400);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        AnimateWindowBounds(targetWidth, Left - delta / 2, duration, easing);
+    }
+
+    double CollapsedWidthForSummary()
+    {
+        Summary.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
+        ClockGroup.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
+        var requiredWidth = 16 + 2 + 14 + 48 + 9 + 10 + Summary.DesiredSize.Width + ClockGroup.DesiredSize.Width;
+        return Math.Clamp(requiredWidth, CollapsedWidth, CollapsedMaxWidth);
     }
 
     void Touch() => collapseTimer.Stop();
 
-    void Island_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => collapseTimer.Stop();
+    void Island_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        pointerHover = true;
+        collapseTimer.Stop();
+        ResizeCollapsedToContent();
+    }
 
     void Island_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!expanded) return;
+        pointerHover = false;
+        if (HasOpenDropDown())
+        {
+            collapseTimer.Stop();
+            return;
+        }
+        if (!expanded)
+        {
+            ResizeCollapsedToContent();
+            return;
+        }
         collapseTimer.Stop();
         collapseTimer.Start();
+    }
+
+    bool HasOpenDropDown() => HasOpenDropDown(ExpandedContent);
+
+    static bool HasOpenDropDown(DependencyObject? element)
+    {
+        if (element is System.Windows.Controls.ComboBox { IsDropDownOpen: true }) return true;
+        if (element is null) return false;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+            if (HasOpenDropDown(VisualTreeHelper.GetChild(element, index))) return true;
+        return false;
     }
 
     void ExpandedContent_MouseMove(object sender, System.Windows.Input.MouseEventArgs e) => Touch();
@@ -1278,6 +1469,12 @@ public partial class LifeIslandWindow : Window
     {
         Collapse();
         Dispatcher.BeginInvoke(() => SettingsRequested?.Invoke(this, EventArgs.Empty));
+    }
+
+    void OpenManagement()
+    {
+        Collapse();
+        Dispatcher.BeginInvoke(() => ManageRequested?.Invoke(this, EventArgs.Empty));
     }
 
     void OpenAssistant_Click(object sender, RoutedEventArgs e) => OpenAssistant();

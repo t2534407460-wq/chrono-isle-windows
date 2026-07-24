@@ -65,6 +65,9 @@ public sealed partial class LifeDataService
             CREATE TABLE IF NOT EXISTS assistant_actions(
                 id TEXT PRIMARY KEY,session_id TEXT NOT NULL,source_text TEXT NOT NULL,intent_json TEXT NOT NULL,
                 status TEXT NOT NULL,error_message TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS archived_todos(
+                id TEXT PRIMARY KEY,title TEXT NOT NULL,notes TEXT,due_at TEXT,remind_at TEXT,
+                archived_at TEXT NOT NULL,reason TEXT NOT NULL);
             """);
         EnsureColumn(db, transaction, "todos", "notified_at", "TEXT");
         InitializeRecurring(db, transaction);
@@ -148,9 +151,136 @@ public sealed partial class LifeDataService
             command.Parameters.AddWithValue("$completed", value ? 1 : 0);
             command.Parameters.AddWithValue("$updated", updatedAt.ToString("O"));
             if (command.ExecuteNonQuery() == 1)
+            {
                 canonicalWriter.SetTodoCompleted(unitOfWork.Connection, unitOfWork.Transaction, id, value, updatedAt);
+                if (value) ArchiveTodo(unitOfWork, id, "已完成", updatedAt);
+            }
         });
         RaiseAgendaChanged();
+    }
+
+    public IReadOnlyList<ArchivedTodoItem> ArchivedTodos()
+    {
+        ArchiveCompletedAndOverdue();
+        using var db = Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT id,title,notes,due_at,archived_at,reason FROM archived_todos ORDER BY archived_at DESC";
+        using var reader = command.ExecuteReader();
+        var values = new List<ArchivedTodoItem>();
+        while (reader.Read())
+            values.Add(new(reader.GetString(0), reader.GetString(1), Text(reader, 2), Date(reader, 3), ReadDate(reader, 4), reader.GetString(5)));
+        return values;
+    }
+
+    public void ArchiveCompletedAndOverdue()
+    {
+        var now = localNow();
+        var changed = writeQueue.Execute(unitOfWork =>
+        {
+            var targets = new List<(string Id, string Reason)>();
+            using (var command = unitOfWork.Connection.CreateCommand())
+            {
+                command.Transaction = unitOfWork.Transaction;
+                command.CommandText = """
+                    SELECT t.id,CASE WHEN t.completed=1 THEN '已完成' ELSE '已逾期' END
+                    FROM todos t
+                    LEFT JOIN life_items item ON item.id=t.id
+                    WHERE t.completed=1 OR (
+                        t.completed=0 AND t.due_at IS NOT NULL
+                        AND julianday(t.due_at) <= julianday($now) - COALESCE(item.overdue_grace_minutes,5) / 1440.0)
+                    """;
+                command.Parameters.AddWithValue("$now", now.ToString("O"));
+                using var reader = command.ExecuteReader();
+                while (reader.Read()) targets.Add((reader.GetString(0), reader.GetString(1)));
+            }
+            var count = targets.Count(target => ArchiveTodo(unitOfWork, target.Id, target.Reason, now));
+            PurgeArchivedTodos(unitOfWork, now);
+            return count;
+        });
+        if (changed > 0) RaiseAgendaChanged();
+    }
+
+    public bool RestoreArchivedTodo(string id, DateTime scheduledAt)
+    {
+        if (scheduledAt <= localNow()) return false;
+        var restoredAt = localNow();
+        var restored = writeQueue.Execute(unitOfWork =>
+        {
+            using var read = unitOfWork.Connection.CreateCommand();
+            read.Transaction = unitOfWork.Transaction;
+            read.CommandText = "SELECT title,notes FROM archived_todos WHERE id=$id";
+            read.Parameters.AddWithValue("$id", id);
+            using var reader = read.ExecuteReader();
+            if (!reader.Read()) return false;
+            var todo = new TodoItem(id, reader.GetString(0), Text(reader, 1), false, scheduledAt, scheduledAt, null, restoredAt, restoredAt);
+            reader.Close();
+
+            using var save = unitOfWork.Connection.CreateCommand();
+            save.Transaction = unitOfWork.Transaction;
+            save.CommandText = """
+                INSERT INTO todos(id,title,notes,completed,due_at,remind_at,notified_at,created_at,updated_at)
+                VALUES($id,$title,$notes,0,$due,$reminder,NULL,$created,$updated)
+                ON CONFLICT(id) DO UPDATE SET title=$title,notes=$notes,completed=0,due_at=$due,
+                  remind_at=$reminder,notified_at=NULL,updated_at=$updated
+                """;
+            BindTodo(save, todo);
+            save.ExecuteNonQuery();
+            canonicalWriter.UpsertTodo(unitOfWork.Connection, unitOfWork.Transaction, todo);
+
+            using var remove = unitOfWork.Connection.CreateCommand();
+            remove.Transaction = unitOfWork.Transaction;
+            remove.CommandText = "DELETE FROM archived_todos WHERE id=$id";
+            remove.Parameters.AddWithValue("$id", id);
+            return remove.ExecuteNonQuery() == 1;
+        });
+        if (restored) RaiseAgendaChanged();
+        return restored;
+    }
+
+    bool ArchiveTodo(IUnitOfWork unitOfWork, string id, string reason, DateTime archivedAt)
+    {
+        using var read = unitOfWork.Connection.CreateCommand();
+        read.Transaction = unitOfWork.Transaction;
+        read.CommandText = "SELECT title,notes,due_at,remind_at,completed,created_at,updated_at FROM todos WHERE id=$id";
+        read.Parameters.AddWithValue("$id", id);
+        using var reader = read.ExecuteReader();
+        if (!reader.Read()) return false;
+        var todo = new TodoItem(id, reader.GetString(0), Text(reader, 1), reader.GetInt64(4) > 0,
+            Date(reader, 2), Date(reader, 3), null, ReadDate(reader, 5), ReadDate(reader, 6));
+        reader.Close();
+
+        using var archive = unitOfWork.Connection.CreateCommand();
+        archive.Transaction = unitOfWork.Transaction;
+        archive.CommandText = """
+            INSERT INTO archived_todos(id,title,notes,due_at,remind_at,archived_at,reason)
+            VALUES($id,$title,$notes,$due,$reminder,$archived,$reason)
+            ON CONFLICT(id) DO UPDATE SET archived_at=$archived,reason=$reason
+            """;
+        archive.Parameters.AddWithValue("$id", todo.Id);
+        archive.Parameters.AddWithValue("$title", todo.Title);
+        archive.Parameters.AddWithValue("$notes", (object?)todo.Notes ?? DBNull.Value);
+        archive.Parameters.AddWithValue("$due", (object?)StoreDate(todo.DueAt) ?? DBNull.Value);
+        archive.Parameters.AddWithValue("$reminder", (object?)StoreDate(todo.RemindAt) ?? DBNull.Value);
+        archive.Parameters.AddWithValue("$archived", archivedAt.ToString("O"));
+        archive.Parameters.AddWithValue("$reason", reason);
+        archive.ExecuteNonQuery();
+
+        using var remove = unitOfWork.Connection.CreateCommand();
+        remove.Transaction = unitOfWork.Transaction;
+        remove.CommandText = "DELETE FROM todos WHERE id=$id";
+        remove.Parameters.AddWithValue("$id", id);
+        if (remove.ExecuteNonQuery() != 1) return false;
+        canonicalWriter.SoftDelete(unitOfWork.Connection, unitOfWork.Transaction, id, archivedAt);
+        return true;
+    }
+
+    static void PurgeArchivedTodos(IUnitOfWork unitOfWork, DateTime now)
+    {
+        using var command = unitOfWork.Connection.CreateCommand();
+        command.Transaction = unitOfWork.Transaction;
+        command.CommandText = "DELETE FROM archived_todos WHERE julianday(archived_at) <= julianday($cutoff)";
+        command.Parameters.AddWithValue("$cutoff", now.AddDays(-7).ToString("O"));
+        command.ExecuteNonQuery();
     }
 
     public CalendarEventItem SaveEvent(string title, string? notes, DateTime startsAt, DateTime endsAt, DateTime? reminderAt, string? id = null)
@@ -340,7 +470,8 @@ public sealed partial class LifeDataService
     public IslandIndicatorState GetIslandIndicatorState(DateTime now)
     {
         var pendingTodos = Todos().Where(todo => !todo.IsCompleted).ToList();
-        if (pendingTodos.Any(todo => todo.DueAt is not null && todo.DueAt < now.AddMinutes(-1)))
+        var graceMinutes = TodoOverdueGraceMinutes();
+        if (pendingTodos.Any(todo => todo.DueAt is not null && IsOverdue(todo.DueAt.Value, now, graceMinutes.GetValueOrDefault(todo.Id, 5))))
             return IslandIndicatorState.OverdueTodo;
         if (pendingTodos.Any(todo => todo.DueAt is not null && todo.DueAt > now && todo.DueAt <= now.AddHours(1)))
             return IslandIndicatorState.DueSoonTodo;
@@ -353,13 +484,57 @@ public sealed partial class LifeDataService
     {
         var items = AgendaFor(day).Where(item => item.Kind != "recurring").ToList();
         var pendingTodos = items.Where(item => item.Kind == "todo" && !item.IsCompleted).ToList();
-        if (pendingTodos.Any(item => item.StartsAt < now.AddMinutes(-1))) return IslandIndicatorState.OverdueTodo;
+        var graceMinutes = TodoOverdueGraceMinutes();
+        if (pendingTodos.Any(item => IsOverdue(item.StartsAt, now, graceMinutes.GetValueOrDefault(item.Id, 5)))) return IslandIndicatorState.OverdueTodo;
         if (pendingTodos.Any(item => item.StartsAt > now && item.StartsAt <= now.AddHours(1))) return IslandIndicatorState.DueSoonTodo;
         if (pendingTodos.Count > 0) return IslandIndicatorState.PendingTodo;
         return items.Any(item => item.Kind is "event" or "reminder")
             ? IslandIndicatorState.ReminderOnly
             : IslandIndicatorState.Idle;
     }
+
+    public IslandIndicatorState GetAgendaItemIndicatorState(AgendaItem item, DateTime now)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return GetItemIndicatorState(item.Id, item.Kind, item.IsCompleted, item.StartsAt, now, TodoOverdueGraceMinutes());
+    }
+
+    public IReadOnlyDictionary<string, IslandIndicatorState> GetManagedItemIndicatorStates(IEnumerable<ManagedLifeItem> items, DateTime now)
+    {
+        var graceMinutes = TodoOverdueGraceMinutes();
+        return items.ToDictionary(item => item.Id, item =>
+            GetItemIndicatorState(item.Id, item.Kind, item.IsCompleted, item.ScheduledAt, now, graceMinutes), StringComparer.Ordinal);
+    }
+
+    static IslandIndicatorState GetItemIndicatorState(string id, string kind, bool isCompleted, DateTime? scheduledAt, DateTime now, IReadOnlyDictionary<string, int> graceMinutes)
+    {
+        if (kind == "todo")
+        {
+            if (isCompleted) return IslandIndicatorState.Idle;
+            if (scheduledAt is null) return IslandIndicatorState.PendingTodo;
+            if (IsOverdue(scheduledAt.Value, now, graceMinutes.GetValueOrDefault(id, 5))) return IslandIndicatorState.OverdueTodo;
+            return scheduledAt > now && scheduledAt <= now.AddHours(1)
+                ? IslandIndicatorState.DueSoonTodo
+                : IslandIndicatorState.PendingTodo;
+        }
+
+        return kind is "event" or "reminder" or "recurring"
+            ? IslandIndicatorState.ReminderOnly
+            : IslandIndicatorState.Idle;
+    }
+
+    Dictionary<string, int> TodoOverdueGraceMinutes()
+    {
+        using var db = Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT id,COALESCE(overdue_grace_minutes,5) FROM life_items WHERE kind='Todo' AND deleted_at IS NULL";
+        using var reader = command.ExecuteReader();
+        var values = new Dictionary<string, int>(StringComparer.Ordinal);
+        while (reader.Read()) values[reader.GetString(0)] = Math.Max(0, reader.GetInt32(1));
+        return values;
+    }
+
+    static bool IsOverdue(DateTime dueAt, DateTime now, int graceMinutes) => dueAt < now.AddMinutes(-graceMinutes);
 
     bool HasActiveReminderOrEvent(DateTime now)
     {

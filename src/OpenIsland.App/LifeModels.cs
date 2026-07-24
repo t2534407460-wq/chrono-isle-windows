@@ -1,3 +1,5 @@
+using OpenIsland.App.Services.Domain;
+
 namespace OpenIsland.App;
 
 public sealed record TodoItem(
@@ -61,6 +63,13 @@ public sealed record AgendaItem(
     bool IsCompleted,
     bool IsRecurring = false);
 
+public sealed record ItemNavigationTarget(string Id, string Kind)
+{
+    public static ItemNavigationTarget From(AgendaItem item) => new(item.Id, item.Kind);
+
+    public static ItemNavigationTarget From(string id, LifeItemKind kind) => new(id, kind.ToString().ToLowerInvariant());
+}
+
 public enum IslandIndicatorState
 {
     Idle,
@@ -77,6 +86,14 @@ public sealed record ManagedLifeItem(
     DateTime? ScheduledAt,
     bool IsCompleted,
     string? RecurrenceLabel);
+
+public sealed record ArchivedTodoItem(
+    string Id,
+    string Title,
+    string? Notes,
+    DateTime? DueAt,
+    DateTime ArchivedAt,
+    string Reason);
 
 public sealed record ChatSession(string Id, string Title, DateTime CreatedAt, DateTime UpdatedAt);
 public sealed record ChatMessage(string Id, string SessionId, string Role, string Content, DateTime CreatedAt);

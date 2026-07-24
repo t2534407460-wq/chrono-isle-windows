@@ -1,7 +1,7 @@
 <Window x:Class="OpenIsland.App.Views.LifeIslandWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="420" SizeToContent="Height" Background="Transparent" AllowsTransparency="True"
+        Width="294" SizeToContent="Height" Background="Transparent" AllowsTransparency="True"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True" ShowActivated="False"
         UseLayoutRounding="True" AutomationProperties.AutomationId="LifeIslandWindow"
         MouseEnter="Island_MouseEnter" MouseLeave="Island_MouseLeave">
@@ -36,12 +36,34 @@
       <Setter Property="Background" Value="#2C2C2E"/><Setter Property="Foreground" Value="#E5E5EA"/>
       <Setter Property="BorderBrush" Value="#3A3A3C"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="8,4"/>
     </Style>
+    <Style x:Key="IslandComplete" TargetType="Button">
+      <Setter Property="Width" Value="24"/><Setter Property="Height" Value="24"/><Setter Property="MinHeight" Value="24"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#F2F2F7"/><Setter Property="BorderBrush" Value="#7B7D85"/><Setter Property="BorderThickness" Value="1.5"/>
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Circle" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Circle" Property="BorderBrush" Value="#F2F2F7"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Circle" Property="Opacity" Value=".72"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="IslandType" TargetType="Button" BasedOn="{StaticResource IslandPrimary}">
       <Setter Property="Background" Value="#2C2C2E"/><Setter Property="Foreground" Value="#E5E5EA"/>
       <Setter Property="BorderBrush" Value="#3A3A3C"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,5"/>
     </Style>
     <Style x:Key="IslandQuick" TargetType="Button" BasedOn="{StaticResource IslandType}">
       <Setter Property="FontSize" Value="12"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,0,6,6"/>
+    </Style>
+    <Style x:Key="IslandDeleteButton" TargetType="Button" BasedOn="{StaticResource Button.Ghost}">
+      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="#2B272E"/><Setter Property="Foreground" Value="#E5A2AA"/>
     </Style>
     <Style x:Key="IslandTab" TargetType="Button" BasedOn="{StaticResource IslandType}">
       <Setter Property="MinHeight" Value="31"/><Setter Property="Padding" Value="12,6"/><Setter Property="FontWeight" Value="SemiBold"/>
@@ -138,24 +160,27 @@
       </Setter>
     </Style>
   </Window.Resources>
-  <Border x:Name="Outer" Margin="12,10,12,14">
-    <Border x:Name="MainBorder" Background="#111111" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="22" MouseLeftButtonUp="IslandSurface_MouseLeftButtonUp">
+  <Border x:Name="Outer" Margin="8,8,8,11">
+    <Border x:Name="MainBorder" Background="#111111" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="24">
       <StackPanel>
-        <Grid x:Name="Header" Height="54" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="Header_MouseDown" MouseMove="Header_MouseMove" MouseLeftButtonUp="Header_MouseUp">
+        <Grid x:Name="Header" Height="43" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="Header_MouseDown" MouseMove="Header_MouseMove" MouseLeftButtonUp="Header_MouseUp">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
-            <Ellipse x:Name="StatusLight" Width="9" Height="9" Fill="#30D158" VerticalAlignment="Center" Margin="0,0,11,0"/>
-            <Button x:Name="MascotButton" AutomationProperties.AutomationId="IslandExpandButton" Width="54" Height="34" Padding="0" Background="Transparent" BorderThickness="0" Focusable="False" ToolTip="打开 AI 对话" Click="MascotButton_Click">
-              <Button.Template><ControlTemplate TargetType="Button"><Image Source="pack://application:,,,/OpenIsland;component/Assets/island-mascot.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="False"/></ControlTemplate></Button.Template>
-            </Button>
-            <TextBlock x:Name="Summary" Foreground="#B8B8BF" FontSize="12" Margin="12,1,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="260"/>
-          </StackPanel>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,17,0">
-            <TextBlock x:Name="Clock" Foreground="#F2F2F7" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0"/>
-            <TextBlock Text="›" Foreground="#98989D" FontSize="24" VerticalAlignment="Center" RenderTransformOrigin=".5,.5"><TextBlock.RenderTransform><RotateTransform x:Name="ChevronRotate" Angle="0"/></TextBlock.RenderTransform></TextBlock>
+          <Grid VerticalAlignment="Center" Margin="14,0,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid Width="48" Height="30">
+              <Button x:Name="MascotButton" AutomationProperties.AutomationId="IslandExpandButton" Width="48" Height="30" Padding="0" Background="Transparent" BorderThickness="0" Focusable="False" ToolTip="打开 AI 对话" Click="MascotButton_Click">
+                <Button.Template><ControlTemplate TargetType="Button"><Image Source="pack://application:,,,/OpenIsland;component/Assets/island-mascot.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="False"/></ControlTemplate></Button.Template>
+              </Button>
+              <Ellipse x:Name="StatusLight" Width="8" Height="8" Fill="#30D158" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,1,0,0"/>
+            </Grid>
+            <TextBlock x:Name="Summary" Grid.Column="1" Foreground="#B8B8BF" FontSize="11" Margin="9,1,10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          </Grid>
+          <StackPanel x:Name="ClockGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,13,0">
+            <TextBlock x:Name="Clock" Foreground="#F2F2F7" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBlock Text="›" Foreground="#98989D" FontSize="20" VerticalAlignment="Center" RenderTransformOrigin=".5,.5"><TextBlock.RenderTransform><RotateTransform x:Name="ChevronRotate" Angle="0"/></TextBlock.RenderTransform></TextBlock>
           </StackPanel>
         </Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="720">
+        <ScrollViewer x:Name="ExpandedScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="0">
           <StackPanel x:Name="ExpandedContent" Visibility="Collapsed" MouseMove="ExpandedContent_MouseMove">
             <Border Height="1" Background="#2C2C2E"/>
             <Border x:Name="ReminderBanner" Background="#122A20" BorderBrush="#356547" BorderThickness="1" CornerRadius="12" Margin="12,12,12,0" Padding="12" Visibility="Collapsed">
@@ -164,9 +189,9 @@
                 <TextBlock x:Name="ReminderText" Foreground="#BCE9C0" TextWrapping="Wrap" VerticalAlignment="Center"/>
               </DockPanel>
             </Border>
-            <StackPanel x:Name="DashboardTabs" Orientation="Horizontal" Margin="12,12,12,14">
-              <Button x:Name="TodayDashboardTab" Content="今天" Click="TodayTab_Click" Style="{StaticResource IslandTab}" Background="#48484A" BorderBrush="#636366" Foreground="#FFFFFF"/>
-              <Button x:Name="CalendarDashboardTab" Content="月历" Click="CalendarTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
+            <StackPanel x:Name="DashboardTabs" Orientation="Horizontal" Margin="12,12,12,10">
+              <Button x:Name="TodayDashboardTab" Content="今天" Click="TodayTab_Click" Style="{StaticResource IslandTab}"/>
+              <Button x:Name="CalendarDashboardTab" Content="月历" Click="CalendarTab_Click" Style="{StaticResource IslandTab}" Background="#48484A" BorderBrush="#636366" Foreground="#FFFFFF" Margin="7,0,0,0"/>
             </StackPanel>
             <Border x:Name="CalendarPanel" Background="#18181A" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="14">
               <StackPanel>
@@ -207,7 +232,6 @@
                     <TextBox x:Name="QuickAddInput" AutomationProperties.AutomationId="IslandQuickAddInput" Height="34" Margin="8,0,0,0" TextChanged="QuickAddInput_TextChanged" Style="{StaticResource IslandTextInput}"/>
                   </DockPanel>
                 </StackPanel>
-                <Button Content="设置" Click="Settings_Click" Style="{StaticResource IslandType}" HorizontalAlignment="Left" MinWidth="78" Margin="0,12,0,0" ToolTip="打开设置"/>
               </StackPanel>
             </Border>
           </StackPanel>

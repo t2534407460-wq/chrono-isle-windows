@@ -103,22 +103,60 @@ public sealed class LifeAssistantTests
         Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
         data.Save("soon", null, now.AddMinutes(30), null);
         Assert.Equal(IslandIndicatorState.DueSoonTodo, data.GetIslandIndicatorState(now));
-        data.Save("late", null, now.AddMinutes(-2), null);
+        data.Save("late", null, now.AddMinutes(-6), null);
         Assert.Equal(IslandIndicatorState.OverdueTodo, data.GetIslandIndicatorState(now));
     }
 
     [Fact]
-    public void IndicatorState_AllowsOneMinuteCompletionGraceBeforeMarkingOverdue()
+    public void IndicatorState_AllowsFiveMinuteCompletionGraceBeforeMarkingOverdue()
     {
         using var scope = new TempDatabase();
         var data = new LifeDataService(scope.Path);
         var now = new DateTime(2030, 1, 2, 10, 0, 0);
 
-        data.Save("刚到期", null, now.AddSeconds(-59), null);
+        data.Save("仍在宽限期", null, now.AddMinutes(-4).AddSeconds(-59), null);
         Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
 
-        data.Save("已过宽限", null, now.AddSeconds(-61), null);
+        data.Save("已过宽限", null, now.AddMinutes(-5).AddSeconds(-1), null);
         Assert.Equal(IslandIndicatorState.OverdueTodo, data.GetIslandIndicatorState(now));
+    }
+
+    [Fact]
+    public void AgendaItemIndicator_UsesEachItemsOwnStatus()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var now = new DateTime(2030, 1, 2, 10, 0, 0);
+        var reminder = data.SaveReminder("reminder", null, now.AddHours(2));
+        var pending = data.Save("pending", null, now.AddHours(2), null);
+        var soon = data.Save("soon", null, now.AddMinutes(30), null);
+        var overdue = data.Save("overdue", null, now.AddMinutes(-6), null);
+        var agenda = data.AgendaFor(now.Date).ToDictionary(item => item.Id);
+
+        Assert.Equal(IslandIndicatorState.ReminderOnly, data.GetAgendaItemIndicatorState(agenda[reminder.Id], now));
+        Assert.Equal(IslandIndicatorState.PendingTodo, data.GetAgendaItemIndicatorState(agenda[pending.Id], now));
+        Assert.Equal(IslandIndicatorState.DueSoonTodo, data.GetAgendaItemIndicatorState(agenda[soon.Id], now));
+        Assert.Equal(IslandIndicatorState.OverdueTodo, data.GetAgendaItemIndicatorState(agenda[overdue.Id], now));
+    }
+
+    [Fact]
+    public void IndicatorState_UsesTheConfiguredPerTodoGracePeriod()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var now = new DateTime(2030, 1, 2, 10, 0, 0);
+        var todo = data.Save("可延长宽限", null, now.AddMinutes(-6), null);
+
+        using (var db = new SqliteConnection($"Data Source={scope.Path}"))
+        {
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "UPDATE life_items SET overdue_grace_minutes=10 WHERE id=$id";
+            command.Parameters.AddWithValue("$id", todo.Id);
+            command.ExecuteNonQuery();
+        }
+
+        Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
     }
     [Fact]
     public void CalendarIndicator_IgnoresRecurringRemindersAndUsesTemporaryItems()
