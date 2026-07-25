@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIsland.App.Services;
 using OpenIsland.App.Services.Commanding;
+using OpenIsland.App.Services.Domain;
 using OpenIsland.App.Services.Persistence;
 using OpenIsland.App.Services.Productivity;
 using OpenIsland.App.Services.Reporting;
@@ -71,11 +72,13 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<LifeTrayService>();
         collection.AddSingleton<IAutoStartRegistry, CurrentUserRunRegistry>();
         collection.AddSingleton<AutoStartService>();
+        collection.AddSingleton<NamingSuggestionService>();
         collection.AddSingleton<LifeViewModel>();
         collection.AddSingleton<LifeIslandWindow>();
         collection.AddTransient<LifeMainWindow>();
         collection.AddTransient<LifeSettingsWindow>();
         collection.AddTransient<LifeManagementWindow>();
+        collection.AddTransient<NamingWindow>();
         services = collection.BuildServiceProvider();
 
         var notifications = services.GetRequiredService<WindowsNotificationService>();
@@ -91,6 +94,7 @@ public partial class App : System.Windows.Application
         var island = services.GetRequiredService<LifeIslandWindow>();
         island.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
+        island.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
         island.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
         island.ItemDetailsRequested += (_, target) => Dispatcher.BeginInvoke(() => OpenLifeManagement(target));
         island.ChatRequested += (_, text) => Dispatcher.BeginInvoke(() =>
@@ -132,6 +136,12 @@ public partial class App : System.Windows.Application
     public void OpenLifeSettings()
     {
         var page = services!.GetRequiredService<LifeSettingsWindow>();
+        OpenStandalonePage(page);
+    }
+
+    public void OpenNaming()
+    {
+        var page = services!.GetRequiredService<NamingWindow>();
         OpenStandalonePage(page);
     }
 

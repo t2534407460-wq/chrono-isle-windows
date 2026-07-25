@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -53,9 +54,10 @@ public partial class LifeIslandWindow : Window
     System.Windows.Point dragStart;
     bool addingReminder = true;
 
-    enum IslandQuickAction { AddTodo, AddReminder, StartFocus, ViewToday, AskAi, ManageItems, Settings, PauseReminders, ToggleDoNotDisturb }
+    enum IslandQuickAction { AddTodo, AddReminder, StartFocus, ViewToday, AskAi, ManageItems, Naming, Settings, PauseReminders, ToggleDoNotDisturb }
     public event EventHandler? OpenRequested;
     public event EventHandler? SettingsRequested;
+    public event EventHandler? NamingRequested;
     public event EventHandler? ManageRequested;
     public event EventHandler<ItemNavigationTarget>? ItemDetailsRequested;
     public event EventHandler<string>? ChatRequested;
@@ -516,9 +518,11 @@ public partial class LifeIslandWindow : Window
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
-        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.AskAi, IslandQuickAction.ManageItems, IslandQuickAction.Settings })
+        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.AskAi, IslandQuickAction.ManageItems, IslandQuickAction.Naming, IslandQuickAction.Settings })
         {
             var button = new Button { Content = QuickActionLabel(action), Style = (Style)FindResource("IslandQuick") };
+            if (action == IslandQuickAction.Naming)
+                AutomationProperties.SetAutomationId(button, "IslandNamingButton");
             button.Click += (_, _) => RunQuickAction(action);
             quickActions.Children.Add(button);
         }
@@ -646,7 +650,7 @@ public partial class LifeIslandWindow : Window
     ContextMenu CreateQuickActionMenu()
     {
         var menu = new ContextMenu();
-        foreach (var action in Enum.GetValues<IslandQuickAction>())
+        foreach (var action in Enum.GetValues<IslandQuickAction>().Where(action => action != IslandQuickAction.Naming))
         {
             var item = new MenuItem { Header = QuickActionLabel(action) };
             item.Click += (_, _) => RunQuickAction(action);
@@ -663,6 +667,7 @@ public partial class LifeIslandWindow : Window
         IslandQuickAction.ViewToday => "▣ 查看今天",
         IslandQuickAction.AskAi => "✦ 问 AI",
         IslandQuickAction.ManageItems => "事项管理",
+        IslandQuickAction.Naming => "取名",
         IslandQuickAction.Settings => "设置",
         IslandQuickAction.PauseReminders => "暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "勿扰模式",
@@ -698,6 +703,7 @@ public partial class LifeIslandWindow : Window
             case IslandQuickAction.ViewToday: ShowTodayDashboard(); break;
             case IslandQuickAction.AskAi: OpenAssistant(); break;
             case IslandQuickAction.ManageItems: OpenManagement(); break;
+            case IslandQuickAction.Naming: OpenNaming(); break;
             case IslandQuickAction.Settings: OpenSettings(); break;
             case IslandQuickAction.PauseReminders: reminders.SetDoNotDisturb(true); BuildTodayDashboard(); break;
             case IslandQuickAction.ToggleDoNotDisturb: reminders.SetDoNotDisturb(!reminders.IsDoNotDisturbEnabled); BuildTodayDashboard(); break;
@@ -1464,6 +1470,12 @@ public partial class LifeIslandWindow : Window
     }
 
     void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    void OpenNaming()
+    {
+        Collapse();
+        Dispatcher.BeginInvoke(() => NamingRequested?.Invoke(this, EventArgs.Empty));
+    }
 
     void OpenSettings()
     {
