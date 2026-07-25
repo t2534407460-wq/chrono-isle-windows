@@ -37,11 +37,14 @@ public sealed class LifeTrayService : IDisposable
             if (args.Button == Forms.MouseButtons.Left)
                 OpenRequested?.Invoke(this, EventArgs.Empty);
             else if (args.Button == Forms.MouseButtons.Right)
-                ShowMenu();
+            {
+                var trayHost = TrayMenuWindow.CaptureTrayHostAtCursor();
+                ShowMenu(trayHost);
+            }
         };
     }
 
-    void ShowMenu()
+    void ShowMenu(nint trayHost)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         if (dispatcher is null) return;
@@ -67,7 +70,7 @@ public sealed class LifeTrayService : IDisposable
             {
                 if (ReferenceEquals(menu, window)) menu = null;
             };
-            window.ShowAtCursor();
+            window.ShowAtCursor(trayHost);
         });
     }
 
