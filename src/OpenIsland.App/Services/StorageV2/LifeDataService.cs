@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using OpenIsland.App.Services.Scheduling;
 using Microsoft.Data.Sqlite;
 using OpenIsland.App.Services.Persistence;
@@ -70,6 +71,8 @@ public sealed partial class LifeDataService
                 archived_at TEXT NOT NULL,reason TEXT NOT NULL);
             """);
         EnsureColumn(db, transaction, "todos", "notified_at", "TEXT");
+        EnsureColumn(db, transaction, "archived_todos", "kind", "TEXT NOT NULL DEFAULT 'todo'");
+        EnsureColumn(db, transaction, "archived_todos", "payload_json", "TEXT");
         InitializeRecurring(db, transaction);
         InitializeSingleReminders(db, transaction);
     }
@@ -164,11 +167,12 @@ public sealed partial class LifeDataService
         ArchiveCompletedAndOverdue();
         using var db = Open();
         using var command = db.CreateCommand();
-        command.CommandText = "SELECT id,title,notes,due_at,archived_at,reason FROM archived_todos ORDER BY archived_at DESC";
+        command.CommandText = "SELECT id,title,notes,due_at,archived_at,reason,kind FROM archived_todos ORDER BY archived_at DESC";
         using var reader = command.ExecuteReader();
         var values = new List<ArchivedTodoItem>();
         while (reader.Read())
-            values.Add(new(reader.GetString(0), reader.GetString(1), Text(reader, 2), Date(reader, 3), ReadDate(reader, 4), reader.GetString(5)));
+            values.Add(new(reader.GetString(0), reader.GetString(1), Text(reader, 2), Date(reader, 3),
+                ReadDate(reader, 4), reader.GetString(5), reader.GetString(6)));
         return values;
     }
 
@@ -177,55 +181,82 @@ public sealed partial class LifeDataService
         var now = localNow();
         var changed = writeQueue.Execute(unitOfWork =>
         {
-            var targets = new List<(string Id, string Reason)>();
+            var targets = new List<(string Id, string Kind, string Reason)>();
             using (var command = unitOfWork.Connection.CreateCommand())
             {
                 command.Transaction = unitOfWork.Transaction;
                 command.CommandText = """
-                    SELECT t.id,CASE WHEN t.completed=1 THEN '已完成' ELSE '已逾期' END
+                    SELECT t.id,'todo',CASE WHEN t.completed=1 THEN '已完成' ELSE '已逾期' END
                     FROM todos t
-                    LEFT JOIN life_items item ON item.id=t.id
                     WHERE t.completed=1 OR (
                         t.completed=0 AND t.due_at IS NOT NULL
-                        AND julianday(t.due_at) <= julianday($now) - COALESCE(item.overdue_grace_minutes,5) / 1440.0)
+                        AND julianday(t.due_at) < julianday($today))
+                    UNION ALL
+                    SELECT id,'event','已逾期' FROM calendar_events
+                    WHERE julianday(end_at) < julianday($today)
+                    UNION ALL
+                    SELECT id,'reminder','已逾期' FROM single_reminders
+                    WHERE julianday(remind_at) < julianday($today)
                     """;
-                command.Parameters.AddWithValue("$now", now.ToString("O"));
+                command.Parameters.AddWithValue("$today", now.Date.ToString("O"));
                 using var reader = command.ExecuteReader();
-                while (reader.Read()) targets.Add((reader.GetString(0), reader.GetString(1)));
+                while (reader.Read()) targets.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
             }
-            var count = targets.Count(target => ArchiveTodo(unitOfWork, target.Id, target.Reason, now));
+            var count = targets.Count(target => ArchiveItem(unitOfWork, target.Id, target.Kind, target.Reason, now));
             PurgeArchivedTodos(unitOfWork, now);
             return count;
         });
         if (changed > 0) RaiseAgendaChanged();
     }
 
-    public bool RestoreArchivedTodo(string id, DateTime scheduledAt)
+    public int ArchiveAgendaItems(IEnumerable<AgendaItem> items, string reason = "手动归档")
     {
-        if (scheduledAt <= localNow()) return false;
+        ArgumentNullException.ThrowIfNull(items);
+        var targets = items.Select(item => (item.Id, item.Kind))
+            .Where(item => item.Kind is "todo" or "event" or "recurring" or "reminder")
+            .Distinct()
+            .ToList();
+        if (targets.Count == 0) return 0;
+
+        var now = localNow();
+        var archived = writeQueue.Execute(unitOfWork =>
+        {
+            var count = targets.Count(target => ArchiveItem(unitOfWork, target.Id, target.Kind, reason, now));
+            PurgeArchivedTodos(unitOfWork, now);
+            return count;
+        });
+        if (archived > 0) RaiseAgendaChanged();
+        return archived;
+    }
+
+    public bool RestoreArchivedTodo(string id, DateTime scheduledAt) => RestoreArchivedItem(id, scheduledAt);
+
+    public bool RestoreArchivedItem(string id, DateTime? scheduledAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
         var restoredAt = localNow();
         var restored = writeQueue.Execute(unitOfWork =>
         {
             using var read = unitOfWork.Connection.CreateCommand();
             read.Transaction = unitOfWork.Transaction;
-            read.CommandText = "SELECT title,notes FROM archived_todos WHERE id=$id";
+            read.CommandText = "SELECT title,notes,due_at,payload_json,kind FROM archived_todos WHERE id=$id";
             read.Parameters.AddWithValue("$id", id);
             using var reader = read.ExecuteReader();
             if (!reader.Read()) return false;
-            var todo = new TodoItem(id, reader.GetString(0), Text(reader, 1), false, scheduledAt, scheduledAt, null, restoredAt, restoredAt);
+            var archived = new ArchivedItemSnapshot(
+                id, reader.GetString(0), Text(reader, 1), Date(reader, 2), Text(reader, 3), reader.GetString(4));
             reader.Close();
 
-            using var save = unitOfWork.Connection.CreateCommand();
-            save.Transaction = unitOfWork.Transaction;
-            save.CommandText = """
-                INSERT INTO todos(id,title,notes,completed,due_at,remind_at,notified_at,created_at,updated_at)
-                VALUES($id,$title,$notes,0,$due,$reminder,NULL,$created,$updated)
-                ON CONFLICT(id) DO UPDATE SET title=$title,notes=$notes,completed=0,due_at=$due,
-                  remind_at=$reminder,notified_at=NULL,updated_at=$updated
-                """;
-            BindTodo(save, todo);
-            save.ExecuteNonQuery();
-            canonicalWriter.UpsertTodo(unitOfWork.Connection, unitOfWork.Transaction, todo);
+            if (archived.Kind != "recurring" && (scheduledAt is null || scheduledAt <= restoredAt)) return false;
+            var saved = archived.Kind switch
+            {
+                "todo" => RestoreTodo(unitOfWork, archived, scheduledAt!.Value, restoredAt),
+                "event" => RestoreEvent(unitOfWork, archived, scheduledAt!.Value, restoredAt),
+                "reminder" => RestoreSingleReminder(unitOfWork, archived, scheduledAt!.Value, restoredAt),
+                "recurring" => RestoreRecurringReminder(unitOfWork, archived, restoredAt),
+                _ => false
+            };
+            if (!saved) return false;
 
             using var remove = unitOfWork.Connection.CreateCommand();
             remove.Transaction = unitOfWork.Transaction;
@@ -235,6 +266,95 @@ public sealed partial class LifeDataService
         });
         if (restored) RaiseAgendaChanged();
         return restored;
+    }
+
+    bool RestoreTodo(IUnitOfWork unitOfWork, ArchivedItemSnapshot archived, DateTime scheduledAt, DateTime restoredAt)
+    {
+        var todo = new TodoItem(archived.Id, archived.Title, archived.Notes, false,
+            scheduledAt, scheduledAt, null, restoredAt, restoredAt);
+        using var save = unitOfWork.Connection.CreateCommand();
+        save.Transaction = unitOfWork.Transaction;
+        save.CommandText = """
+            INSERT INTO todos(id,title,notes,completed,due_at,remind_at,notified_at,created_at,updated_at)
+            VALUES($id,$title,$notes,0,$due,$reminder,NULL,$created,$updated)
+            ON CONFLICT(id) DO UPDATE SET title=$title,notes=$notes,completed=0,due_at=$due,
+              remind_at=$reminder,notified_at=NULL,updated_at=$updated
+            """;
+        BindTodo(save, todo);
+        if (save.ExecuteNonQuery() != 1) return false;
+        canonicalWriter.UpsertTodo(unitOfWork.Connection, unitOfWork.Transaction, todo);
+        return true;
+    }
+
+    bool RestoreEvent(IUnitOfWork unitOfWork, ArchivedItemSnapshot archived, DateTime startsAt, DateTime restoredAt)
+    {
+        var payload = string.IsNullOrWhiteSpace(archived.PayloadJson)
+            ? null
+            : JsonSerializer.Deserialize<ArchivedEventPayload>(archived.PayloadJson);
+        if (payload is null || payload.EndsAt <= payload.StartsAt) return false;
+        DateTime? remindAt = payload.RemindAt is null ? null : startsAt + (payload.RemindAt.Value - payload.StartsAt);
+        var item = new CalendarEventItem(archived.Id, archived.Title, archived.Notes,
+            startsAt, startsAt + (payload.EndsAt - payload.StartsAt), remindAt, null, restoredAt, restoredAt);
+        using var save = unitOfWork.Connection.CreateCommand();
+        save.Transaction = unitOfWork.Transaction;
+        save.CommandText = """
+            INSERT INTO calendar_events(id,title,notes,start_at,end_at,remind_at,notified_at,created_at,updated_at)
+            VALUES($id,$title,$notes,$start,$end,$reminder,NULL,$created,$updated)
+            """;
+        save.Parameters.AddWithValue("$id", item.Id);
+        save.Parameters.AddWithValue("$title", item.Title);
+        save.Parameters.AddWithValue("$notes", (object?)item.Notes ?? DBNull.Value);
+        save.Parameters.AddWithValue("$start", item.StartsAt.ToString("O"));
+        save.Parameters.AddWithValue("$end", item.EndsAt.ToString("O"));
+        save.Parameters.AddWithValue("$reminder", (object?)StoreDate(item.RemindAt) ?? DBNull.Value);
+        save.Parameters.AddWithValue("$created", item.CreatedAt.ToString("O"));
+        save.Parameters.AddWithValue("$updated", item.UpdatedAt.ToString("O"));
+        if (save.ExecuteNonQuery() != 1) return false;
+        canonicalWriter.UpsertEvent(unitOfWork.Connection, unitOfWork.Transaction, item);
+        return true;
+    }
+
+    bool RestoreSingleReminder(IUnitOfWork unitOfWork, ArchivedItemSnapshot archived, DateTime remindAt, DateTime restoredAt)
+    {
+        var item = new SingleReminder(archived.Id, archived.Title, archived.Notes, remindAt, null, restoredAt, restoredAt);
+        using var save = unitOfWork.Connection.CreateCommand();
+        save.Transaction = unitOfWork.Transaction;
+        save.CommandText = """
+            INSERT INTO single_reminders(id,title,notes,remind_at,notified_at,created_at,updated_at)
+            VALUES($id,$title,$notes,$remind,NULL,$created,$updated)
+            """;
+        save.Parameters.AddWithValue("$id", item.Id);
+        save.Parameters.AddWithValue("$title", item.Title);
+        save.Parameters.AddWithValue("$notes", (object?)item.Notes ?? DBNull.Value);
+        save.Parameters.AddWithValue("$remind", item.RemindAt.ToString("O"));
+        save.Parameters.AddWithValue("$created", item.CreatedAt.ToString("O"));
+        save.Parameters.AddWithValue("$updated", item.UpdatedAt.ToString("O"));
+        if (save.ExecuteNonQuery() != 1) return false;
+        canonicalWriter.UpsertReminder(unitOfWork.Connection, unitOfWork.Transaction, item);
+        return true;
+    }
+
+    bool RestoreRecurringReminder(IUnitOfWork unitOfWork, ArchivedItemSnapshot archived, DateTime restoredAt)
+    {
+        var payload = string.IsNullOrWhiteSpace(archived.PayloadJson)
+            ? null
+            : JsonSerializer.Deserialize<ArchivedRecurringPayload>(archived.PayloadJson);
+        if (payload is null) return false;
+        var item = new RecurringReminder(archived.Id, archived.Title, archived.Notes,
+            payload.ReminderTime, payload.Recurrence, payload.Weekdays, null, restoredAt, restoredAt);
+        var next = NextOccurrence(item, restoredAt);
+        if (next is null) return false;
+        using var save = unitOfWork.Connection.CreateCommand();
+        save.Transaction = unitOfWork.Transaction;
+        save.CommandText = """
+            INSERT INTO recurring_reminders(id,title,notes,reminder_time,recurrence,weekdays,last_notified_at,created_at,updated_at)
+            VALUES($id,$title,$notes,$time,$recurrence,$weekdays,NULL,$created,$updated)
+            """;
+        BindRecurring(save, item);
+        if (save.ExecuteNonQuery() != 1) return false;
+        canonicalWriter.UpsertRecurringReminder(
+            unitOfWork.Connection, unitOfWork.Transaction, item, next.StartsAt);
+        return true;
     }
 
     bool ArchiveTodo(IUnitOfWork unitOfWork, string id, string reason, DateTime archivedAt)
@@ -249,30 +369,139 @@ public sealed partial class LifeDataService
             Date(reader, 2), Date(reader, 3), null, ReadDate(reader, 5), ReadDate(reader, 6));
         reader.Close();
 
+        SaveArchivedItem(unitOfWork, todo.Id, "todo", todo.Title, todo.Notes, todo.DueAt, todo.RemindAt,
+            archivedAt, reason, null);
+        return RemoveActiveItem(unitOfWork, "todos", id, archivedAt);
+    }
+
+    bool ArchiveItem(IUnitOfWork unitOfWork, string id, string kind, string reason, DateTime archivedAt) => kind switch
+    {
+        "todo" => ArchiveTodo(unitOfWork, id, reason, archivedAt),
+        "event" => ArchiveEvent(unitOfWork, id, reason, archivedAt),
+        "reminder" => ArchiveSingleReminder(unitOfWork, id, reason, archivedAt),
+        "recurring" => ArchiveRecurringReminder(unitOfWork, id, reason, archivedAt),
+        _ => false
+    };
+
+    bool ArchiveEvent(IUnitOfWork unitOfWork, string id, string reason, DateTime archivedAt)
+    {
+        using var read = unitOfWork.Connection.CreateCommand();
+        read.Transaction = unitOfWork.Transaction;
+        read.CommandText = "SELECT title,notes,start_at,end_at,remind_at FROM calendar_events WHERE id=$id";
+        read.Parameters.AddWithValue("$id", id);
+        using var reader = read.ExecuteReader();
+        if (!reader.Read()) return false;
+        var title = reader.GetString(0);
+        var notes = Text(reader, 1);
+        var startsAt = ReadDate(reader, 2);
+        var endsAt = ReadDate(reader, 3);
+        var remindAt = Date(reader, 4);
+        reader.Close();
+
+        var payload = JsonSerializer.Serialize(new ArchivedEventPayload(startsAt, endsAt, remindAt));
+        SaveArchivedItem(unitOfWork, id, "event", title, notes, startsAt, remindAt, archivedAt, reason, payload);
+        return RemoveActiveItem(unitOfWork, "calendar_events", id, archivedAt);
+    }
+
+    bool ArchiveSingleReminder(IUnitOfWork unitOfWork, string id, string reason, DateTime archivedAt)
+    {
+        using var read = unitOfWork.Connection.CreateCommand();
+        read.Transaction = unitOfWork.Transaction;
+        read.CommandText = "SELECT title,notes,remind_at FROM single_reminders WHERE id=$id";
+        read.Parameters.AddWithValue("$id", id);
+        using var reader = read.ExecuteReader();
+        if (!reader.Read()) return false;
+        var title = reader.GetString(0);
+        var notes = Text(reader, 1);
+        var remindAt = ReadDate(reader, 2);
+        reader.Close();
+
+        SaveArchivedItem(unitOfWork, id, "reminder", title, notes, remindAt, remindAt, archivedAt, reason, null);
+        return RemoveActiveItem(unitOfWork, "single_reminders", id, archivedAt);
+    }
+
+    bool ArchiveRecurringReminder(IUnitOfWork unitOfWork, string id, string reason, DateTime archivedAt)
+    {
+        using var read = unitOfWork.Connection.CreateCommand();
+        read.Transaction = unitOfWork.Transaction;
+        read.CommandText = """
+            SELECT id,title,notes,reminder_time,recurrence,weekdays,last_notified_at,created_at,updated_at
+            FROM recurring_reminders WHERE id=$id
+            """;
+        read.Parameters.AddWithValue("$id", id);
+        using var reader = read.ExecuteReader();
+        if (!reader.Read()) return false;
+        var reminder = ReadRecurring(reader);
+        reader.Close();
+
+        var payload = JsonSerializer.Serialize(new ArchivedRecurringPayload(
+            reminder.ReminderTime, reminder.Recurrence, reminder.Weekdays.ToArray()));
+        SaveArchivedItem(unitOfWork, id, "recurring", reminder.Title, reminder.Notes,
+            NextOccurrence(reminder, archivedAt)?.StartsAt, null, archivedAt, reason, payload);
+        return RemoveActiveItem(unitOfWork, "recurring_reminders", id, archivedAt);
+    }
+
+    static void SaveArchivedItem(
+        IUnitOfWork unitOfWork,
+        string id,
+        string kind,
+        string title,
+        string? notes,
+        DateTime? scheduledAt,
+        DateTime? remindAt,
+        DateTime archivedAt,
+        string reason,
+        string? payloadJson)
+    {
         using var archive = unitOfWork.Connection.CreateCommand();
         archive.Transaction = unitOfWork.Transaction;
         archive.CommandText = """
-            INSERT INTO archived_todos(id,title,notes,due_at,remind_at,archived_at,reason)
-            VALUES($id,$title,$notes,$due,$reminder,$archived,$reason)
-            ON CONFLICT(id) DO UPDATE SET archived_at=$archived,reason=$reason
+            INSERT INTO archived_todos(id,title,notes,due_at,remind_at,archived_at,reason,kind,payload_json)
+            VALUES($id,$title,$notes,$due,$reminder,$archived,$reason,$kind,$payload)
+            ON CONFLICT(id) DO UPDATE SET title=$title,notes=$notes,due_at=$due,remind_at=$reminder,
+                archived_at=$archived,reason=$reason,kind=$kind,payload_json=$payload
             """;
-        archive.Parameters.AddWithValue("$id", todo.Id);
-        archive.Parameters.AddWithValue("$title", todo.Title);
-        archive.Parameters.AddWithValue("$notes", (object?)todo.Notes ?? DBNull.Value);
-        archive.Parameters.AddWithValue("$due", (object?)StoreDate(todo.DueAt) ?? DBNull.Value);
-        archive.Parameters.AddWithValue("$reminder", (object?)StoreDate(todo.RemindAt) ?? DBNull.Value);
+        archive.Parameters.AddWithValue("$id", id);
+        archive.Parameters.AddWithValue("$title", title);
+        archive.Parameters.AddWithValue("$notes", (object?)notes ?? DBNull.Value);
+        archive.Parameters.AddWithValue("$due", (object?)StoreDate(scheduledAt) ?? DBNull.Value);
+        archive.Parameters.AddWithValue("$reminder", (object?)StoreDate(remindAt) ?? DBNull.Value);
         archive.Parameters.AddWithValue("$archived", archivedAt.ToString("O"));
         archive.Parameters.AddWithValue("$reason", reason);
+        archive.Parameters.AddWithValue("$kind", kind);
+        archive.Parameters.AddWithValue("$payload", (object?)payloadJson ?? DBNull.Value);
         archive.ExecuteNonQuery();
+    }
 
+    bool RemoveActiveItem(IUnitOfWork unitOfWork, string table, string id, DateTime archivedAt)
+    {
         using var remove = unitOfWork.Connection.CreateCommand();
         remove.Transaction = unitOfWork.Transaction;
-        remove.CommandText = "DELETE FROM todos WHERE id=$id";
+        remove.CommandText = $"DELETE FROM {table} WHERE id=$id";
         remove.Parameters.AddWithValue("$id", id);
         if (remove.ExecuteNonQuery() != 1) return false;
         canonicalWriter.SoftDelete(unitOfWork.Connection, unitOfWork.Transaction, id, archivedAt);
         return true;
     }
+
+    public bool DeleteArchivedItem(string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        var deleted = writeQueue.Execute(unitOfWork =>
+        {
+            using var command = unitOfWork.Connection.CreateCommand();
+            command.Transaction = unitOfWork.Transaction;
+            command.CommandText = "DELETE FROM archived_todos WHERE id=$id";
+            command.Parameters.AddWithValue("$id", id);
+            return command.ExecuteNonQuery() == 1;
+        });
+        if (deleted) RaiseAgendaChanged();
+        return deleted;
+    }
+
+    sealed record ArchivedItemSnapshot(string Id, string Title, string? Notes, DateTime? ScheduledAt, string? PayloadJson, string Kind);
+    sealed record ArchivedEventPayload(DateTime StartsAt, DateTime EndsAt, DateTime? RemindAt);
+    sealed record ArchivedRecurringPayload(TimeOnly ReminderTime, RecurrenceKind Recurrence, DayOfWeek[] Weekdays);
 
     static void PurgeArchivedTodos(IUnitOfWork unitOfWork, DateTime now)
     {
@@ -467,18 +696,8 @@ public sealed partial class LifeDataService
             .ToList();
     }
 
-    public IslandIndicatorState GetIslandIndicatorState(DateTime now)
-    {
-        var pendingTodos = Todos().Where(todo => !todo.IsCompleted).ToList();
-        var graceMinutes = TodoOverdueGraceMinutes();
-        if (pendingTodos.Any(todo => todo.DueAt is not null && IsOverdue(todo.DueAt.Value, now, graceMinutes.GetValueOrDefault(todo.Id, 5))))
-            return IslandIndicatorState.OverdueTodo;
-        if (pendingTodos.Any(todo => todo.DueAt is not null && todo.DueAt > now && todo.DueAt <= now.AddHours(1)))
-            return IslandIndicatorState.DueSoonTodo;
-        if (pendingTodos.Count > 0)
-            return IslandIndicatorState.PendingTodo;
-        return HasActiveReminderOrEvent(now) ? IslandIndicatorState.ReminderOnly : IslandIndicatorState.Idle;
-    }
+    public IslandIndicatorState GetIslandIndicatorState(DateTime now) =>
+        GetCalendarIndicatorState(now.Date, now);
 
     public IslandIndicatorState GetCalendarIndicatorState(DateTime day, DateTime now)
     {
@@ -535,22 +754,6 @@ public sealed partial class LifeDataService
     }
 
     static bool IsOverdue(DateTime dueAt, DateTime now, int graceMinutes) => dueAt < now.AddMinutes(-graceMinutes);
-
-    bool HasActiveReminderOrEvent(DateTime now)
-    {
-        using var db = Open();
-        using var command = db.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM calendar_events WHERE end_at >= $now";
-        command.Parameters.AddWithValue("$now", now.ToString("O"));
-        if (Convert.ToInt64(command.ExecuteScalar()) > 0) return true;
-
-        command.Parameters.Clear();
-        command.CommandText = "SELECT COUNT(*) FROM single_reminders WHERE remind_at >= $now AND notified_at IS NULL";
-        command.Parameters.AddWithValue("$now", now.ToString("O"));
-        if (Convert.ToInt64(command.ExecuteScalar()) > 0) return true;
-
-        return false;
-    }
 
     public AgendaItem? NextAgenda()
     {

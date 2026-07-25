@@ -80,10 +80,12 @@ public sealed class LifeDataConcurrencyTests
         data.Complete("todo-1");
         using (var db = Open(scope.Path))
         {
-            Assert.Equal("updated title", Text(db, "SELECT title FROM todos WHERE id='todo-1'"));
+            Assert.Equal(0, Scalar(db, "SELECT COUNT(*) FROM todos WHERE id='todo-1'"));
+            Assert.Equal("updated title", Text(db, "SELECT title FROM archived_todos WHERE id='todo-1'"));
             Assert.Equal("updated title", Text(db, "SELECT title FROM life_items WHERE id='todo-1'"));
             Assert.Equal("Completed", Text(db, "SELECT status FROM life_items WHERE id='todo-1'"));
-            Assert.Equal(3, Scalar(db, "SELECT row_version FROM life_items WHERE id='todo-1'"));
+            Assert.Equal(1, Scalar(db, "SELECT COUNT(*) FROM life_items WHERE id='todo-1' AND deleted_at IS NOT NULL"));
+            Assert.Equal(4, Scalar(db, "SELECT row_version FROM life_items WHERE id='todo-1'"));
         }
 
         var startsAt = due.AddHours(2);

@@ -100,11 +100,99 @@ public sealed class LifeAssistantTests
         data.SaveReminder("future", null, now.AddHours(2));
         Assert.Equal(IslandIndicatorState.ReminderOnly, data.GetIslandIndicatorState(now));
         data.Save("unscheduled", null, null, null);
-        Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
+        Assert.Equal(IslandIndicatorState.ReminderOnly, data.GetIslandIndicatorState(now));
         data.Save("soon", null, now.AddMinutes(30), null);
         Assert.Equal(IslandIndicatorState.DueSoonTodo, data.GetIslandIndicatorState(now));
         data.Save("late", null, now.AddMinutes(-6), null);
         Assert.Equal(IslandIndicatorState.OverdueTodo, data.GetIslandIndicatorState(now));
+    }
+
+    [Fact]
+    public void IndicatorState_UsesOnlyTodosScheduledForToday()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var now = new DateTime(2030, 1, 2, 10, 0, 0);
+
+        data.Save("昨天未完成", null, now.AddDays(-1), null);
+        data.Save("明天待办", null, now.AddDays(1), null);
+        data.Save("无日期待办", null, null, null);
+
+        Assert.Equal(IslandIndicatorState.Idle, data.GetIslandIndicatorState(now));
+
+        data.Save("今天待办", null, now.AddHours(2), null);
+        Assert.Equal(IslandIndicatorState.PendingTodo, data.GetIslandIndicatorState(now));
+    }
+
+    [Fact]
+    public void ArchiveCompletedAndOverdue_ArchivesAllDatedOneOffItemsBeforeToday()
+    {
+        using var scope = new TempDatabase();
+        var now = new DateTime(2030, 1, 2, 10, 0, 0);
+        var data = new LifeDataService(scope.Path, () => now);
+        var yesterdayTodo = data.Save("昨天待办", null, now.Date.AddDays(-1).AddHours(23), null);
+        var todayTodo = data.Save("今天已过时间", null, now.Date.AddHours(8), null);
+        var tomorrow = data.Save("明天待办", null, now.Date.AddDays(1).AddHours(9), null);
+        var inbox = data.Save("无日期待办", null, null, null);
+        var yesterdayEvent = data.SaveEvent("昨天日程", null, now.Date.AddDays(-1).AddHours(20), now.Date.AddDays(-1).AddHours(21), null);
+        var todayEvent = data.SaveEvent("今天已结束日程", null, now.Date.AddHours(8), now.Date.AddHours(9), null);
+        var yesterdayReminder = data.SaveReminder("昨天提醒", null, now.Date.AddDays(-1).AddHours(22));
+        var todayReminder = data.SaveReminder("今天提醒", null, now.Date.AddHours(8));
+        var recurring = data.SaveRecurringReminder("每天提醒", null, new TimeOnly(9, 0), RecurrenceKind.Daily, null);
+
+        data.ArchiveCompletedAndOverdue();
+
+        var archived = data.ArchivedTodos();
+        Assert.Equal(3, archived.Count);
+        Assert.Equal(new[] { yesterdayEvent.Id, yesterdayReminder.Id, yesterdayTodo.Id }.Order().ToArray(), archived.Select(item => item.Id).Order().ToArray());
+        Assert.All(archived, item => Assert.Equal("已逾期", item.Reason));
+        Assert.Equal("todo", archived.Single(item => item.Id == yesterdayTodo.Id).Kind);
+        Assert.Equal("event", archived.Single(item => item.Id == yesterdayEvent.Id).Kind);
+        Assert.Equal("reminder", archived.Single(item => item.Id == yesterdayReminder.Id).Kind);
+
+        var activeIds = data.ManagedItems().Select(item => item.Id).ToHashSet();
+        Assert.DoesNotContain(yesterdayTodo.Id, activeIds);
+        Assert.DoesNotContain(yesterdayEvent.Id, activeIds);
+        Assert.DoesNotContain(yesterdayReminder.Id, activeIds);
+        Assert.Contains(todayTodo.Id, activeIds);
+        Assert.Contains(tomorrow.Id, activeIds);
+        Assert.Contains(inbox.Id, activeIds);
+        Assert.Contains(todayEvent.Id, activeIds);
+        Assert.Contains(todayReminder.Id, activeIds);
+        Assert.Contains(recurring.Id, activeIds);
+    }
+
+    [Fact]
+    public void ArchiveAgendaItems_SupportsEveryManagedKindRestoreAndPermanentDelete()
+    {
+        using var scope = new TempDatabase();
+        var now = new DateTime(2030, 1, 2, 10, 0, 0);
+        var data = new LifeDataService(scope.Path, () => now);
+        var scheduledAt = now.Date.AddDays(1).AddHours(9);
+        var todo = data.Save("待办", null, scheduledAt, scheduledAt);
+        data.SaveEvent("日程", null, scheduledAt, scheduledAt.AddHours(2), scheduledAt.AddMinutes(-10));
+        data.SaveReminder("提醒", null, scheduledAt);
+        data.SaveRecurringReminder("周期提醒", null, new TimeOnly(9, 30), RecurrenceKind.Daily, null);
+        var targets = data.ManagedItems().Select(item => new AgendaItem(
+            item.Id, item.Kind, item.Title, item.Notes, item.ScheduledAt ?? now,
+            null, item.ScheduledAt, item.IsCompleted, item.Kind == "recurring")).ToList();
+
+        Assert.Equal(4, data.ArchiveAgendaItems(targets));
+        var archived = data.ArchivedTodos();
+        Assert.Equal(new[] { "event", "recurring", "reminder", "todo" }, archived.Select(item => item.Kind).Order().ToArray());
+        Assert.Empty(data.ManagedItems());
+
+        var restoredAt = now.Date.AddDays(2).AddHours(9);
+        Assert.All(archived, item => Assert.True(data.RestoreArchivedItem(item.Id, item.Kind == "recurring" ? null : restoredAt)));
+        Assert.Equal(new[] { "event", "recurring", "reminder", "todo" }, data.ManagedItems().Select(item => item.Kind).Order().ToArray());
+
+        var restoredTodo = data.ManagedItems().Single(item => item.Id == todo.Id);
+        var todoAgenda = new AgendaItem(restoredTodo.Id, restoredTodo.Kind, restoredTodo.Title, restoredTodo.Notes,
+            restoredTodo.ScheduledAt!.Value, null, restoredTodo.ScheduledAt, restoredTodo.IsCompleted);
+        Assert.Equal(1, data.ArchiveAgendaItems([todoAgenda]));
+        Assert.True(data.DeleteArchivedItem(todo.Id));
+        Assert.DoesNotContain(data.ArchivedTodos(), item => item.Id == todo.Id);
+        Assert.DoesNotContain(data.ManagedItems(), item => item.Id == todo.Id);
     }
 
     [Fact]

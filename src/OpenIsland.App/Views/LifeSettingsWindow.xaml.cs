@@ -84,7 +84,12 @@ public partial class LifeSettingsWindow : Window
     void Save_Click(object sender, RoutedEventArgs e)
     {
         settings.Save(Value());
-        preferences.Save(new LifePreferences(WindowsNotifications.IsChecked == true, Persona.SelectedValue as string ?? "Direct"));
+        var current = preferences.Load();
+        preferences.Save(current with
+        {
+            WindowsNotifications = WindowsNotifications.IsChecked == true,
+            AssistantPersona = Persona.SelectedValue as string ?? "Direct"
+        });
         reminders.RefreshSchedule();
         Result.Text = "设置已保存。";
     }

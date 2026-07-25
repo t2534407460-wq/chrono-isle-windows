@@ -159,11 +159,61 @@
         </Setter.Value>
       </Setter>
     </Style>
+    <Style x:Key="IslandContextMenu" TargetType="{x:Type ContextMenu}">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="#F2F2F7"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="HasDropShadow" Value="False"/>
+      <Setter Property="OverridesDefaultStyle" Value="True"/>
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI Variable"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type ContextMenu}">
+            <Border Background="#111111" BorderBrush="#3A3A3C" BorderThickness="1"
+                    CornerRadius="14" Padding="6" SnapsToDevicePixels="True">
+              <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="IslandContextMenuItem" TargetType="{x:Type MenuItem}">
+      <Setter Property="Foreground" Value="#F2F2F7"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="MinWidth" Value="210"/>
+      <Setter Property="Padding" Value="11,0"/>
+      <Setter Property="Margin" Value="0,1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type MenuItem}">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="9"
+                    Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+              <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Surface" Property="Background" Value="#2C2C2E"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".42"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="IslandContextMenuSeparator" TargetType="{x:Type Separator}">
+      <Setter Property="Margin" Value="10,5"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type Separator}"><Border Height="1" Background="#2C2C2E"/></ControlTemplate></Setter.Value></Setter>
+    </Style>
   </Window.Resources>
   <Border x:Name="Outer" Margin="8,8,8,11">
     <Border x:Name="MainBorder" Background="#111111" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="24">
-      <StackPanel>
-        <Grid x:Name="Header" Height="43" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="Header_MouseDown" MouseMove="Header_MouseMove" MouseLeftButtonUp="Header_MouseUp">
+      <Grid x:Name="IslandLayout">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid x:Name="Header" Grid.Row="0" Height="43" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="Header_MouseDown" MouseMove="Header_MouseMove" MouseLeftButtonUp="Header_MouseUp">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <Grid VerticalAlignment="Center" Margin="14,0,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -180,7 +230,7 @@
             <TextBlock Text="›" Foreground="#98989D" FontSize="20" VerticalAlignment="Center" RenderTransformOrigin=".5,.5"><TextBlock.RenderTransform><RotateTransform x:Name="ChevronRotate" Angle="0"/></TextBlock.RenderTransform></TextBlock>
           </StackPanel>
         </Grid>
-        <ScrollViewer x:Name="ExpandedScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="0">
+        <ScrollViewer x:Name="ExpandedScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="0">
           <StackPanel x:Name="ExpandedContent" Visibility="Collapsed" MouseMove="ExpandedContent_MouseMove">
             <Border Height="1" Background="#2C2C2E"/>
             <Border x:Name="ReminderBanner" Background="#122A20" BorderBrush="#356547" BorderThickness="1" CornerRadius="12" Margin="12,12,12,0" Padding="12" Visibility="Collapsed">
@@ -236,7 +286,7 @@
             </Border>
           </StackPanel>
         </ScrollViewer>
-      </StackPanel>
+      </Grid>
     </Border>
   </Border>
 </Window>

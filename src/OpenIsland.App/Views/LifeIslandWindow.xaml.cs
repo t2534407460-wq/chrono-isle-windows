@@ -1,7 +1,10 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Media.Animation;
@@ -22,6 +25,14 @@ public partial class LifeIslandWindow : Window
     const double ExpandedWidth = 620;
     const double SnapThreshold = 28;
     const double UnsnapThreshold = 48;
+    const double TaskbarIconPadding = 6;
+    const double ContextMenuTaskbarProximity = 24;
+    const int HeaderDoubleClickMilliseconds = 280;
+    const uint SwpNoSize = 0x0001;
+    const uint SwpNoMove = 0x0002;
+    const uint SwpNoActivate = 0x0010;
+    const uint SwpNoOwnerZOrder = 0x0200;
+    static readonly IntPtr HwndTopmost = new(-1);
     readonly IIslandStateCoordinator islandState;
 
     readonly TaskAttributesService taskAttributes;
@@ -31,7 +42,9 @@ public partial class LifeIslandWindow : Window
     readonly TodayDashboardService todayDashboard;
     readonly FocusService focus;
     readonly ReportService reports;
+    readonly LifePreferencesService preferences;
     readonly DispatcherTimer focusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    readonly RectangleGeometry taskbarClipGeometry = new();
     FocusSession? activeFocus;
     FocusCompletion? pendingFocusCompletion;
     string? focusTitle;
@@ -39,6 +52,8 @@ public partial class LifeIslandWindow : Window
     StackPanel? todayDashboardContent;
     readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer collapseTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    readonly DispatcherTimer headerSingleClickTimer = new();
+    readonly DispatcherTimer taskbarTopmostTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     DateTime displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     DateTime selectedDate = DateTime.Today;
     DateTime nextArchiveSweep = DateTime.MinValue;
@@ -47,12 +62,51 @@ public partial class LifeIslandWindow : Window
     bool expanded;
     bool pointerHover;
     int windowBoundsAnimationVersion;
-    bool notch;
+    int expandedContentAnimationVersion;
+    int taskbarHeightAnimationVersion;
+    bool taskbarHeightAnimationActive;
+    bool updatingTaskbarHeaderAnchor;
+    double taskbarHeaderAnchorTop;
+    bool suppressDoubleClickMouseUp;
+    IslandPlacement placement;
+    string? taskbarMonitorDeviceName;
+    double taskbarHorizontalRatio = 0.5;
+    IntPtr windowHandle;
+    MonitorGeometry? taskbarDragGeometry;
+    IReadOnlyList<Rect> taskbarDragOccupiedDips = Array.Empty<Rect>();
+    System.Drawing.Point taskbarDragPointerStartPixels;
+    double taskbarDragStartLeft;
+    double taskbarDragStartTop;
+    double taskbarDragPixelsPerDip = 1;
+    double dragHeaderOffsetPixels;
+    double dragHeaderHeightPixels;
+    int taskbarDragGapIndex = -1;
+    int taskbarGapAnimationVersion;
+    bool taskbarCustomDragging;
+    bool freeCustomDragging;
+    bool taskbarGapAnimating;
+    double taskbarGapAnimationTarget;
     string? reminderBannerKind;
     string? reminderBannerItemId;
     AgendaItem? reminderBannerItem;
-    System.Windows.Point dragStart;
+    System.Drawing.Point dragStartScreenPixels;
+    System.Drawing.Point lastHeaderMouseDownPixels;
+    long lastHeaderMouseDownTick;
+    System.Windows.Point quickActionMenuAnchor;
     bool addingReminder = true;
+
+    enum IslandPlacement { Free, Top, Taskbar }
+    readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
 
     enum IslandQuickAction { AddTodo, AddReminder, StartFocus, ViewToday, AskAi, ManageItems, Naming, Settings, PauseReminders, ToggleDoNotDisturb }
     public event EventHandler? OpenRequested;
@@ -68,7 +122,7 @@ public partial class LifeIslandWindow : Window
     DateOnly? automaticWeeklyReportDate;
     bool nextWeekPlanVisible;
 
-    public LifeIslandWindow(LifeDataService data, ReminderService reminders, ChinaStatutoryHolidayCalendar holidays, TodayDashboardService todayDashboard, FocusService focus, ReportService reports, IIslandStateCoordinator islandState, TaskAttributesService taskAttributes)
+    public LifeIslandWindow(LifeDataService data, ReminderService reminders, ChinaStatutoryHolidayCalendar holidays, TodayDashboardService todayDashboard, FocusService focus, ReportService reports, IIslandStateCoordinator islandState, TaskAttributesService taskAttributes, LifePreferencesService preferences)
     {
         InitializeComponent();
         this.data = data;
@@ -79,16 +133,39 @@ public partial class LifeIslandWindow : Window
         this.reports = reports;
         this.islandState = islandState;
         focusTimer.Tick += (_, _) => RefreshFocusSummary();
+        this.preferences = preferences;
+        Header.ContextMenuOpening += Header_ContextMenuOpening;
         Header.ContextMenu = CreateQuickActionMenu();
         clockTimer.Tick += (_, _) => Refresh();
         this.taskAttributes = taskAttributes;
         collapseTimer.Tick += (_, _) => Collapse();
+        headerSingleClickTimer.Tick += (_, _) =>
+        {
+            headerSingleClickTimer.Stop();
+            ToggleExpanded();
+        };
+        Deactivated += (_, _) => Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(CollapseWhenForegroundMovesToAnotherProcess));
+        IslandLayout.LayoutUpdated += (_, _) => MaintainTaskbarHeaderAnchor();
+        MainBorder.SizeChanged += (_, _) => UpdateTaskbarClip();
+        taskbarTopmostTimer.Tick += (_, _) => EnsureTaskbarTopmost();
+        SourceInitialized += (_, _) =>
+        {
+            windowHandle = new WindowInteropHelper(this).Handle;
+            EnsureTaskbarTopmost();
+        };
+        Closed += (_, _) =>
+        {
+            taskbarTopmostTimer.Stop();
+            windowHandle = IntPtr.Zero;
+        };
         Loaded += (_, _) =>
         {
             InitializeQuickAdd();
             InitializeReminderActions();
             InitializeTodayDashboard();
-            PositionAtTopCenter();
+            RestoreInitialPlacement();
             Refresh();
             clockTimer.Start();
             focusTimer.Start();
@@ -137,23 +214,351 @@ public partial class LifeIslandWindow : Window
         Touch();
     }
 
-    void PositionAtTopCenter()
+    void RestoreInitialPlacement()
     {
-        var area = CurrentScreenWorkArea();
+        var saved = preferences.Load();
+        if (saved.IslandTaskbarDocked && !string.IsNullOrWhiteSpace(saved.IslandTaskbarMonitor))
+        {
+            var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(candidate =>
+                string.Equals(candidate.DeviceName, saved.IslandTaskbarMonitor, StringComparison.OrdinalIgnoreCase));
+            if (screen is not null && TryGetMonitorGeometry(screen, out var geometry) && geometry.Taskbar is Rect taskbar)
+            {
+                placement = IslandPlacement.Taskbar;
+                taskbarMonitorDeviceName = screen.DeviceName;
+                taskbarHorizontalRatio = saved.IslandTaskbarHorizontalRatio is double ratio && double.IsFinite(ratio)
+                    ? Math.Clamp(ratio, 0, 1)
+                    : 0.5;
+                ApplyPlacementVisuals(taskbar);
+                UpdateLayout();
+                PositionAtTaskbar(geometry);
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (placement == IslandPlacement.Taskbar) AlignTaskbarAfterLayout();
+                });
+                return;
+            }
+        }
+
+        PositionAtTopCenter();
+    }
+
+    void PositionAtTopCenter(System.Windows.Forms.Screen? screen = null)
+    {
+        placement = IslandPlacement.Free;
+        ApplyPlacementVisuals();
+        UpdateLayout();
+        var area = TryGetMonitorGeometry(screen ?? ScreenForHeader(), out var geometry)
+            ? geometry.WorkArea
+            : SystemParameters.WorkArea;
         Left = area.Left + (area.Width - ActualWidth) / 2;
         Top = area.Top + 10;
     }
 
-    Rect CurrentScreenWorkArea()
+    void ResetToDefaultPlacement()
     {
-        var center = PointToScreen(new System.Windows.Point(ActualWidth / 2, ActualHeight / 2));
-        var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(
-            (int)Math.Round(center.X), (int)Math.Round(center.Y)));
-        var working = screen.WorkingArea;
-        var topLeft = PointFromScreen(new System.Windows.Point(working.Left, working.Top));
-        var bottomRight = PointFromScreen(new System.Windows.Point(working.Right, working.Bottom));
-        return new Rect(Left + topLeft.X, Top + topLeft.Y,
-            bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
+        dragging = false;
+        dragged = false;
+        taskbarCustomDragging = false;
+        freeCustomDragging = false;
+        StopTaskbarGapJump(false);
+        ClearTaskbarDragConstraints();
+        collapseTimer.Stop();
+        headerSingleClickTimer.Stop();
+        expanded = false;
+        pointerHover = false;
+
+        ++expandedContentAnimationVersion;
+        ++taskbarHeightAnimationVersion;
+        ++windowBoundsAnimationVersion;
+        taskbarHeightAnimationActive = false;
+        BeginAnimation(WidthProperty, null);
+        BeginAnimation(LeftProperty, null);
+        BeginAnimation(TopProperty, null);
+        ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, null);
+        ChevronRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+        Width = CollapsedWidth;
+        ExpandedScrollViewer.MinHeight = 0;
+        ExpandedScrollViewer.MaxHeight = 0;
+        ExpandedContent.Visibility = Visibility.Collapsed;
+        ChevronRotate.Angle = 0;
+
+        var initialScreen = System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.AllScreens[0];
+        PositionAtTopCenter(initialScreen);
+        PersistTaskbarPlacement(false);
+    }
+
+    System.Windows.Forms.Screen ScreenForHeader()
+    {
+        try
+        {
+            var center = Header.PointToScreen(new System.Windows.Point(Header.ActualWidth / 2, Header.ActualHeight / 2));
+            return System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(
+                (int)Math.Round(center.X), (int)Math.Round(center.Y)));
+        }
+        catch (InvalidOperationException)
+        {
+            return System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.AllScreens[0];
+        }
+    }
+
+    Rect HeaderScreenRect()
+    {
+        var topLeftPixels = Header.PointToScreen(new System.Windows.Point(0, 0));
+        var bottomRightPixels = Header.PointToScreen(new System.Windows.Point(Header.ActualWidth, Header.ActualHeight));
+        var topLeft = PointFromScreen(topLeftPixels);
+        var bottomRight = PointFromScreen(bottomRightPixels);
+        return new Rect(
+            Left + topLeft.X,
+            Top + topLeft.Y,
+            bottomRight.X - topLeft.X,
+            bottomRight.Y - topLeft.Y);
+    }
+
+    static Rect ScreenPixelsRect(System.Drawing.Rectangle rectangle)
+        => new(rectangle.Left, rectangle.Top, rectangle.Width, rectangle.Height);
+
+    Rect ScreenRectangleToDip(System.Drawing.Rectangle rectangle)
+    {
+        var topLeft = PointFromScreen(new System.Windows.Point(rectangle.Left, rectangle.Top));
+        var bottomRight = PointFromScreen(new System.Windows.Point(rectangle.Right, rectangle.Bottom));
+        return new Rect(
+            Left + topLeft.X,
+            Top + topLeft.Y,
+            bottomRight.X - topLeft.X,
+            bottomRight.Y - topLeft.Y);
+    }
+
+    Rect ScreenRectangleToDip(Rect rectangle)
+    {
+        var topLeft = PointFromScreen(new System.Windows.Point(rectangle.Left, rectangle.Top));
+        var bottomRight = PointFromScreen(new System.Windows.Point(rectangle.Right, rectangle.Bottom));
+        return new Rect(
+            Left + topLeft.X,
+            Top + topLeft.Y,
+            bottomRight.X - topLeft.X,
+            bottomRight.Y - topLeft.Y);
+    }
+
+    bool TryGetMonitorGeometry(System.Windows.Forms.Screen screen, out MonitorGeometry geometry)
+    {
+        try
+        {
+            var bounds = ScreenRectangleToDip(screen.Bounds);
+            var workArea = ScreenRectangleToDip(screen.WorkingArea);
+            Rect? taskbar = IslandPlacementGeometry.TryGetBottomTaskbar(bounds, workArea, out var detected)
+                ? detected
+                : null;
+            geometry = new MonitorGeometry(screen, bounds, workArea, taskbar);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            geometry = default;
+            return false;
+        }
+    }
+
+    void ApplyPlacementVisuals(Rect? taskbar = null)
+    {
+        var taskbarMode = placement == IslandPlacement.Taskbar && taskbar is Rect;
+        Grid.SetRow(Header, taskbarMode ? 1 : 0);
+        Grid.SetRow(ExpandedScrollViewer, taskbarMode ? 0 : 1);
+        Header.Height = taskbarMode
+            ? Math.Min(43, Math.Max(30, taskbar!.Value.Height - 2))
+            : 43;
+
+        if (placement == IslandPlacement.Top)
+        {
+            Outer.Margin = new Thickness(0);
+            MainBorder.CornerRadius = new CornerRadius(0, 0, 18, 18);
+        }
+        else if (taskbarMode)
+        {
+            Outer.Margin = new Thickness(0);
+            MainBorder.CornerRadius = new CornerRadius(24);
+        }
+        else
+        {
+            Outer.Margin = new Thickness(8, 8, 8, 11);
+            MainBorder.CornerRadius = new CornerRadius(24);
+        }
+
+        UpdateTaskbarClip();
+        if (taskbarMode)
+        {
+            EnsureTaskbarTopmost();
+            if (!taskbarTopmostTimer.IsEnabled) taskbarTopmostTimer.Start();
+        }
+        else
+            taskbarTopmostTimer.Stop();
+    }
+
+    void UpdateTaskbarClip()
+    {
+        if (placement != IslandPlacement.Taskbar ||
+            !double.IsFinite(MainBorder.ActualWidth) ||
+            !double.IsFinite(MainBorder.ActualHeight) ||
+            MainBorder.ActualWidth <= 0 ||
+            MainBorder.ActualHeight <= 0)
+        {
+            MainBorder.Clip = null;
+            return;
+        }
+
+        var radius = MainBorder.CornerRadius.TopLeft;
+        taskbarClipGeometry.Rect = new Rect(
+            0,
+            0,
+            MainBorder.ActualWidth,
+            MainBorder.ActualHeight);
+        taskbarClipGeometry.RadiusX = radius;
+        taskbarClipGeometry.RadiusY = radius;
+        MainBorder.Clip = taskbarClipGeometry;
+    }
+
+    void EnsureTaskbarTopmost()
+    {
+        if (placement != IslandPlacement.Taskbar || windowHandle == IntPtr.Zero || !IsVisible) return;
+        SetWindowPos(
+            windowHandle,
+            HwndTopmost,
+            0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoActivate | SwpNoOwnerZOrder);
+    }
+
+    static IReadOnlyList<Rect> TaskbarOccupiedRectanglesPixels(System.Windows.Forms.Screen screen)
+    {
+        try
+        {
+            var taskbarCondition = new OrCondition(
+                new PropertyCondition(AutomationElement.ClassNameProperty, "Shell_TrayWnd"),
+                new PropertyCondition(AutomationElement.ClassNameProperty, "Shell_SecondaryTrayWnd"));
+            var taskbars = AutomationElement.RootElement.FindAll(TreeScope.Children, taskbarCondition);
+            var screenBounds = ScreenPixelsRect(screen.Bounds);
+            AutomationElement? targetTaskbar = null;
+            var taskbarBounds = Rect.Empty;
+            var bestIntersectionArea = 0d;
+            for (var index = 0; index < taskbars.Count; index++)
+            {
+                var candidate = taskbars[index];
+                var candidateBounds = candidate.Current.BoundingRectangle;
+                var intersection = Rect.Intersect(candidateBounds, screenBounds);
+                var area = intersection.IsEmpty ? 0 : intersection.Width * intersection.Height;
+                if (area <= bestIntersectionArea) continue;
+                bestIntersectionArea = area;
+                targetTaskbar = candidate;
+                taskbarBounds = intersection;
+            }
+            if (targetTaskbar is null || taskbarBounds.IsEmpty) return Array.Empty<Rect>();
+
+            var iconCondition = new OrCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+            var controls = targetTaskbar.FindAll(TreeScope.Descendants, iconCondition);
+            var occupied = new List<Rect>();
+            var statusAreaLeft = double.PositiveInfinity;
+            for (var index = 0; index < controls.Count; index++)
+            {
+                var control = controls[index];
+                if (control.Current.IsOffscreen) continue;
+                var rectangle = Rect.Intersect(control.Current.BoundingRectangle, taskbarBounds);
+                if (rectangle.IsEmpty || rectangle.Width <= 0 || rectangle.Height <= 0) continue;
+                occupied.Add(rectangle);
+
+                var automationId = control.Current.AutomationId;
+                var className = control.Current.ClassName;
+                if (className.StartsWith("SystemTray.", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(automationId, "SystemTrayIcon", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(automationId, "NotifyItemIcon", StringComparison.OrdinalIgnoreCase))
+                {
+                    statusAreaLeft = Math.Min(statusAreaLeft, rectangle.Left);
+                }
+            }
+
+            if (double.IsFinite(statusAreaLeft))
+            {
+                occupied.Add(new Rect(
+                    statusAreaLeft,
+                    taskbarBounds.Top,
+                    taskbarBounds.Right - statusAreaLeft,
+                    taskbarBounds.Height));
+            }
+            return occupied;
+        }
+        catch (Exception exception) when (
+            exception is ElementNotAvailableException or COMException or InvalidOperationException)
+        {
+            return Array.Empty<Rect>();
+        }
+    }
+
+    double TaskbarLeftForWidth(MonitorGeometry geometry, double width)
+    {
+        var desiredLeft = IslandPlacementGeometry.LeftForHorizontalRatio(
+            taskbarHorizontalRatio,
+            width,
+            geometry.Bounds);
+        var occupiedPixels = TaskbarOccupiedRectanglesPixels(geometry.Screen);
+        if (occupiedPixels.Count == 0) return desiredLeft;
+        var occupiedDips = occupiedPixels.Select(ScreenRectangleToDip).ToArray();
+        return IslandPlacementGeometry.LeftAvoidingOccupiedRanges(
+            desiredLeft,
+            width,
+            geometry.Bounds,
+            occupiedDips,
+            TaskbarIconPadding);
+    }
+
+    void ClampWindowToBounds(Rect bounds)
+    {
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        if (!double.IsFinite(width) || !double.IsFinite(height)) return;
+        var clamped = IslandPlacementGeometry.ClampRectToBounds(new Rect(Left, Top, width, height), bounds);
+        Left = clamped.Left;
+        Top = clamped.Top;
+    }
+
+    void PositionAtTaskbar(MonitorGeometry geometry)
+    {
+        if (geometry.Taskbar is not Rect taskbar) return;
+        ApplyPlacementVisuals(taskbar);
+        UpdateLayout();
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        Left = TaskbarLeftForWidth(geometry, width);
+        var headerOffset = Header.TranslatePoint(new System.Windows.Point(0, 0), this).Y;
+        var targetHeaderTop = IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight);
+        Top = IslandPlacementGeometry.WindowTopForHeaderAnchor(targetHeaderTop, headerOffset);
+    }
+
+    void AlignTaskbarAfterLayout()
+    {
+        if (placement != IslandPlacement.Taskbar || string.IsNullOrWhiteSpace(taskbarMonitorDeviceName)) return;
+        var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(candidate =>
+            string.Equals(candidate.DeviceName, taskbarMonitorDeviceName, StringComparison.OrdinalIgnoreCase));
+        if (screen is null || !TryGetMonitorGeometry(screen, out var geometry) || geometry.Taskbar is null) return;
+        PositionAtTaskbar(geometry);
+    }
+
+    void PersistTaskbarPlacement(bool docked)
+    {
+        try
+        {
+            var current = preferences.Load();
+            var next = docked
+                ? current with
+                {
+                    IslandTaskbarDocked = true,
+                    IslandTaskbarMonitor = taskbarMonitorDeviceName,
+                    IslandTaskbarHorizontalRatio = taskbarHorizontalRatio
+                }
+                : current with { IslandTaskbarDocked = false };
+            if (current != next) preferences.Save(next);
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Unable to persist island placement: {exception.Message}");
+        }
     }
 
     void Refresh()
@@ -649,15 +1054,78 @@ public partial class LifeIslandWindow : Window
 
     ContextMenu CreateQuickActionMenu()
     {
-        var menu = new ContextMenu();
+        var menu = new ContextMenu
+        {
+            Style = (Style)FindResource("IslandContextMenu")
+        };
         foreach (var action in Enum.GetValues<IslandQuickAction>().Where(action => action != IslandQuickAction.Naming))
         {
-            var item = new MenuItem { Header = QuickActionLabel(action) };
+            if (menu.Items.Count > 0 && StartsQuickActionGroup(action))
+            {
+                menu.Items.Add(new Separator
+                {
+                    Style = (Style)FindResource("IslandContextMenuSeparator")
+                });
+            }
+
+            var item = new MenuItem
+            {
+                Header = QuickActionLabel(action),
+                Style = (Style)FindResource("IslandContextMenuItem")
+            };
             item.Click += (_, _) => RunQuickAction(action);
             menu.Items.Add(item);
         }
         return menu;
     }
+
+    void Header_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (Header.ContextMenu is not { } menu) return;
+        var cursor = System.Windows.Forms.Cursor.Position;
+        quickActionMenuAnchor = Header.PointFromScreen(
+            new System.Windows.Point(cursor.X, cursor.Y));
+        menu.PlacementTarget = Header;
+        if (ShouldPlaceQuickActionMenuAboveTaskbar())
+        {
+            menu.Placement = PlacementMode.Custom;
+            menu.CustomPopupPlacementCallback = PlaceQuickActionMenuAboveHeader;
+        }
+        else
+        {
+            menu.Placement = PlacementMode.MousePoint;
+            menu.CustomPopupPlacementCallback = null;
+        }
+    }
+
+    bool ShouldPlaceQuickActionMenuAboveTaskbar()
+    {
+        if (placement == IslandPlacement.Taskbar) return true;
+        var screen = ScreenForHeader();
+        if (!TryGetMonitorGeometry(screen, out var geometry) || geometry.Taskbar is not Rect taskbar)
+            return false;
+        return HeaderScreenRect().Bottom >= taskbar.Top - ContextMenuTaskbarProximity;
+    }
+
+    CustomPopupPlacement[] PlaceQuickActionMenuAboveHeader(
+        System.Windows.Size popupSize,
+        System.Windows.Size targetSize,
+        System.Windows.Point offset)
+    {
+        var maximumLeft = Math.Max(0, targetSize.Width - popupSize.Width);
+        var left = Math.Clamp(quickActionMenuAnchor.X - 18, 0, maximumLeft);
+        return
+        [
+            new CustomPopupPlacement(
+                new System.Windows.Point(left, -popupSize.Height - 6),
+                PopupPrimaryAxis.Horizontal)
+        ];
+    }
+
+    static bool StartsQuickActionGroup(IslandQuickAction action)
+        => action is IslandQuickAction.ViewToday
+            or IslandQuickAction.ManageItems
+            or IslandQuickAction.PauseReminders;
 
     static string QuickActionLabel(IslandQuickAction action) => action switch
     {
@@ -666,11 +1134,11 @@ public partial class LifeIslandWindow : Window
         IslandQuickAction.StartFocus => "◎ 专注模式",
         IslandQuickAction.ViewToday => "▣ 查看今天",
         IslandQuickAction.AskAi => "✦ 问 AI",
-        IslandQuickAction.ManageItems => "事项管理",
+        IslandQuickAction.ManageItems => "☰ 事项管理",
         IslandQuickAction.Naming => "取名",
-        IslandQuickAction.Settings => "设置",
-        IslandQuickAction.PauseReminders => "暂停提醒",
-        IslandQuickAction.ToggleDoNotDisturb => "勿扰模式",
+        IslandQuickAction.Settings => "⚙ 设置",
+        IslandQuickAction.PauseReminders => "Ⅱ 暂停提醒",
+        IslandQuickAction.ToggleDoNotDisturb => "◐ 勿扰模式",
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
 
@@ -1137,38 +1605,351 @@ public partial class LifeIslandWindow : Window
         }
     }
 
+    void PrepareTaskbarDragConstraints()
+    {
+        taskbarDragGeometry = null;
+        taskbarDragOccupiedDips = Array.Empty<Rect>();
+        taskbarDragGapIndex = -1;
+        dragHeaderOffsetPixels = 0;
+        dragHeaderHeightPixels = 0;
+        taskbarDragPointerStartPixels = System.Windows.Forms.Cursor.Position;
+        taskbarDragStartLeft = Left;
+        taskbarDragStartTop = Top;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        taskbarDragPixelsPerDip = Math.Max(0.1, dpi.DpiScaleX);
+        if (placement != IslandPlacement.Taskbar) return;
+
+        try
+        {
+            var screen = ScreenForHeader();
+            if (!TryGetMonitorGeometry(screen, out var geometry) || geometry.Taskbar is null) return;
+            var windowTop = PointToScreen(new System.Windows.Point(0, 0)).Y;
+            var headerTop = Header.PointToScreen(new System.Windows.Point(0, 0)).Y;
+            var headerBottom = Header.PointToScreen(new System.Windows.Point(0, Header.ActualHeight)).Y;
+            var occupiedPixels = TaskbarOccupiedRectanglesPixels(screen);
+            taskbarDragGeometry = geometry;
+            taskbarDragOccupiedDips = occupiedPixels.Select(ScreenRectangleToDip).ToArray();
+            dragHeaderOffsetPixels = headerTop - windowTop;
+            dragHeaderHeightPixels = Math.Max(0, headerBottom - headerTop);
+            taskbarDragPixelsPerDip = Header.ActualHeight > 0
+                ? Math.Max(0.1, dragHeaderHeightPixels / Header.ActualHeight)
+                : taskbarDragPixelsPerDip;
+            taskbarDragGapIndex = IslandPlacementGeometry.PlaceAvoidingOccupiedRanges(
+                Left,
+                ActualWidth,
+                geometry.Bounds,
+                taskbarDragOccupiedDips,
+                TaskbarIconPadding).GapIndex;
+        }
+        catch (InvalidOperationException)
+        {
+            taskbarDragGeometry = null;
+            taskbarDragOccupiedDips = Array.Empty<Rect>();
+        }
+    }
+
+    void ClearTaskbarDragConstraints()
+    {
+        taskbarDragGeometry = null;
+        taskbarDragOccupiedDips = Array.Empty<Rect>();
+        taskbarDragGapIndex = -1;
+        taskbarDragPixelsPerDip = 1;
+        dragHeaderOffsetPixels = 0;
+        dragHeaderHeightPixels = 0;
+    }
+
+    void BeginDirectDrag()
+    {
+        StopTaskbarGapJump(false);
+        var currentLeft = Left;
+        var currentTop = Top;
+        ++windowBoundsAnimationVersion;
+        BeginAnimation(LeftProperty, null);
+        BeginAnimation(TopProperty, null);
+        Left = currentLeft;
+        Top = currentTop;
+        taskbarDragStartLeft = currentLeft;
+        taskbarDragStartTop = currentTop;
+    }
+
+    void UpdateFreeCustomDrag()
+    {
+        var cursor = System.Windows.Forms.Cursor.Position;
+        var screen = System.Windows.Forms.Screen.FromPoint(cursor);
+        if (!TryGetMonitorGeometry(screen, out var geometry)) return;
+
+        var deltaX = (cursor.X - taskbarDragPointerStartPixels.X) / taskbarDragPixelsPerDip;
+        var deltaY = (cursor.Y - taskbarDragPointerStartPixels.Y) / taskbarDragPixelsPerDip;
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        if (!double.IsFinite(width) || !double.IsFinite(height)) return;
+
+        var constrained = IslandPlacementGeometry.ClampRectToBounds(
+            new Rect(taskbarDragStartLeft + deltaX, taskbarDragStartTop + deltaY, width, height),
+            geometry.Bounds);
+        Left = constrained.Left;
+        Top = constrained.Top;
+    }
+
+    void AnimateTaskbarGapJump(double targetLeft)
+    {
+        var currentLeft = Left;
+        if (taskbarGapAnimating)
+        {
+            ++taskbarGapAnimationVersion;
+            BeginAnimation(LeftProperty, null);
+            Left = currentLeft;
+        }
+
+        var version = ++taskbarGapAnimationVersion;
+        taskbarGapAnimating = true;
+        taskbarGapAnimationTarget = targetLeft;
+        var animation = new DoubleAnimation
+        {
+            From = currentLeft,
+            To = targetLeft,
+            Duration = TimeSpan.FromMilliseconds(160),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (version != taskbarGapAnimationVersion) return;
+            BeginAnimation(LeftProperty, null);
+            Left = taskbarGapAnimationTarget;
+            taskbarGapAnimating = false;
+        };
+        BeginAnimation(LeftProperty, animation);
+    }
+
+    void StopTaskbarGapJump(bool finishAtTarget)
+    {
+        if (!taskbarGapAnimating) return;
+        var left = finishAtTarget ? taskbarGapAnimationTarget : Left;
+        ++taskbarGapAnimationVersion;
+        BeginAnimation(LeftProperty, null);
+        Left = left;
+        taskbarGapAnimating = false;
+    }
+
+    bool UpdateTaskbarCustomDrag()
+    {
+        if (taskbarDragGeometry is not MonitorGeometry geometry || geometry.Taskbar is not Rect taskbar)
+            return false;
+
+        var cursor = System.Windows.Forms.Cursor.Position;
+        var screen = System.Windows.Forms.Screen.FromPoint(cursor);
+        if (!string.Equals(screen.DeviceName, geometry.Screen.DeviceName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var deltaX = (cursor.X - taskbarDragPointerStartPixels.X) / taskbarDragPixelsPerDip;
+        var deltaY = (cursor.Y - taskbarDragPointerStartPixels.Y) / taskbarDragPixelsPerDip;
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        if (!double.IsFinite(width) || !double.IsFinite(height)) return false;
+
+        var desired = IslandPlacementGeometry.ClampRectToBounds(
+            new Rect(taskbarDragStartLeft + deltaX, taskbarDragStartTop + deltaY, width, height),
+            geometry.Bounds);
+        var headerOffset = dragHeaderOffsetPixels / taskbarDragPixelsPerDip;
+        var targetHeaderTop = IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight);
+        var desiredHeaderTop = desired.Top + headerOffset;
+        if (!IslandPlacementGeometry.ShouldSnap(
+                desiredHeaderTop - targetHeaderTop,
+                true,
+                SnapThreshold,
+                UnsnapThreshold))
+        {
+            return false;
+        }
+
+        Top = IslandPlacementGeometry.WindowTopForHeaderAnchor(targetHeaderTop, headerOffset);
+        var horizontalPlacement = IslandPlacementGeometry.PlaceAvoidingOccupiedRanges(
+            desired.Left,
+            width,
+            geometry.Bounds,
+            taskbarDragOccupiedDips,
+            TaskbarIconPadding);
+
+        if (horizontalPlacement.GapIndex < 0)
+        {
+            StopTaskbarGapJump(false);
+            taskbarDragGapIndex = -1;
+            Left = horizontalPlacement.Left;
+            return true;
+        }
+
+        if (taskbarDragGapIndex >= 0 && horizontalPlacement.GapIndex != taskbarDragGapIndex)
+        {
+            taskbarDragGapIndex = horizontalPlacement.GapIndex;
+            AnimateTaskbarGapJump(horizontalPlacement.Left);
+            return true;
+        }
+
+        taskbarDragGapIndex = horizontalPlacement.GapIndex;
+        if (!taskbarGapAnimating) Left = horizontalPlacement.Left;
+        return true;
+    }
+
+    void ContinueTaskbarDragDirectly()
+    {
+        StopTaskbarGapJump(false);
+        taskbarCustomDragging = false;
+        freeCustomDragging = true;
+        if (placement == IslandPlacement.Taskbar)
+        {
+            PersistTaskbarPlacement(false);
+            placement = IslandPlacement.Free;
+            ApplyPlacementVisuals();
+            UpdateLayout();
+        }
+        UpdateFreeCustomDrag();
+    }
+
+    void FinishFreeCustomDrag()
+    {
+        freeCustomDragging = false;
+        dragging = false;
+        Header.ReleaseMouseCapture();
+        UpdatePlacementAfterDrag();
+        ClearTaskbarDragConstraints();
+    }
+
+    void FinishTaskbarCustomDrag()
+    {
+        StopTaskbarGapJump(true);
+        taskbarCustomDragging = false;
+        dragging = false;
+        Header.ReleaseMouseCapture();
+        UpdatePlacementAfterDrag();
+        ClearTaskbarDragConstraints();
+    }
+
+    bool IsHeaderDoubleClick(System.Drawing.Point pointer)
+    {
+        var now = Environment.TickCount64;
+        var elapsed = now - lastHeaderMouseDownTick;
+        var doubleClickSize = System.Windows.Forms.SystemInformation.DoubleClickSize;
+        var closeToPrevious =
+            Math.Abs(pointer.X - lastHeaderMouseDownPixels.X) <= Math.Max(1, doubleClickSize.Width / 2) &&
+            Math.Abs(pointer.Y - lastHeaderMouseDownPixels.Y) <= Math.Max(1, doubleClickSize.Height / 2);
+        var detected =
+            lastHeaderMouseDownTick > 0 &&
+            elapsed >= 0 &&
+            elapsed <= HeaderDoubleClickMilliseconds &&
+            closeToPrevious;
+
+        lastHeaderMouseDownTick = detected ? 0 : now;
+        lastHeaderMouseDownPixels = pointer;
+        return detected;
+    }
+
     void Header_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
+        var pointer = System.Windows.Forms.Cursor.Position;
+        var doubleClick = IsHeaderDoubleClick(pointer);
+        headerSingleClickTimer.Stop();
+        if (doubleClick)
+        {
+            suppressDoubleClickMouseUp = true;
+            dragging = false;
+            dragged = false;
+            freeCustomDragging = false;
+            Header.CaptureMouse();
+            ResetToDefaultPlacement();
+            e.Handled = true;
+            return;
+        }
+
         Touch();
         dragging = true;
         dragged = false;
-        dragStart = e.GetPosition(this);
+        dragStartScreenPixels = pointer;
         Header.CaptureMouse();
+        PrepareTaskbarDragConstraints();
     }
 
     void Header_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (freeCustomDragging)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed)
+            {
+                FinishFreeCustomDrag();
+                return;
+            }
+            UpdateFreeCustomDrag();
+            return;
+        }
+
+        if (taskbarCustomDragging)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed)
+            {
+                FinishTaskbarCustomDrag();
+                return;
+            }
+            if (UpdateTaskbarCustomDrag()) return;
+            ContinueTaskbarDragDirectly();
+            return;
+        }
+
         if (!dragging || e.LeftButton != MouseButtonState.Pressed) return;
-        var point = e.GetPosition(this);
-        if (Math.Abs(point.X - dragStart.X) <= 5 && Math.Abs(point.Y - dragStart.Y) <= 5) return;
+        var pointer = System.Windows.Forms.Cursor.Position;
+        var dragSize = System.Windows.Forms.SystemInformation.DragSize;
+        if (Math.Abs(pointer.X - dragStartScreenPixels.X) <= Math.Max(5, dragSize.Width / 2) &&
+            Math.Abs(pointer.Y - dragStartScreenPixels.Y) <= Math.Max(5, dragSize.Height / 2))
+            return;
         dragged = true;
         dragging = false;
-        Header.ReleaseMouseCapture();
-        try { DragMove(); SnapToTop(); } catch (InvalidOperationException) { }
+        BeginDirectDrag();
+        if (placement == IslandPlacement.Taskbar)
+        {
+            taskbarCustomDragging = true;
+            if (UpdateTaskbarCustomDrag()) return;
+            ContinueTaskbarDragDirectly();
+            return;
+        }
+        freeCustomDragging = true;
+        UpdateFreeCustomDrag();
     }
 
     void Header_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (suppressDoubleClickMouseUp)
+        {
+            suppressDoubleClickMouseUp = false;
+            dragging = false;
+            dragged = false;
+            freeCustomDragging = false;
+            Header.ReleaseMouseCapture();
+            ClearTaskbarDragConstraints();
+            e.Handled = true;
+            return;
+        }
+        if (freeCustomDragging)
+        {
+            FinishFreeCustomDrag();
+            e.Handled = true;
+            return;
+        }
+        if (taskbarCustomDragging)
+        {
+            FinishTaskbarCustomDrag();
+            e.Handled = true;
+            return;
+        }
         if (IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
         if (dragging && !dragged)
         {
-            ToggleExpanded();
+            ScheduleHeaderSingleClick();
             e.Handled = true;
         }
         dragging = false;
         Header.ReleaseMouseCapture();
-        if (dragged) SnapToTop();
+        if (dragged) UpdatePlacementAfterDrag();
+        ClearTaskbarDragConstraints();
     }
 
     static bool IsInteractiveSource(DependencyObject? source)
@@ -1185,6 +1966,26 @@ public partial class LifeIslandWindow : Window
         return false;
     }
 
+    void CollapseWhenForegroundMovesToAnotherProcess()
+    {
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == IntPtr.Zero) return;
+
+        GetWindowThreadProcessId(foregroundWindow, out var foregroundProcessId);
+        if (foregroundProcessId == 0 || foregroundProcessId == (uint)Environment.ProcessId) return;
+
+        headerSingleClickTimer.Stop();
+        if (expanded) Collapse();
+    }
+
+    void ScheduleHeaderSingleClick()
+    {
+        headerSingleClickTimer.Stop();
+        headerSingleClickTimer.Interval = TimeSpan.FromMilliseconds(
+            HeaderDoubleClickMilliseconds);
+        headerSingleClickTimer.Start();
+    }
+
     void ToggleExpanded()
     {
         if (expanded) Collapse();
@@ -1194,6 +1995,8 @@ public partial class LifeIslandWindow : Window
     void Expand()
     {
         if (expanded) return;
+        DashboardTabs.Visibility = Visibility.Visible;
+        ExpandedScrollViewer.ScrollToTop();
         expanded = true;
         AnimateExpandedState(true);
         Touch();
@@ -1207,45 +2010,120 @@ public partial class LifeIslandWindow : Window
         collapseTimer.Stop();
     }
 
+    void MaintainTaskbarHeaderAnchor()
+    {
+        if (!taskbarHeightAnimationActive || updatingTaskbarHeaderAnchor) return;
+        if (placement != IslandPlacement.Taskbar)
+        {
+            taskbarHeightAnimationActive = false;
+            return;
+        }
+
+        try
+        {
+            var headerOffset = Header.TranslatePoint(new System.Windows.Point(0, 0), this).Y;
+            var targetTop = IslandPlacementGeometry.WindowTopForHeaderAnchor(
+                taskbarHeaderAnchorTop,
+                headerOffset);
+            if (!double.IsFinite(targetTop) || Math.Abs(Top - targetTop) < 0.05) return;
+            updatingTaskbarHeaderAnchor = true;
+            Top = targetTop;
+        }
+        catch (InvalidOperationException)
+        {
+            taskbarHeightAnimationActive = false;
+        }
+        finally
+        {
+            updatingTaskbarHeaderAnchor = false;
+        }
+    }
+
     void AnimateExpandedState(bool expand)
     {
+        var contentAnimationVersion = ++expandedContentAnimationVersion;
         const double contentMinHeight = 620;
         var duration = TimeSpan.FromMilliseconds(400);
         var easing = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var hasGeometry = TryGetMonitorGeometry(ScreenForHeader(), out var geometry);
         var fromWidth = ActualWidth;
         var fromLeft = Left;
         var targetWidth = expand ? ExpandedWidth : pointerHover ? CollapsedWidthForSummary() : CollapsedWidth;
         var delta = targetWidth - fromWidth;
-        var targetLeft = fromLeft - delta / 2;
+        var desiredLeft = fromLeft - delta / 2;
+        var targetLeft = placement == IslandPlacement.Taskbar && hasGeometry
+            ? TaskbarLeftForWidth(geometry, targetWidth)
+            : hasGeometry
+                ? IslandPlacementGeometry.ClampLeft(desiredLeft, targetWidth, geometry.Bounds)
+                : desiredLeft;
+        var fromHeight = ExpandedScrollViewer.ActualHeight;
+        if (!double.IsFinite(fromHeight) || fromHeight < 0) fromHeight = 0;
 
         var targetHeight = 0d;
+        var targetMinimumHeight = 0d;
         if (expand)
         {
-            ExpandedContent.Visibility = Visibility.Visible;
+            ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, null);
             ExpandedScrollViewer.MinHeight = 0;
-            ExpandedScrollViewer.MaxHeight = double.PositiveInfinity;
+            ExpandedScrollViewer.MaxHeight = fromHeight;
+            ExpandedContent.Visibility = Visibility.Visible;
             ExpandedContent.Measure(new System.Windows.Size(ExpandedWidth, double.PositiveInfinity));
-            var contentMaxHeight = Math.Max(contentMinHeight, SystemParameters.WorkArea.Height - Header.ActualHeight - 24);
-            targetHeight = Math.Clamp(ExpandedContent.DesiredSize.Height, contentMinHeight, contentMaxHeight);
-            ExpandedScrollViewer.MaxHeight = 0;
+            var contentMaxHeight = hasGeometry
+                ? placement == IslandPlacement.Taskbar && geometry.Taskbar is Rect taskbar
+                    ? IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight) - geometry.WorkArea.Top - 12
+                    : geometry.WorkArea.Bottom - HeaderScreenRect().Bottom - 12
+                : SystemParameters.WorkArea.Bottom - HeaderScreenRect().Bottom - 12;
+            contentMaxHeight = Math.Max(0, contentMaxHeight);
+            targetMinimumHeight = Math.Min(contentMinHeight, contentMaxHeight);
+            targetHeight = Math.Clamp(ExpandedContent.DesiredSize.Height, targetMinimumHeight, contentMaxHeight);
         }
         else ExpandedScrollViewer.MinHeight = 0;
 
+        var heightAnimationVersion = ++taskbarHeightAnimationVersion;
+        taskbarHeightAnimationActive =
+            placement == IslandPlacement.Taskbar &&
+            hasGeometry &&
+            geometry.Taskbar is Rect;
+        if (taskbarHeightAnimationActive)
+        {
+            taskbarHeaderAnchorTop = IslandPlacementGeometry.TaskbarHeaderTop(
+                geometry.Taskbar!.Value,
+                Header.ActualHeight);
+            UpdateLayout();
+            MaintainTaskbarHeaderAnchor();
+        }
+
         AnimateWindowBounds(targetWidth, targetLeft, duration, easing);
 
-        var contentAnimation = new DoubleAnimation { To = targetHeight, Duration = duration, EasingFunction = easing, FillBehavior = FillBehavior.Stop };
+        var contentAnimation = new DoubleAnimation { From = fromHeight, To = targetHeight, Duration = duration, EasingFunction = easing, FillBehavior = FillBehavior.Stop };
         contentAnimation.Completed += (_, _) =>
         {
+            if (contentAnimationVersion != expandedContentAnimationVersion) return;
             ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, null);
             ExpandedScrollViewer.MaxHeight = targetHeight;
-            if (expand) ExpandedScrollViewer.MinHeight = contentMinHeight;
+            if (expand) ExpandedScrollViewer.MinHeight = targetMinimumHeight;
             else ExpandedContent.Visibility = Visibility.Collapsed;
+            if (heightAnimationVersion == taskbarHeightAnimationVersion && taskbarHeightAnimationActive)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+                {
+                    if (heightAnimationVersion != taskbarHeightAnimationVersion) return;
+                    MaintainTaskbarHeaderAnchor();
+                    taskbarHeightAnimationActive = false;
+                    if (placement == IslandPlacement.Taskbar) AlignTaskbarAfterLayout();
+                }));
+            }
+            else if (placement == IslandPlacement.Taskbar)
+            {
+                Dispatcher.BeginInvoke(AlignTaskbarAfterLayout);
+            }
         };
         ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, contentAnimation);
 
         var chevronAnimation = new DoubleAnimation { To = expand ? 90 : 0, Duration = duration, EasingFunction = easing, FillBehavior = FillBehavior.Stop };
         chevronAnimation.Completed += (_, _) =>
         {
+            if (contentAnimationVersion != expandedContentAnimationVersion) return;
             ChevronRotate.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
             ChevronRotate.Angle = expand ? 90 : 0;
         };
@@ -1277,9 +2155,16 @@ public partial class LifeIslandWindow : Window
         var targetWidth = pointerHover ? CollapsedWidthForSummary() : CollapsedWidth;
         if (Math.Abs(targetWidth - Width) < 0.5) return;
         var delta = targetWidth - Width;
+        var desiredLeft = Left - delta / 2;
+        var hasGeometry = TryGetMonitorGeometry(ScreenForHeader(), out var geometry);
+        var targetLeft = placement == IslandPlacement.Taskbar && hasGeometry
+            ? TaskbarLeftForWidth(geometry, targetWidth)
+            : hasGeometry
+                ? IslandPlacementGeometry.ClampLeft(desiredLeft, targetWidth, geometry.Bounds)
+                : desiredLeft;
         var duration = TimeSpan.FromMilliseconds(400);
         var easing = new CubicEase { EasingMode = EasingMode.EaseInOut };
-        AnimateWindowBounds(targetWidth, Left - delta / 2, duration, easing);
+        AnimateWindowBounds(targetWidth, targetLeft, duration, easing);
     }
 
     double CollapsedWidthForSummary()
@@ -1437,24 +2322,54 @@ public partial class LifeIslandWindow : Window
         Touch();
     }
 
-    void SnapToTop()
+    void UpdatePlacementAfterDrag()
     {
-        var area = CurrentScreenWorkArea();
-        var distance = Top - area.Top;
-        if ((!notch && distance < SnapThreshold) || (notch && distance < UnsnapThreshold))
+        var screen = ScreenForHeader();
+        if (!TryGetMonitorGeometry(screen, out var geometry)) return;
+        ClampWindowToBounds(geometry.Bounds);
+        var header = HeaderScreenRect();
+
+        if (geometry.Taskbar is Rect taskbar)
         {
-            notch = true;
-            Top = area.Top;
-            Left = area.Left + (area.Width - ActualWidth) / 2;
-            Outer.Margin = new Thickness(0);
-            MainBorder.CornerRadius = new CornerRadius(0, 0, 18, 18);
+            var taskbarHeaderHeight = Math.Min(43, Math.Max(30, taskbar.Height - 2));
+            var targetHeaderTop = IslandPlacementGeometry.TaskbarHeaderTop(taskbar, taskbarHeaderHeight);
+            if (IslandPlacementGeometry.ShouldSnap(
+                    header.Top - targetHeaderTop,
+                    placement == IslandPlacement.Taskbar,
+                    SnapThreshold,
+                    UnsnapThreshold))
+            {
+                placement = IslandPlacement.Taskbar;
+                taskbarMonitorDeviceName = screen.DeviceName;
+                taskbarHorizontalRatio = IslandPlacementGeometry.NormalizeHorizontalCenter(
+                    header.Left + header.Width / 2,
+                    geometry.Bounds);
+                PositionAtTaskbar(geometry);
+                PersistTaskbarPlacement(true);
+                return;
+            }
         }
-        else if (notch)
+
+        if (IslandPlacementGeometry.ShouldSnap(
+                header.Top - geometry.WorkArea.Top,
+                placement == IslandPlacement.Top,
+                SnapThreshold,
+                UnsnapThreshold))
         {
-            notch = false;
-            Outer.Margin = new Thickness(10, 8, 10, 12);
-            MainBorder.CornerRadius = new CornerRadius(20);
+            if (placement == IslandPlacement.Taskbar) PersistTaskbarPlacement(false);
+            placement = IslandPlacement.Top;
+            ApplyPlacementVisuals();
+            UpdateLayout();
+            Top = geometry.WorkArea.Top;
+            Left = geometry.WorkArea.Left + (geometry.WorkArea.Width - ActualWidth) / 2;
+            return;
         }
+
+        if (placement == IslandPlacement.Taskbar) PersistTaskbarPlacement(false);
+        placement = IslandPlacement.Free;
+        ApplyPlacementVisuals();
+        UpdateLayout();
+        ClampWindowToBounds(geometry.Bounds);
     }
 
     void MascotButton_Click(object sender, RoutedEventArgs e)

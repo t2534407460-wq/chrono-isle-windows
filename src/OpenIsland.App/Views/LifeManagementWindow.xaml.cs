@@ -66,7 +66,7 @@ public partial class LifeManagementWindow : Window
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(82) });
-            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
+            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
 
             var check = new CheckBox { Style = (Style)FindResource("SelectionBox"), Tag = agenda, IsChecked = selected.Contains(Key(agenda)) };
             check.Checked += (_, _) => SetSelected(agenda, true);
@@ -92,10 +92,10 @@ public partial class LifeManagementWindow : Window
                 panel.Children.Add(startFocus);
             }
 
-            var remove = new Button { Content = "\u00D7", Width = 32, Height = 32, FontSize = 18, FontWeight = FontWeights.SemiBold, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(74, 37, 40)), Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120)), Tag = agenda, ToolTip = agenda.Kind == "recurring" ? "\u5220\u9664\u6574\u4E2A\u5468\u671F\u8BA1\u5212" : "\u5220\u9664" };
-            remove.Click += (sender, _) => DeleteOne((AgendaItem)((FrameworkElement)sender).Tag);
-            Grid.SetColumn(remove, 3);
-            panel.Children.Add(remove);
+            var archive = new Button { Content = "归档", Width = 54, Height = 32, FontWeight = FontWeights.SemiBold, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(62, 62, 66)), Foreground = new SolidColorBrush(Color.FromRgb(210, 210, 216)), Tag = agenda, ToolTip = agenda.Kind == "recurring" ? "归档整个周期计划" : "归档事项" };
+            archive.Click += (sender, _) => ArchiveOne((AgendaItem)((FrameworkElement)sender).Tag);
+            Grid.SetColumn(archive, 3);
+            panel.Children.Add(archive);
 
             row.Child = agenda.Kind is "todo" or "reminder" && taskAttributes.Get(agenda.Id) is { } attributes ? BuildTaskAttributesEditor(panel, attributes) : panel;
             itemRows[Key(agenda)] = row;
@@ -122,7 +122,7 @@ public partial class LifeManagementWindow : Window
     {
         ActiveTab.Background = new SolidColorBrush(showingArchive ? Color.FromRgb(44, 44, 46) : Color.FromRgb(70, 70, 74));
         ArchiveTab.Background = new SolidColorBrush(showingArchive ? Color.FromRgb(70, 70, 74) : Color.FromRgb(44, 44, 46));
-        DeleteSelected.Visibility = showingArchive ? Visibility.Collapsed : Visibility.Visible;
+        ArchiveSelected.Visibility = showingArchive ? Visibility.Collapsed : Visibility.Visible;
     }
 
     void RefreshArchivedItems()
@@ -139,7 +139,7 @@ public partial class LifeManagementWindow : Window
                 Margin = new Thickness(0, 0, 0, 8)
             };
             var panel = new StackPanel();
-            panel.Children.Add(new TextBlock { Text = item.Title, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            panel.Children.Add(new TextBlock { Text = $"{item.Title} · {ArchivedKindLabel(item.Kind)}", FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             panel.Children.Add(new TextBlock
             {
                 Text = $"{item.Reason} · 归档于 {item.ArchivedAt:yyyy-MM-dd HH:mm} · 将于 {item.ArchivedAt.AddDays(7):MM-dd HH:mm} 自动删除",
@@ -148,18 +148,28 @@ public partial class LifeManagementWindow : Window
                 Margin = new Thickness(0, 4, 0, 10)
             });
             var controls = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
-            controls.Children.Add(new TextBlock { Text = "恢复日期", Foreground = new SolidColorBrush(Color.FromRgb(184, 184, 191)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
-            var date = ArchiveDateSelector(DateTime.Today.AddDays(1));
             var restore = new Button { Content = "恢复", Height = 30, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(30, 82, 120)), Padding = new Thickness(12, 4, 12, 4) };
-            restore.Click += (_, _) => RestoreArchivedTodo(item, date.Tag is DateTime selectedDate ? selectedDate : null);
-            controls.Children.Add(date);
+            if (item.Kind == "recurring")
+            {
+                restore.Click += (_, _) => RestoreArchivedItem(item, null);
+            }
+            else
+            {
+                controls.Children.Add(new TextBlock { Text = "恢复日期", Foreground = new SolidColorBrush(Color.FromRgb(184, 184, 191)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+                var date = ArchiveDateSelector(DateTime.Today.AddDays(1));
+                restore.Click += (_, _) => RestoreArchivedItem(item, date.Tag is DateTime selectedDate ? selectedDate : null);
+                controls.Children.Add(date);
+            }
             controls.Children.Add(restore);
+            var delete = new Button { Content = "删除", Height = 30, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(74, 37, 40)), Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120)), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
+            delete.Click += (_, _) => DeleteArchivedItem(item);
+            controls.Children.Add(delete);
             panel.Children.Add(controls);
             row.Child = panel;
             Items.Children.Add(row);
         }
         if (Items.Children.Count == 0)
-            Items.Children.Add(new TextBlock { Text = "暂无过期事项。", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), Margin = new Thickness(0, 8, 0, 0) });
+            Items.Children.Add(new TextBlock { Text = "暂无归档事项。", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), Margin = new Thickness(0, 8, 0, 0) });
     }
 
     Button ArchiveDateSelector(DateTime initialDate)
@@ -242,24 +252,34 @@ public partial class LifeManagementWindow : Window
         return button;
     }
 
-    void RestoreArchivedTodo(ArchivedTodoItem item, DateTime? selectedDate)
+    void RestoreArchivedItem(ArchivedTodoItem item, DateTime? selectedDate)
     {
-        if (selectedDate is null)
+        if (item.Kind != "recurring" && selectedDate is null)
         {
             Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
             Result.Text = "请选择恢复日期。";
             return;
         }
         var time = item.DueAt?.TimeOfDay ?? TimeSpan.FromHours(9);
-        var scheduledAt = selectedDate.Value.Date.Add(time);
-        if (!data.RestoreArchivedTodo(item.Id, scheduledAt))
+        var scheduledAt = selectedDate?.Date.Add(time);
+        if (!data.RestoreArchivedItem(item.Id, scheduledAt))
         {
             Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
             Result.Text = "恢复日期需要晚于当前时间。";
             return;
         }
         Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
-        Result.Text = $"已恢复到 {scheduledAt:yyyy-MM-dd HH:mm}。";
+        reminders.RefreshSchedule();
+        Result.Text = item.Kind == "recurring" ? "已恢复周期提醒。" : $"已恢复到 {scheduledAt:yyyy-MM-dd HH:mm}。";
+        RefreshItems();
+    }
+
+
+    void DeleteArchivedItem(ArchivedTodoItem item)
+    {
+        if (!data.DeleteArchivedItem(item.Id)) return;
+        Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+        Result.Text = "已永久删除归档事项。";
         RefreshItems();
     }
 
@@ -472,20 +492,20 @@ public partial class LifeManagementWindow : Window
         UpdateSelectionUi();
     }
 
-    void DeleteOne(AgendaItem item)
+    void ArchiveOne(AgendaItem item)
     {
-        reminders.Delete(item);
+        reminders.Archive(item);
         selected.Remove(Key(item));
         awaitingConfirmation = false;
-        Result.Text = "\u5DF2\u5220\u9664\u4E8B\u9879\u3002";
+        Result.Text = "已归档事项。";
         RefreshItems();
     }
 
-    void UpdateSelectionUi() => DeleteSelected.Content = selected.Count == 0
-        ? "\u6279\u91CF\u5220\u9664"
-        : $"\u5220\u9664\u5DF2\u9009 {selected.Count} \u9879";
+    void UpdateSelectionUi() => ArchiveSelected.Content = selected.Count == 0
+        ? "批量归档"
+        : $"归档已选 {selected.Count} 项";
 
-    void DeleteSelected_Click(object sender, RoutedEventArgs e)
+    void ArchiveSelected_Click(object sender, RoutedEventArgs e)
     {
         var targets = Items.Children.OfType<Border>().Select(border => border.Tag).OfType<AgendaItem>().Where(item => selected.Contains(Key(item))).ToList();
         if (targets.Count == 0)
@@ -496,15 +516,23 @@ public partial class LifeManagementWindow : Window
         if (!awaitingConfirmation)
         {
             awaitingConfirmation = true;
-            Result.Text = $"\u518D\u6B21\u70B9\u51FB\u6279\u91CF\u5220\u9664\uFF0C\u786E\u8BA4\u5220\u9664 {targets.Count} \u9879\u3002";
+            Result.Text = $"再次点击批量归档，确认归档 {targets.Count} 项。";
             return;
         }
-        reminders.Delete(targets);
+        reminders.Archive(targets);
         selected.Clear();
         awaitingConfirmation = false;
-        Result.Text = "\u5DF2\u5220\u9664\u6240\u9009\u4E8B\u9879\u3002";
+        Result.Text = "已归档所选事项。";
         RefreshItems();
     }
+
+    static string ArchivedKindLabel(string kind) => kind switch
+    {
+        "event" => "日程",
+        "reminder" => "提醒",
+        "recurring" => "周期提醒",
+        _ => "待办"
+    };
 
     static string ItemDetails(ManagedLifeItem item) => item.Kind == "recurring"
         ? $"\u5468\u671F\u63D0\u9192 \u00B7 {item.RecurrenceLabel} \u00B7 \u4E0B\u4E00\u6B21 {item.ScheduledAt:MM-dd HH:mm}"

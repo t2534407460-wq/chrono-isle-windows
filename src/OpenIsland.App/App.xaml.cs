@@ -107,6 +107,8 @@ public partial class App : System.Windows.Application
         var tray = services.GetRequiredService<LifeTrayService>();
         tray.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         tray.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
+        tray.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
+        tray.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
         tray.ExitRequested += (_, _) => Dispatcher.BeginInvoke(Shutdown);
         tray.Initialize();
         island.Show();

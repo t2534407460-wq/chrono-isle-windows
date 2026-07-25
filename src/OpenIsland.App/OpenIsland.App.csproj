@@ -38,11 +38,11 @@
     <Compile Include="Services\Scheduling\*.cs" />
     <Compile Include="Services\SchedulingV2\*.cs" />
     <Compile Include="ViewModels\LifeViewModel.cs" />
-    <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs;Views\NamingWindow.xaml.cs" />
+    <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs;Views\NamingWindow.xaml.cs;Views\TrayMenuWindow.xaml.cs" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
-    <Page Include="Views\LifeMainWindow.xaml;Views\LifeSettingsWindow.xaml;Views\LifeIslandWindow.xaml;Views\LifeManagementWindow.xaml;Views\NamingWindow.xaml" />
+    <Page Include="Views\LifeMainWindow.xaml;Views\LifeSettingsWindow.xaml;Views\LifeIslandWindow.xaml;Views\LifeManagementWindow.xaml;Views\NamingWindow.xaml;Views\TrayMenuWindow.xaml" />
     <Page Include="Resources\DesignTokens.xaml" />
     <Page Include="Resources\Controls.xaml" />
     <Page Include="Resources\Components.xaml" />

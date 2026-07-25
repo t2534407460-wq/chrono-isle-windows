@@ -93,7 +93,8 @@ public sealed record ArchivedTodoItem(
     string? Notes,
     DateTime? DueAt,
     DateTime ArchivedAt,
-    string Reason);
+    string Reason,
+    string Kind = "todo");
 
 public sealed record ChatSession(string Id, string Title, DateTime CreatedAt, DateTime UpdatedAt);
 public sealed record ChatMessage(string Id, string SessionId, string Role, string Content, DateTime CreatedAt);
@@ -113,7 +114,14 @@ public sealed record ProviderSettings(string BaseUrl, string Model, string ApiKe
     public static ProviderSettings Default => new("https://api.deepseek.com/v1", "deepseek-chat", "");
 }
 
-public sealed record LifePreferences(bool WindowsNotifications, string AssistantPersona = "Direct", bool DoNotDisturbEnabled = false, bool FullScreenSilentEnabled = false)
+public sealed record LifePreferences(
+    bool WindowsNotifications,
+    string AssistantPersona = "Direct",
+    bool DoNotDisturbEnabled = false,
+    bool FullScreenSilentEnabled = false,
+    bool IslandTaskbarDocked = false,
+    string? IslandTaskbarMonitor = null,
+    double? IslandTaskbarHorizontalRatio = null)
 {
     public static LifePreferences Default => new(true, "Direct");
 }
