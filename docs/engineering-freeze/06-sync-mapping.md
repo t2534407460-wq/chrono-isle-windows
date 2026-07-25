@@ -44,7 +44,7 @@ ICS 导入只创建本地副本，不建立持续同步：
 
 ## 4. M5C-M5D：Microsoft To Do
 
-首个远端容器由用户选择；未选择时创建单一 `Open Island` Task List。不得按类别、今日或 Inbox 自动拆分多个列表。父子关系首版仅保留本地，不降级成信息不足的 checklist。
+首个远端容器由用户选择；未选择时创建单一 `ChronoIsle` Task List。不得按类别、今日或 Inbox 自动拆分多个列表。父子关系首版仅保留本地，不降级成信息不足的 checklist。
 
 字段映射：
 

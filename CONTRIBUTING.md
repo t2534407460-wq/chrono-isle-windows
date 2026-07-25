@@ -1,4 +1,4 @@
-# Contributing to Open Island
+# Contributing to ChronoIsle
 
 Thanks for your interest! Issues 和 PR 都欢迎。本文是给打算改代码的贡献者的速查表。
 
@@ -13,15 +13,15 @@ Thanks for your interest! Issues 和 PR 都欢迎。本文是给打算改代码�
 
 ```
 .
-├── OpenIsland.sln
+├── ChronoIsle.sln
 ├── Directory.Build.props      # 集中元信息（Authors/Copyright/Version）
 ├── src/
-│   ├── OpenIsland.Core/       # 共享类库（事件、桥、hooks 解析、registry）
-│   ├── OpenIsland.Hooks/      # open-island-hooks.exe — Claude Code hook 触发的子进程
-│   ├── OpenIsland.Setup/      # open-island-setup.exe — 装/卸 hooks 的 CLI
-│   └── OpenIsland.App/        # OpenIsland.exe — WPF 主应用（托盘 + 灵动岛 + 控制中心）
+│   ├── ChronoIsle.Core/       # 共享类库（事件、桥、hooks 解析、registry）
+│   ├── ChronoIsle.Hooks/      # chrono-isle-hooks.exe — Claude Code hook 触发的子进程
+│   ├── ChronoIsle.Setup/      # chrono-isle-setup.exe — 装/卸 hooks 的 CLI
+│   └── ChronoIsle.App/        # ChronoIsle.exe — WPF 主应用（托盘 + 灵动岛 + 控制中心）
 ├── tests/
-│   └── OpenIsland.SmokeTest/  # 集成 smoke test，**不在 sln 里**，跑活的 ~/.claude 数据
+│   └── ChronoIsle.SmokeTest/  # 集成 smoke test，**不在 sln 里**，跑活的 ~/.claude 数据
 └── scripts/
     └── deploy.ps1             # 一键 build + 重装 hooks + 重启 app
 ```
@@ -30,33 +30,33 @@ Thanks for your interest! Issues 和 PR 都欢迎。本文是给打算改代码�
 
 ```powershell
 # 全量构建
-dotnet build OpenIsland.sln
+dotnet build ChronoIsle.sln
 
 # 只跑主应用
-dotnet run --project src/OpenIsland.App/OpenIsland.App.csproj
+dotnet run --project src/ChronoIsle.App/ChronoIsle.App.csproj
 
 # 跑 smoke test（不在 sln 里，要单独跑）
-dotnet run --project tests/OpenIsland.SmokeTest/OpenIsland.SmokeTest.csproj
+dotnet run --project tests/ChronoIsle.SmokeTest/ChronoIsle.SmokeTest.csproj
 
 # 装/卸/查 hooks
-dotnet run --project src/OpenIsland.Setup -- install --agent claude
-dotnet run --project src/OpenIsland.Setup -- uninstall --agent all
-dotnet run --project src/OpenIsland.Setup -- status
+dotnet run --project src/ChronoIsle.Setup -- install --agent claude
+dotnet run --project src/ChronoIsle.Setup -- uninstall --agent all
+dotnet run --project src/ChronoIsle.Setup -- status
 ```
 
 ## 改 hooks 后必跑 deploy.ps1
 
-如果你改了 `OpenIsland.Hooks` 的代码，**必须**跑：
+如果你改了 `ChronoIsle.Hooks` 的代码，**必须**跑：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
 ```
 
 这条脚本会：
-1. 杀掉运行中的 `OpenIsland.exe`
+1. 杀掉运行中的 `ChronoIsle.exe`
 2. Release build
-3. 把整个 hooks 运行时（含 `.deps.json` / `.runtimeconfig.json` / `System.CommandLine.dll` 等）拷到 `OpenIsland.exe` 旁边 —— **不能只拷 .exe**，会找不到依赖
-4. 删 `~/.claude/open-island-manifest.claude.json` 触发 SetupService 重新装 hooks
+3. 把整个 hooks 运行时（含 `.deps.json` / `.runtimeconfig.json` / `System.CommandLine.dll` 等）拷到 `ChronoIsle.exe` 旁边 —— **不能只拷 .exe**，会找不到依赖
+4. 删 `~/.claude/chrono-isle-manifest.claude.json` 触发 SetupService 重新装 hooks
 5. 重启 app
 
 ## 注释规范
@@ -82,10 +82,10 @@ PR review 不卡注释语言。我们更关心：
 
 ## Smoke test
 
-`tests/OpenIsland.SmokeTest/` 是手写的回归脚本，跑用户机器上活的 `~/.claude/projects/` 数据。它**不在 OpenIsland.sln 里**，需要单独 `dotnet run`。
+`tests/ChronoIsle.SmokeTest/` 是手写的回归脚本，跑用户机器上活的 `~/.claude/projects/` 数据。它**不在 ChronoIsle.sln 里**，需要单独 `dotnet run`。
 
 ```powershell
-dotnet run --project tests/OpenIsland.SmokeTest/OpenIsland.SmokeTest.csproj
+dotnet run --project tests/ChronoIsle.SmokeTest/ChronoIsle.SmokeTest.csproj
 ```
 
 输出 `PASS`/`FAIL` 行，进程退出码恒为 0（不阻塞 CI），需要肉眼看输出。
@@ -96,9 +96,9 @@ PR 至少跑过一次 smoke test（不要求全 PASS —— 部分检查依赖�
 
 ## 设计原则
 
-- **Hook 必须 fail-open**：`OpenIsland.Hooks/Program.cs` 永远返回 0，超时 / 解析失败 / bridge 不通都不能阻塞 Claude 的运行
+- **Hook 必须 fail-open**：`ChronoIsle.Hooks/Program.cs` 永远返回 0，超时 / 解析失败 / bridge 不通都不能阻塞 Claude 的运行
 - **Event sourcing**：所有 session 状态变更走 `SessionState.Apply(AgentEvent)` 返回新不可变状态。新加事件类型必须改三处：`AgentEvent.cs` / `SessionState.Apply` switch / `SessionManager.GetSessionIdFromEvent`
-- **Named Pipe 名固定为 `OpenIsland_Pipe`**：不要改回 per-user 名（中文 / 非 ASCII Windows 用户名会出问题）
+- **Named Pipe 名固定为 `ChronoIsle_Pipe`**：不要改回 per-user 名（中文 / 非 ASCII Windows 用户名会出问题）
 - **Stop hook 是任务完成的权威信号**：watcher 默认只 emit Running，避免 stop_reason 推测在 multi-step 中段误判 Idle
 
 ## 报 bug
@@ -107,7 +107,7 @@ PR 至少跑过一次 smoke test（不要求全 PASS —— 部分检查依赖�
 - Windows 版本、.NET 版本（`dotnet --info`）
 - Claude Code 版本（`claude --version`）
 - 重现步骤
-- 如能重现，开 OpenIsland 后跑 `tests/OpenIsland.SmokeTest` 把输出贴上
+- 如能重现，开 ChronoIsle 后跑 `tests/ChronoIsle.SmokeTest` 把输出贴上
 
 ## 安全 / 漏洞披露
 

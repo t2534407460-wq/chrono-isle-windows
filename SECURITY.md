@@ -2,7 +2,7 @@
 
 ## 报告漏洞
 
-如果你在 Open Island 里发现安全问题，请**不要**直接开 public issue。
+如果你在 ChronoIsle 里发现安全问题，请**不要**直接开 public issue。
 
 走以下任一渠道私下告知：
 
@@ -13,10 +13,10 @@
 
 ## 关注点
 
-Open Island 主要的攻击面：
+ChronoIsle 主要的攻击面：
 
-- **Hook 协议** —— `OpenIsland.Hooks/Program.cs` 从 stdin 读 untrusted JSON。所有解析失败必须 fail-open（不影响 Claude 运行）+ 不能执行任意命令
-- **Named Pipe 桥** —— `OpenIsland_Pipe` 默认仅本机访问，不绑定网络。任何放宽 ACL 的改动必须在 PR 里讨论
+- **Hook 协议** —— `ChronoIsle.Hooks/Program.cs` 从 stdin 读 untrusted JSON。所有解析失败必须 fail-open（不影响 Claude 运行）+ 不能执行任意命令
+- **Named Pipe 桥** —— `ChronoIsle_Pipe` 默认仅本机访问，不绑定网络。任何放宽 ACL 的改动必须在 PR 里讨论
 - **SendInput 注入** —— 灵动岛的 1/2/3 按钮通过 SendInput 把按键塞给目标终端窗口。仅在用户主动点击 + 焦点已切到终端时触发，避免无脑注入
 - **路径处理** —— transcript 解析、JumpTarget 构造对路径只信任 OS API（`Path.GetFileName` 等），不做手撸字符串拼接
 

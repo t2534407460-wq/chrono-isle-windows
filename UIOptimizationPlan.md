@@ -1,4 +1,4 @@
-# Open Island UI 系统优化方案
+# ChronoIsle UI 系统优化方案
 
 > 状态：待主人确认。本文件只定义第一轮 UI 与交互改造边界；确认前不修改生产代码。
 
@@ -68,7 +68,7 @@
 新增资源仅承载视觉通用契约，不引入第三方 UI 框架：
 
 ```text
-src/OpenIsland.App/Resources/
+src/ChronoIsle.App/Resources/
 ├─ DesignTokens.xaml       # 颜色、厚度、圆角、间距、字体尺寸
 ├─ Controls.xaml           # Button、TextBox、PasswordBox、ComboBox、Toggle、ListBox、ScrollBar
 └─ Components.xaml         # Card、SegmentedControl、StatusPill、Toast、EmptyState、InlineNotice
@@ -196,7 +196,7 @@ src/OpenIsland.App/Resources/
 - 所有布局使用 Grid/WrapPanel/ScrollViewer 的弹性尺寸，避免固定内容高度；验证 100%、125%、150%、200% DPI 以及窄屏最小尺寸。
 - 灵动岛继续根据 `SystemParameters.WorkArea` 定位，重写宽度动画时不改变其顶置、拖拽与自动收起行为。
 - 不改自然语言理解、确认状态机、提醒调度、数据库表结构、外部同步和账户能力。
-- 每阶段运行 `dotnet test tests/OpenIsland.Tests/OpenIsland.Tests.csproj -c Release --no-restore`，并手工检查：收起/展开、今日/月历切换、AI 成功/失败/确认、提醒、设置保存/取消、事项管理、窗口缩放。
+- 每阶段运行 `dotnet test tests/ChronoIsle.Tests/ChronoIsle.Tests.csproj -c Release --no-restore`，并手工检查：收起/展开、今日/月历切换、AI 成功/失败/确认、提醒、设置保存/取消、事项管理、窗口缩放。
 
 ## 8. 已知限制与待确认项
 

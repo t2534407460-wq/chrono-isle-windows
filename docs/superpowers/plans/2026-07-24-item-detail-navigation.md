@@ -13,9 +13,9 @@
 ### Task 1: 事项跳转请求与岛内点击入口
 
 **Files:**
-- Modify: `src/OpenIsland.App/Views/LifeIslandWindow.xaml.cs`
-- Modify: `src/OpenIsland.App/App.xaml.cs`
-- Modify: `src/OpenIsland.App/Views/LifeMainWindow.xaml.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeIslandWindow.xaml.cs`
+- Modify: `src/ChronoIsle.App/App.xaml.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeMainWindow.xaml.cs`
 
 - [ ] 添加携带 ID、类型的详情请求事件。
 - [ ] 将日历事项文本和今日概览事项文本设为点击入口；按钮点击不冒泡到入口。
@@ -24,8 +24,8 @@
 ### Task 2: 管理页定位与闪烁
 
 **Files:**
-- Modify: `src/OpenIsland.App/Views/LifeManagementWindow.xaml`
-- Modify: `src/OpenIsland.App/Views/LifeManagementWindow.xaml.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeManagementWindow.xaml`
+- Modify: `src/ChronoIsle.App/Views/LifeManagementWindow.xaml.cs`
 
 - [ ] 为事项列表滚动容器命名，并记录每项对应的行容器。
 - [ ] 在对话框打开前接收目标，刷新后将目标滚动到可见区域。
@@ -34,7 +34,7 @@
 ### Task 3: 验证
 
 **Files:**
-- Test: `tests/OpenIsland.Tests/TodayDashboardServiceTests.cs`
+- Test: `tests/ChronoIsle.Tests/TodayDashboardServiceTests.cs`
 
 - [ ] 运行 Release 构建和与仪表盘相关的定向测试。
 - [ ] 手动确认日程/概览点击、滚动定位和闪烁效果。

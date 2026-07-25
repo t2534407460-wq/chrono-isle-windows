@@ -1,159 +1,250 @@
 <div align="center">
 
-# 🟣 Open Island
+# 时屿 ChronoIsle
 
-**Windows 上的 AI 编码助手控制中心 · 仿 macOS 灵动岛**
+**常驻 Windows 桌面的本地生活与效率助手**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
-[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2011-0078D4.svg)]()
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4.svg)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[English](README.md) · [简体中文](README.zh-CN.md)
-
-<br/>
-
-<img src="docs/screenshots/island-0.4.png" alt="Open Island —— 橙色 Claude 宠物、状态栏、媒体控制、切换模型、区域截图按钮、5 小时余量（点一下翻成七天柱状图）" width="340"/>
-
-<sub>头部精灵是橙色 <strong>Claude 小宠物</strong> —— 绑定会话阶段的像素动画（工作 / 需关注 / 完成 / 空闲）。下方依次是实时 CPU·内存·GPU·网速栏、媒体控制、一键切换模型、区域截图按钮，以及 Claude 订阅的 5 小时用量余额 —— 点一下即可翻成最近七天 token 用量柱状图。</sub>
+把待办、日程、提醒、专注和 AI 助手放进一个可以停靠在屏幕顶部或任务栏中的灵动岛。
 
 </div>
 
 ---
 
-Open Island 是一个常驻托盘的桌面助手，把 Claude Code 等 AI 编码代理的运行状态、Token 用量、权限请求都汇聚到屏幕顶部一个 macOS 风格的"灵动岛"上。
+## 项目简介
 
-- 🎮 **像素状态精灵** —— 头部状态指示器是绑定会话阶段的像素动画：Claude 工作时跳动，完成后休息（每 30s 随机播一遍空闲小动作）
-- 📈 **系统状态栏** —— 实时 CPU / 内存 / GPU / 网速，1 秒刷新一次（GPU 在非英文 Windows 也能正常显示）
-- 🔔 **提示音** —— 任务完成、会话需关注时各响一声；状态栏有喇叭开关静音
-- 🎵 **媒体控制** —— 上一首 / 播放暂停 / 下一首 + 系统音量滑块，网易云 / Spotify / 浏览器 / 任意播放器通用
-- 📡 **实时镜像** Claude Code 的权限询问，让你不用切回终端就能 `1/2/3` 决策
-- ⚡ **每会话模式按钮** —— 会话卡上的快捷图标按钮，一键切该会话的权限模式（accept edits / auto / plan）
-- 📊 **统计面板** —— sessions / token / 模型占比 / 活跃热力图，全部 / 30 天 / 7 天三档可切
-- 🚀 **一键跳回** —— 点卡片直接 `claude --resume {sessionId}` 恢复历史会话；桌面端会话则把客户端窗口拉前台
+时屿（ChronoIsle）是一个使用 WPF 和 .NET 8 构建的 Windows 桌面应用。它以灵动岛作为常驻入口，并提供完整的事项管理、日历、提醒、自然语言助手、专注计时和本地数据管理能力。
 
-不打扰你 —— 折叠态停在屏顶，打游戏 / 写代码 / 看直播都不挡视野：
+应用默认将业务数据保存在本机。除非主动使用 AI 对话或取名助手，否则日历、提醒、事项管理、专注和报表等核心能力不需要连接模型服务。
 
-<img src="docs/screenshots/in-action.png" alt="打游戏时 Open Island 折叠态停在屏顶" width="900"/>
+## 主要功能
 
----
+### 灵动岛
 
-## ✨ Features
+- 支持屏幕顶部、自由悬浮和底部任务栏三种位置。
+- 拖到屏幕顶部或底部任务栏附近时自动吸附。
+- 任务栏模式可自由左右移动，并自动绕开任务栏应用图标和右侧状态区域。
+- 当前任务栏没有足够空位时自动退化为自由移动，不会把灵动岛卡死在图标旁。
+- 顶部模式向下展开，任务栏模式向上展开；展开过程中保持头部锚点不动。
+- 支持多显示器，任务栏显示器和水平相对位置会跨重启保存。
+- 单击展开或折叠；快速双击恢复到主屏幕顶部中央的初始位置。
+- 鼠标移出后 5 秒自动折叠；切换到其他应用时立即折叠。
+- 任务栏模式保持最高置顶层级，不会被任务栏覆盖。
 
-- **区域截图** —— "清理任务"旁边一个截图按钮，外加全局快捷键（默认 **Ctrl+Q**，控制中心可改）：微信式拖拽框选一个矩形，松手自动复制到剪贴板，随处粘贴
-- **七天用量柱状图** —— 点击 5 小时余额行，翻成**最近七天 token 用量柱状图**（用量越多绿色越深越高，右侧只显示总量），再点切回余额。下次启动灵动岛记住关闭时的状态
-- **切换模型** —— 音量栏下方"切换模型"按钮，点开弹出模型列表即切换。控制中心可添加第三方模型（参考 cc-switch 预设 —— DeepSeek / 智谱 GLM / Kimi / 通义千问 / OpenRouter / 硅基流动 / Novita / ModelScope / 小米 MiMo … 预填地址，只需填 API Key）。官方 Claude 档客户端 + CLI 都生效；第三方档写 `~/.claude/settings.json` 的 env、对新 CLI 会话生效。API Key 以 Windows DPAPI 加密落盘
-- **订阅 5 小时余量** —— 音量栏下方一行显示 Claude 订阅"5 小时滚动窗口"剩余额度（绿色余额条 + "余 XX%" + 重置倒计时），数据来自 `/api/oauth/usage`（与 `/usage` 同源，零 token 开销），5 分钟自动刷新，行尾刷新按钮可手动立即刷新
-- **中英文界面切换** —— 托盘右键 / 控制中心切换 中文 / English，默认跟随 Windows 系统语言，切换后持久化
-- **图钉固定会话** —— 会话卡右侧图钉按钮，被固定的会话"清理任务"不会清掉它
-- **点击 CPU% / RAM% 释放内存** —— 清理各进程工作集（类 RAM 清理工具），RAM% 随后下降
-- **像素状态精灵** —— 头部指示器是像素动画（Aseprite sprite sheet，NearestNeighbor + 整数倍缩放，125% / 150% DPI 不糊），绑 `SessionPhase`：
-  - **Running** → 小宠物在忙碌敲键盘（两只眼睛一大一小、会眨眼）
-  - **Idle** → 每约 3 分钟随机切换四个默认动画之一（眨眼两下 / wink / 睡觉打 `zz` 吐泡泡 / 喝可乐）
-  - **Completed** → 放烟花 🎉；**需关注** → 头顶冒出 `?`
-  
-  <img src="docs/screenshots/island-demo.gif" alt="整个灵动岛动态演示 —— 头部小宠物敲键盘的同时，CPU/内存/GPU/网速栏实时刷新" width="320"/>
+### 今天与日历
 
-- **系统状态栏** —— 头部与会话列表之间一行 CPU / 内存 / GPU / 网速，1 秒刷新（`GetSystemTimes` / `GlobalMemoryStatusEx` / GPU Engine 计数器 / `NetworkInterface`）。GPU 利用率改用 PDH **英文计数器** API（`PdhAddEnglishCounterW`）读取，与系统语言无关，非英文 Windows 也显示真实 %；列宽固定，CPU/RAM/GPU 不随网速文本宽度变化抖位
-- **提示音** —— 会话从 Running → Idle/Completed（任务完成）以及进入需关注状态（橙色权限 / 红色待答）时各响一声；系统状态栏的喇叭按钮静音/取消静音（持久化）
-- **媒体控制栏** —— 上一首 / 播放暂停 / 下一首（系统媒体键，网易云 / Spotify / 任意播放器通用）+ 系统音量滑块（CoreAudio `IAudioEndpointVolume`，双向同步）
-- **每会话快捷模式按钮** —— 每张会话卡有小图标按钮（hover 显示 "accept edits" / "auto mode" / "plan mode"）一键切该 Claude 会话的权限模式，外加一个 × 临时收起卡片；收起的卡片再次活动（新一轮 Running 或需关注阶段）自动重现
-- **点头部清空** —— 点击 "Open Island" 头部清空会话列表；会话下次活动时自动重现
-- **Dynamic Island** —— 屏顶悬浮的活跃会话指示器，按工具图标 + 项目名 + 状态点显示
-- **Permission mirror** —— Claude Code 的 PreToolUse 权限询问会同时镜像到岛上，配合三按钮（Yes / Yes don't ask again / No），点击会通过 SendInput 注入对应数字到 Claude 终端
+- 查看今日事项、逾期事项、待整理 Inbox 和下一行动。
+- 月历显示待办、日程、提醒及中国法定节假日、调休工作日。
+- 在灵动岛内快速添加待办或提醒。
+- 检测同一天的日程时间冲突。
+- 根据可用时间、预计耗时和当前能量推荐可执行事项。
 
-  <img src="docs/screenshots/permission-mirror.png" alt="打 DOTA 时 Claude 弹的权限询问被镜像到灵动岛" width="800"/>
+### 事项管理
 
-- **Control Center** —— 三 Tab：
-  - **Sessions** 列出所有 Claude 会话（按 mtime 排序）
-  - **Overview** Token 总量 / 活跃天数 / 连续天数 / 高峰小时 / 最常用模型 / 84 天活动热力图
-  - **Models** 按模型分组的 Token 占比 + I/O 详情
-- **Workspace 过滤** —— 设置里指定项目目录，统计仅算 cwd 在该目录下的会话
-- **Stop hook 触发任务完成** —— Claude Code 真正 `end_turn` 时桌面响铃 + 灵动岛绿灯闪
-- **CLI / 桌面端区分** —— 点击会话卡自动判断 entrypoint（取转录文件**最新**一行的值，会话从桌面端 `--resume` 到 CLI 后也判得对），并且只在"终端宿主"的 `claude.exe` 里找终端（排除桌面端常驻派生的大量子进程）：CLI 会话**激活已有终端**（终端已关才开新 tab 跑 `claude --resume`），桌面端会话激活客户端窗口
+- 管理待办、日程、单次提醒和周期提醒。
+- 支持每天、工作日、法定工作日、法定节假日和指定星期等重复方式。
+- 支持完成、归档、批量归档和详情跳转。
+- 可记录预计耗时、能量等级、优先级等任务属性。
 
-## 🎭 表情
+### AI 助手
 
-头部精灵是橙色 **Claude 小宠物**，它的小动画一眼告诉你灵动岛当前状态（都是极小的循环动图）：
+- 使用自然语言创建、安排和查询事项，例如“明早九点提醒我开会”。
+- 涉及写入的操作会先生成待确认卡片，确认后才执行。
+- 支持干练、温柔、轻松和专注四种回复人格；人格只影响措辞，不改变执行规则。
+- 默认预设为 DeepSeek，也兼容 OpenAI Chat Completions 格式的模型服务。
+- API Key 使用 Windows DPAPI 加密后保存在当前用户目录。
 
-| | 状态 | | 状态 |
-|:--:|---|:--:|---|
-| <img src="docs/emotes/running.gif" width="40"/> | **工作中** —— Claude 戴眼镜思考 | <img src="docs/emotes/attention.gif" width="40"/> | **需关注** —— 等你确认 / 回答（头顶 `?`） |
-| <img src="docs/emotes/completed.gif" width="40"/> | **完成** —— 任务结束 🎉 放烟花 | <img src="docs/emotes/idle-sleep.gif" width="40"/> | **空闲** —— 休息中，每隔几分钟随机切换下面四个之一 |
-| <img src="docs/emotes/idle-blink.gif" width="40"/> | 空闲 · 眨眼两下 | <img src="docs/emotes/idle-wink.gif" width="40"/> | 空闲 · wink |
-| <img src="docs/emotes/idle-sleep.gif" width="40"/> | 空闲 · 睡觉（`zz`、吐泡泡） | <img src="docs/emotes/idle-coke.gif" width="40"/> | 空闲 · 喝可乐 |
-| <img src="docs/emotes/headphones.gif" width="40"/> | **媒体** —— 调音量 / 切歌时播放 | <img src="docs/emotes/kamehameha.gif" width="40"/> | **彩蛋** —— 点一下小宠物 |
-| <img src="docs/emotes/byebye.gif" width="40"/> | **关闭** —— 点关机键隐藏灵动岛 | | |
+### 提醒与专注
 
-## 📦 安装
+- 到期时显示 Windows 通知，并同步在灵动岛中提示。
+- 支持勿扰和延迟提醒汇总。
+- 支持开始、暂停、继续和结束专注计时。
+- 专注结束后可选择完成对应待办或保留未完成状态。
 
-> **自包含** —— 已打包 .NET 8 运行时，无需额外安装任何依赖，只要 Windows 10/11（x64）。
+### 周报与复盘
 
-从 [Releases](../../releases) 下载，二选一：
+- 汇总本周完成、逾期和高优先级事项。
+- 保存历史周报并生成下周行动建议。
+- 今日面板提供基于本地数据的优先事项建议。
 
-- 🟢 **推荐** · `OpenIsland-Setup-X.Y.Z-win-x64.exe` —— 标准安装包，双击自动装到 `%LOCALAPPDATA%\OpenIsland`，无需管理员，可在 Add/Remove Programs 卸载，可选开机自启
-- 🟦 **绿色版** · `OpenIsland-vX.Y.Z-win-x64.zip` —— 解压即用，不写注册表
+### 取名助手
 
-> ⚠️ 未做代码签名，Windows SmartScreen 会拦截。点 **更多信息 → 仍要运行** 即可。zip 版需要先右键属性 → 解除锁定。
+- 根据中文语义生成变量、函数、类型、数据库对象、文件目录、常量或通用名称。
+- 为每个候选稳定生成多种常用命名格式。
+- 支持一键复制推荐名称及各格式结果。
 
-首次启动会自动在 `%USERPROFILE%\.claude\settings.json` 注册 Claude Code 的 hook（`PreToolUse` / `PostToolUse` / `Stop` 三种），无需手动操作。
+### 本地数据与托盘
 
-## 🏃 快速开始
+- 使用 SQLite 保存事项、会话、提醒、专注记录、报表和审计信息。
+- 支持创建及恢复便携备份。
+- 支持导入、导出 iCalendar（ICS）文件。
+- 托盘菜单可快速打开助手、事项管理、取名助手和设置，也可切换通知与勿扰状态。
+- 支持当前用户开机自启。
 
-1. 启动 `OpenIsland.exe`，托盘出现紫色岛标
-2. 屏顶出现"Open Island"灵动岛
-3. 在终端开个 Claude Code 会话：`claude` 或 `claude --resume`
-4. 跑任何需要权限的工具（fetch、Edit 等），岛上会同步出权限提示
+## 灵动岛操作
 
-托盘菜单 → **Control Center** 可看完整 dashboard。
+| 操作 | 结果 |
+| --- | --- |
+| 单击头部 | 展开或折叠 |
+| 快速双击头部 | 恢复到主屏幕顶部中央 |
+| 拖到屏幕顶部 28 DIP 内 | 吸附到顶部 |
+| 拖到底部任务栏 28 DIP 内 | 吸附到任务栏 |
+| 从已吸附位置纵向拖出 48 DIP | 解除吸附 |
+| 在任务栏中左右拖动 | 自动选择图标之间的可用位置 |
+| 右键头部 | 打开快捷操作菜单 |
+| 鼠标移出展开面板 | 5 秒后折叠 |
+| 切换到其他应用 | 立即折叠 |
 
-## 🛠 从源码构建
+> 当前仅支持底部横向任务栏。顶部、侧边或无法检测到有效任务栏区域时不会进入任务栏吸附模式。
 
-要求 Windows + .NET 8 SDK。
+## 安装与运行
+
+### 使用发布版本
+
+从 [Gitee Releases](https://gitee.com/Tr11111/chrono-isle-windows/releases) 下载以下任一版本：
+
+- `ChronoIsle-Setup-X.Y.Z-win-x64.exe`：推荐，安装到当前用户目录。
+- `ChronoIsle-vX.Y.Z-win-x64.zip`：便携版，解压后运行 `ChronoIsle.exe`。
+
+发布包为 self-contained，不需要另外安装 .NET Runtime。当前目标平台为 Windows 10 2004（Build 19041）及以上版本的 x64 系统。
+
+> 当前发布包未进行代码签名，Windows SmartScreen 可能显示安全提示。请只从可信的项目发布页下载。
+
+### 首次使用
+
+1. 启动 `ChronoIsle.exe`。
+2. 单击灵动岛，查看“今天”或“月历”。
+3. 右键灵动岛打开快捷菜单，或通过托盘进入完整助手。
+4. 如需使用 AI 能力，在“设置”中填写 Base URL、模型和 API Key，并先执行“测试连接”。
+5. 将灵动岛拖到屏幕顶部或底部任务栏，选择适合自己的停靠方式。
+
+从 OpenIsland 升级时，首次启动会把 `%APPDATA%\OpenIsland` 和 `%LOCALAPPDATA%\OpenIsland` 中尚未存在的新目录文件复制到 ChronoIsle；旧目录不会删除，新目录中已有的数据也不会被覆盖。
+
+## 从源码构建
+
+### 环境要求
+
+- Windows 10/11 x64
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- PowerShell 7 或 Windows PowerShell
+
+### 获取并运行
 
 ```powershell
-git clone https://github.com/ludiwangfpga/open-island-windows.git
-cd open-island-windows
-dotnet build OpenIsland.sln -c Release
-dotnet run --project src/OpenIsland.App/OpenIsland.App.csproj
+git clone https://gitee.com/Tr11111/chrono-isle-windows.git
+cd chrono-isle-windows
+dotnet restore ChronoIsle.sln
+dotnet build ChronoIsle.sln --no-restore
+dotnet run --project src\ChronoIsle.App\ChronoIsle.App.csproj --no-build
 ```
 
-开发期改 hook 二进制后，跑部署脚本一键重装：
+### 测试
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
+dotnet test ChronoIsle.sln --no-restore
 ```
 
-详见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [ARCHITECTURE.md](ARCHITECTURE.md)。
+也可以分别运行逻辑测试和 UI 契约测试：
 
-## 🏗 架构
-
-```
-AI agent (Claude Code / Codex / Cursor / ...)
-   │ stdin JSON
-   ▼
-open-island-hooks.exe   (per-event subprocess)
-   │ Named Pipe "OpenIsland_Pipe"
-   ▼
-BridgeServer ──► SessionManager ──► SessionState (event-sourced)
-   │                                   │
-   ▼                                   ▼
-DynamicIslandWindow / ControlCenter   SessionRegistry (持久化)
+```powershell
+dotnet test tests\ChronoIsle.Tests\ChronoIsle.Tests.csproj --no-restore
+dotnet test tests\ChronoIsle.UiTests\ChronoIsle.UiTests.csproj --no-restore
 ```
 
-具体细节看 [ARCHITECTURE.md](ARCHITECTURE.md)。
+### 本地发布并重启
 
-## 🤝 Contributing
+仓库提供了开发重启脚本。它会停止由本项目构建目录启动的实例、发布 self-contained Release、更新桌面快捷方式并启动新版本：
 
-欢迎 PR / issue。代码用双语注释（英文 XML doc + 中英行内皆可），具体规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-restart.ps1
+```
 
-## 🙏 Acknowledgements
+手动发布命令：
 
-依赖以下开源库（皆 MIT/BSD）：
-- [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) — MVVM 工具
-- [Hardcodet.NotifyIcon.Wpf](https://github.com/hardcodet/wpf-notifyicon) — 系统托盘
-- [System.CommandLine](https://github.com/dotnet/command-line-api) — Hooks CLI 解析
-- Claude Code 团队 —— hook 协议设计
+```powershell
+dotnet publish src\ChronoIsle.App\ChronoIsle.App.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=false `
+  -o publish\ChronoIsle
+```
 
-## 📄 License
+## 项目结构
 
-[MIT](LICENSE) © 2025 ludiwangfpga
+```text
+ChronoIsle.sln
+├─ src/
+│  ├─ ChronoIsle.App/       当前 WPF 桌面应用
+│  ├─ ChronoIsle.Core/      共享基础组件
+│  ├─ ChronoIsle.Hooks/     命令行 Hook 组件
+│  └─ ChronoIsle.Setup/     Hook 安装与配置工具
+├─ tests/
+│  ├─ ChronoIsle.Tests/     领域、存储、调度与定位测试
+│  └─ ChronoIsle.UiTests/   WPF 窗口和交互契约测试
+├─ scripts/                 开发、发布和重启脚本
+├─ installer/               Inno Setup 安装脚本
+└─ docs/                    设计、工程约束和实现记录
+```
+
+当前桌面应用的主要运行链路：
+
+```text
+WPF 窗口
+  ├─ 灵动岛 / 托盘
+  ├─ AI 对话
+  ├─ 事项管理
+  ├─ 设置与取名助手
+  │
+  ▼
+应用服务
+  ├─ 事项、日历、提醒与专注
+  ├─ AI 命令解析与确认
+  ├─ 周报、推荐与审计
+  └─ 备份及 ICS 导入导出
+  │
+  ├────────► SQLite / 本地 JSON
+  ├────────► Windows 通知
+  └────────► 用户配置的 OpenAI 兼容模型服务
+```
+
+## 数据与隐私
+
+默认数据目录：
+
+```text
+%APPDATA%\ChronoIsle\
+├─ life-assistant.db       事项、会话、提醒、专注和报表
+├─ life-preferences.json   通知、人格和灵动岛位置
+└─ provider.json           模型配置及 DPAPI 加密后的 API Key
+```
+
+- 核心业务数据保存在本机 SQLite 数据库。
+- 便携备份不包含外部账户令牌；恢复后需要重新配置相关凭据。
+- 只有在使用 AI 对话、自然语言命令或取名助手时，相关输入才会发送到用户配置的模型服务。
+- 本地审计只记录命令、结果状态和时间，不展示事项标题或原始聊天内容。
+
+## 当前边界
+
+- 任务栏吸附仅针对底部横向任务栏。
+- 任务栏图标避让依赖 Windows 可访问性信息；无法识别图标或没有空位时会回退为自由移动。
+- 当前版本以本地数据为主，第三方云日历同步不是默认能力。
+- AI 功能需要用户自行配置兼容的模型服务，模型可用性和数据策略由对应服务提供方决定。
+
+## 参与开发
+
+提交代码前建议至少运行：
+
+```powershell
+dotnet build ChronoIsle.sln --no-restore
+dotnet test ChronoIsle.sln --no-restore
+```
+
+请保持改动范围清晰，并为定位、调度、存储或关键 UI 行为补充相应测试。
+
+## 许可证
+
+[MIT](LICENSE) © 2025 ludiwangfpga；ChronoIsle 修改 © 2026 Tr11111

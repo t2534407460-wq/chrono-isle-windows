@@ -13,8 +13,8 @@
 ### Task 1: 中文枚举显示
 
 **Files:**
-- Modify: `src/OpenIsland.App/Views/LifeIslandWindow.xaml.cs`
-- Modify: `src/OpenIsland.App/Views/LifeManagementWindow.xaml.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeIslandWindow.xaml.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeManagementWindow.xaml.cs`
 
 - [ ] **Step 1: 用中文显示项替代直接绑定枚举**
 
@@ -31,7 +31,7 @@ if (energy.SelectedItem is ComboBoxItem { Tag: EnergyLevel value }) recommendati
 ### Task 2: 收敛事项管理编辑区
 
 **Files:**
-- Modify: `src/OpenIsland.App/Views/LifeManagementWindow.xaml.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeManagementWindow.xaml.cs`
 
 - [ ] **Step 1: 保留优先级与超时宽限作为默认显示控件**
 
@@ -49,8 +49,8 @@ details.Visibility = details.Visibility == Visibility.Visible ? Visibility.Colla
 ### Task 3: 灵动岛管理入口与验证
 
 **Files:**
-- Modify: `src/OpenIsland.App/Views/LifeIslandWindow.xaml.cs`
-- Test: `tests/OpenIsland.Tests/ProductivityServicesTests.cs`
+- Modify: `src/ChronoIsle.App/Views/LifeIslandWindow.xaml.cs`
+- Test: `tests/ChronoIsle.Tests/ProductivityServicesTests.cs`
 
 - [ ] **Step 1: 添加“事项管理”快捷按钮，位于“问 AI”后并复用 `LifeManagementWindow` 打开逻辑。**
 
@@ -67,6 +67,6 @@ Assert.Equal(LifePriority.High, service.Get("todo")!.Priority);
 - [ ] **Step 3: 运行完整测试与差异检查。**
 
 ```powershell
-dotnet test tests\OpenIsland.Tests\OpenIsland.Tests.csproj --no-restore
+dotnet test tests\ChronoIsle.Tests\ChronoIsle.Tests.csproj --no-restore
 git diff --check
 ```

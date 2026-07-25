@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Open Island will be documented here.
+All notable changes to ChronoIsle will be documented here.
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，遵循 [Semantic Versioning](https://semver.org/spec/v2.0.0.html)。
 
@@ -20,7 +20,7 @@ All notable changes to Open Island will be documented here.
 - **区域截图** —— "清理任务"旁新增截图按钮，外加全局快捷键（默认 **Ctrl+Q**，控制中心可录制更改）。微信式逻辑：拖拽框选一个矩形，松手自动裁剪并复制到剪贴板（同时写 Bitmap/DIB 与 PNG 两种格式，粘贴兼容性好），Esc / 右键取消
 - **最近七天 token 用量柱状图** —— 点击 5 小时余额行翻成七天用量柱状图（按天聚合 token，用量越多绿色越深越高，右侧只显示总量），再点切回余额。默认余额；切换状态持久化，下次启动灵动岛恢复关闭时的状态
 - **全新橙色 Claude 小宠物表情** —— 头部精灵换成橙色 Claude 路障小宠物，并为各状态/交互配了动画：工作中戴眼镜思考、需关注头顶问号、完成放烟花、空闲随机（眨眼 / wink / 睡觉吐泡泡 / 喝可乐，每 3 分钟随机切换）、媒体控制戴耳机、点击彩蛋（龟派气功）、关闭挥手拜拜
-- **圆形关机键关闭按钮** —— "Open Island" 头部右侧新增圆形电源键，点击挥手告别后隐藏灵动岛；托盘菜单"显示灵动岛"可再次叫出
+- **圆形关机键关闭按钮** —— "ChronoIsle" 头部右侧新增圆形电源键，点击挥手告别后隐藏灵动岛；托盘菜单"显示灵动岛"可再次叫出
 
 ### Changed
 
@@ -55,7 +55,7 @@ All notable changes to Open Island will be documented here.
 
 - **提示音** —— 会话从 Running → Idle/Completed（任务完成）以及进入需关注状态（橙色权限 / 红色待答）时各响一声，沿状态边缘触发；系统状态栏新增喇叭开关，静音状态持久化
 - **每会话快捷模式按钮** —— 每张会话卡新增小图标按钮（accept edits / auto / plan，hover 显示英文），一键切该 Claude 会话的权限模式
-- **点头部一键清空会话列表** —— 点击 "Open Island" 头部清空当前会话列表；会话下次活动时自动重现
+- **点头部一键清空会话列表** —— 点击 "ChronoIsle" 头部清空当前会话列表；会话下次活动时自动重现
 
 ### Fixed
 
@@ -121,7 +121,7 @@ All notable changes to Open Island will be documented here.
 - **Stats 时间窗** — All / 30d / 7d 三档时间范围切换
 - **Hooks auto-install** — 启动时自动注册 `PreToolUse` / `PostToolUse` / `Stop` 三个 Claude Code hook
 - **Apple-flat UI** — 控制中心 / 灵动岛权限面板配色统一深色 macOS 风（`#1C1C1E` 背景 / `#0A84FF` 主色 / 系统标题栏跟随暗色主题）
-- **Smoke test** — `tests/OpenIsland.SmokeTest`，跑活的 `~/.claude/projects/` 数据回归测试
+- **Smoke test** — `tests/ChronoIsle.SmokeTest`，跑活的 `~/.claude/projects/` 数据回归测试
 
 ### Fixed
 
@@ -138,8 +138,8 @@ All notable changes to Open Island will be documented here.
 - Permission 面板按钮配色从 3 色改为 Apple 风 2 色（白底深字 = 主，深底浅字 = 次）
 - Token 百分比统一口径（分子分母都含 cache token，加和恒等于 100%）
 
-[Unreleased]: https://github.com/ludiwangfpga/open-island-windows/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/ludiwangfpga/open-island-windows/releases/tag/v0.2.2
-[0.2.1]: https://github.com/ludiwangfpga/open-island-windows/releases/tag/v0.2.1
-[0.2.0]: https://github.com/ludiwangfpga/open-island-windows/releases/tag/v0.2.0
-[0.1.0]: https://github.com/ludiwangfpga/open-island-windows/releases/tag/v0.1.0
+[Unreleased]: https://gitee.com/Tr11111/chrono-isle-windows/compare/v0.2.2...HEAD
+[0.2.2]: https://gitee.com/Tr11111/chrono-isle-windows/releases/tag/v0.2.2
+[0.2.1]: https://gitee.com/Tr11111/chrono-isle-windows/releases/tag/v0.2.1
+[0.2.0]: https://gitee.com/Tr11111/chrono-isle-windows/releases/tag/v0.2.0
+[0.1.0]: https://gitee.com/Tr11111/chrono-isle-windows/releases/tag/v0.1.0

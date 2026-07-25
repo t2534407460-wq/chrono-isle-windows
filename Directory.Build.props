@@ -1,14 +1,17 @@
 <Project>
   <!-- 集中元信息：四个 .csproj 都自动继承，不必逐个改 -->
   <PropertyGroup>
-    <Authors>ludiwangfpga</Authors>
-    <Company>Open Island</Company>
-    <Product>Open Island</Product>
-    <Copyright>Copyright (c) 2025 ludiwangfpga</Copyright>
-    <RepositoryUrl>https://github.com/ludiwangfpga/open-island-windows</RepositoryUrl>
+    <Authors>Tr11111; ludiwangfpga</Authors>
+    <Company>ChronoIsle</Company>
+    <Product>时屿 ChronoIsle</Product>
+    <AssemblyTitle>时屿 ChronoIsle</AssemblyTitle>
+    <Description>常驻 Windows 桌面的本地生活与效率助手</Description>
+    <Copyright>Copyright (c) 2025 ludiwangfpga; ChronoIsle modifications Copyright (c) 2026 Tr11111</Copyright>
+    <RepositoryUrl>https://gitee.com/Tr11111/chrono-isle-windows</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/ludiwangfpga/open-island-windows</PackageProjectUrl>
+    <PackageProjectUrl>https://gitee.com/Tr11111/chrono-isle-windows</PackageProjectUrl>
 
     <Version>0.4.1</Version>
     <AssemblyVersion>0.4.1.0</AssemblyVersion>

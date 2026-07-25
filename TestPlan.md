@@ -1,4 +1,4 @@
-# Open Island 本地功能测试计划
+# ChronoIsle 本地功能测试计划
 
 更新日期：2026-07-21  
 适用版本：当前工作区（.NET 8 / WPF / SQLite / xUnit）  
@@ -14,7 +14,7 @@
 | 单次/重复提醒投递 | 后端已实现 | `ReminderDeliveryStore`、`NotificationOutboxStore`、`NotificationDispatcher` 有独占领取、重试和幂等键测试 |
 | SQLite 初始化及旧库迁移 | 已实现 | 迁移幂等、失败回滚、旧四类数据迁移已有自动化测试 |
 | Windows 通知 | 已接线，需隔离验收 | 已有 `INotificationTransport` 用于新出站；旧 `WindowsNotificationService` 仍需适配 fake |
-| WPF 悬浮窗与生活助手 UI | 已实现（P2 手工验收保留） | `tests/OpenIsland.UiTests` 已验证关键 `AutomationId` 合约；专用 UIA 命令在隔离进程中验证悬浮窗可见性 |
+| WPF 悬浮窗与生活助手 UI | 已实现（P2 手工验收保留） | `tests/ChronoIsle.UiTests` 已验证关键 `AutomationId` 合约；专用 UIA 命令在隔离进程中验证悬浮窗可见性 |
 | DeepSeek 客户端隔离 | 已实现（OpenAI-compatible） | `IChatCompletionClient` 抽象已注入命令解析与执行服务；生产端仍使用 `OpenAiChatService`，测试可注入 fake，自动化无需真实 API |
 | 启动、休眠、重启恢复 | 已实现（补发策略待产品确认） | `ReminderService.ScanOnceAsync(now)` 可由启动恢复和测试显式调用；提醒领取、出站与幂等状态持久化 |
 | 外部同步 | 不纳入本轮 | 仓库中存在 Microsoft Graph / ICS 代码，但按本轮范围不作为发布阻断测试对象 |
@@ -49,10 +49,10 @@
 ## 5. 测试分层与项目结构
 
 ```text
-tests/OpenIsland.Tests/                 # xUnit：领域、命令、SQLite、服务和 ViewModel
-tests/OpenIsland.Tests/TestDoubles/     # FakeClock、FakeDeepSeekClient、FakeNotificationSender、临时 DB fixture
-tests/OpenIsland.UiTests/               # 后续：少量 Windows UIA 冒烟，单独分类
-tests/OpenIsland.SmokeTest/             # 已有：发布后启动/退出探针
+tests/ChronoIsle.Tests/                 # xUnit：领域、命令、SQLite、服务和 ViewModel
+tests/ChronoIsle.Tests/TestDoubles/     # FakeClock、FakeDeepSeekClient、FakeNotificationSender、临时 DB fixture
+tests/ChronoIsle.UiTests/               # 后续：少量 Windows UIA 冒烟，单独分类
+tests/ChronoIsle.SmokeTest/             # 已有：发布后启动/退出探针
 ```
 
 所有数据库测试创建 GUID 命名的临时 SQLite 文件；清理 WAL/SHM，绝不连接 `%AppData%` 或用户生产库。测试不使用真实网络、不调用 `Thread.Sleep`，时间均由 fake 时钟推进。一个测试只验证一个主要行为。
@@ -172,29 +172,29 @@ tests/OpenIsland.SmokeTest/             # 已有：发布后启动/退出探针
 6. **ViewModel/UI 冒烟**：完成 UI-001~004；验收为启动、展开、输入、确认、退出主链路。
 7. **发布门禁**：所有 P0 自动测试通过；P1 失败须有批准的豁免；Windows 10/11 冒烟通过；待确认规则不得被静默假设。
 
-每阶段都记录新增/修改文件、测试数量、运行命令、通过/失败数、业务缺陷、生产改动理由和剩余风险。默认命令：`dotnet test OpenIsland.sln --no-restore`；外部与 UIA 用分类过滤后单独运行。
+每阶段都记录新增/修改文件、测试数量、运行命令、通过/失败数、业务缺陷、生产改动理由和剩余风险。默认命令：`dotnet test ChronoIsle.sln --no-restore`；外部与 UIA 用分类过滤后单独运行。
 
 ## 16. 修正记录
 
 | 编号 | 日期 | 修正项 | 变更 | 验证 | 状态 |
 |---|---|---|---|---|---|
-| FIX-001 | 2026-07-22 | NFR-003 / 测试时钟 | `TodayDashboardServiceTests.SnapshotSeparatesTodayOverdueAndInbox_UsingCanonicalRows` 不再依赖真实系统时间，避免跨越本地午夜时将昨日逾期事项错误断言为“今日”。 | `dotnet test OpenIsland.sln --no-restore`：271/271 通过。 | 已验证 |
-| FIX-002 | 2026-07-22 | AI-001/011/012/015 / 客户端隔离 | 新增 `IChatCompletionClient`；命令解析、旧解析器与执行服务均依赖抽象，应用启动时绑定 `OpenAiChatService`。 | fake 注入测试；`dotnet test OpenIsland.sln --no-restore`：271/271 通过。 | 已验证 |
-| FIX-003 | 2026-07-22 | REM-005 / 可控恢复扫描 | `ReminderService` 增加 `ScanOnceAsync(now)`；定时轮询委托该入口，扫描业务时间完全由调用方提供。 | 新增同一时刻重复扫描仅投递一次的测试；`dotnet test OpenIsland.sln --no-restore`：271/271 通过。 | 已验证 |
-| FIX-004 | 2026-07-22 | TIME-001~005 / 业务时钟 | `LifeDataService` 及其提醒子存储改用可注入 `Func<DateTime>`，不再直接读取系统时钟；提醒扫描使用显式 `now`。 | 新增持久化时间戳使用注入时钟的测试；`dotnet test OpenIsland.sln --no-restore`：271/271 通过。 | 已验证 |
-| FIX-005 | 2026-07-22 | UI-001/003/004 / UIA 基线 | 为主窗口和悬浮窗的根元素、输入、发送、确认、取消、展开与快速添加控件配置稳定 `AutomationId`。 | WPF 项目由全量测试构建验证；`dotnet test OpenIsland.sln --no-restore`：271/271 通过。独立 UIA 进程工程仍待建立。 | 已验证 |
+| FIX-001 | 2026-07-22 | NFR-003 / 测试时钟 | `TodayDashboardServiceTests.SnapshotSeparatesTodayOverdueAndInbox_UsingCanonicalRows` 不再依赖真实系统时间，避免跨越本地午夜时将昨日逾期事项错误断言为“今日”。 | `dotnet test ChronoIsle.sln --no-restore`：271/271 通过。 | 已验证 |
+| FIX-002 | 2026-07-22 | AI-001/011/012/015 / 客户端隔离 | 新增 `IChatCompletionClient`；命令解析、旧解析器与执行服务均依赖抽象，应用启动时绑定 `OpenAiChatService`。 | fake 注入测试；`dotnet test ChronoIsle.sln --no-restore`：271/271 通过。 | 已验证 |
+| FIX-003 | 2026-07-22 | REM-005 / 可控恢复扫描 | `ReminderService` 增加 `ScanOnceAsync(now)`；定时轮询委托该入口，扫描业务时间完全由调用方提供。 | 新增同一时刻重复扫描仅投递一次的测试；`dotnet test ChronoIsle.sln --no-restore`：271/271 通过。 | 已验证 |
+| FIX-004 | 2026-07-22 | TIME-001~005 / 业务时钟 | `LifeDataService` 及其提醒子存储改用可注入 `Func<DateTime>`，不再直接读取系统时钟；提醒扫描使用显式 `now`。 | 新增持久化时间戳使用注入时钟的测试；`dotnet test ChronoIsle.sln --no-restore`：271/271 通过。 | 已验证 |
+| FIX-005 | 2026-07-22 | UI-001/003/004 / UIA 基线 | 为主窗口和悬浮窗的根元素、输入、发送、确认、取消、展开与快速添加控件配置稳定 `AutomationId`。 | WPF 项目由全量测试构建验证；`dotnet test ChronoIsle.sln --no-restore`：271/271 通过。独立 UIA 进程工程仍待建立。 | 已验证 |
 
 | FIX-006 | 2026-07-22 | REC-005 / REM-005 / 删除语义 | 以工程冻结规格取代计划中的待产品确认：单期 override、重启恢复扫描和回收站 tombstone 语义均有权威定义。 | 已核对 `docs/engineering-freeze/01-life-item-model.md` 与 `05-reminder-scheduling.md`；实现与测试继续按该定义补齐。 | 已验证规格 |
-| FIX-007 | 2026-07-22 | FUN-006 / 删除恢复 | `TodayDashboardService.RestoreDeletedItem` 提供行版本保护的显式恢复；恢复 tombstone 时将已取消/忽略项恢复为 Pending。 | 新增旧版本恢复被拒绝、正确版本恢复成功的测试；`dotnet test OpenIsland.sln --no-restore`：272/272 通过。 | 已验证 |
-| FIX-008 | 2026-07-22 | REC-003 / 月末重复 | 月度 31 日在短月跳过，不移至月末；结构化 create_recurring_task 已使用 MonthlyRecurrenceCalculator 生成首个 occurrence。 | 普通年、闰年和结构化命令管线测试；dotnet test OpenIsland.sln --no-restore：275/275 通过。 | 已验证 |
+| FIX-007 | 2026-07-22 | FUN-006 / 删除恢复 | `TodayDashboardService.RestoreDeletedItem` 提供行版本保护的显式恢复；恢复 tombstone 时将已取消/忽略项恢复为 Pending。 | 新增旧版本恢复被拒绝、正确版本恢复成功的测试；`dotnet test ChronoIsle.sln --no-restore`：272/272 通过。 | 已验证 |
+| FIX-008 | 2026-07-22 | REC-003 / 月末重复 | 月度 31 日在短月跳过，不移至月末；结构化 create_recurring_task 已使用 MonthlyRecurrenceCalculator 生成首个 occurrence。 | 普通年、闰年和结构化命令管线测试；dotnet test ChronoIsle.sln --no-restore：275/275 通过。 | 已验证 |
 
-| FIX-009 | 2026-07-22 | REC-005 / occurrence override | 新增 OccurrenceOverrideStore，以系列、规则版本、原本地/UTC 时间和时区组成稳定键；同键更新只替换当前 occurrence。 | 新增 override 原子替换测试；dotnet test OpenIsland.sln --no-restore：276/276 通过。 | 已验证 |
+| FIX-009 | 2026-07-22 | REC-005 / occurrence override | 新增 OccurrenceOverrideStore，以系列、规则版本、原本地/UTC 时间和时区组成稳定键；同键更新只替换当前 occurrence。 | 新增 override 原子替换测试；dotnet test ChronoIsle.sln --no-restore：276/276 通过。 | 已验证 |
 
-| FIX-010 | 2026-07-22 | UI-001/003/004 / 独立测试工程 | 新增 tests/OpenIsland.UiTests 并纳入解决方案，验证主窗口和悬浮窗关键 AutomationId 的稳定合约；CI 已运行该工程。 | dotnet test OpenIsland.sln --no-restore：主测试 276/276、UI 合约 2/2 通过。真实进程 UIA 冒烟待建立。 | 已验证 |
+| FIX-010 | 2026-07-22 | UI-001/003/004 / 独立测试工程 | 新增 tests/ChronoIsle.UiTests 并纳入解决方案，验证主窗口和悬浮窗关键 AutomationId 的稳定合约；CI 已运行该工程。 | dotnet test ChronoIsle.sln --no-restore：主测试 276/276、UI 合约 2/2 通过。真实进程 UIA 冒烟待建立。 | 已验证 |
 
-| FIX-011 | 2026-07-22 | UI-004 / 真实 UIA 冒烟 | UIA 测试模式使用临时数据库并跳过 Windows 通知注册；专用命令以独立进程启动 Island，通过 AutomationId 验证悬浮窗可见性后安全退出。 | OPENISLAND_RUN_UIA=1 dotnet test tests/OpenIsland.UiTests/OpenIsland.UiTests.csproj --no-restore --filter Category=UIA：1/1 通过。 | 已验证 |
+| FIX-011 | 2026-07-22 | UI-004 / 真实 UIA 冒烟 | UIA 测试模式使用临时数据库并跳过 Windows 通知注册；专用命令以独立进程启动 Island，通过 AutomationId 验证悬浮窗可见性后安全退出。 | CHRONOISLE_RUN_UIA=1 dotnet test tests/ChronoIsle.UiTests/ChronoIsle.UiTests.csproj --no-restore --filter Category=UIA：1/1 通过。 | 已验证 |
 
-| FIX-012 | 2026-07-22 | REC-005 / 单次 override 入口 | 周期提醒的跳过、稍后提醒与改单次改期均写入稳定 occurrence override；悬浮窗的“跳过本次”和“改时间”已分别调用对应业务 API，系列规则不被改写。 | 新增周期 occurrence 跳过→改单次改期回归测试；定向 ReminderSnoozeTests 与 OccurrenceOverrideStoreTests：5/5 通过；最终全量 OpenIsland.Tests 277/277、UI 合约 3/3 通过。 | 已验证 |
+| FIX-012 | 2026-07-22 | REC-005 / 单次 override 入口 | 周期提醒的跳过、稍后提醒与改单次改期均写入稳定 occurrence override；悬浮窗的“跳过本次”和“改时间”已分别调用对应业务 API，系列规则不被改写。 | 新增周期 occurrence 跳过→改单次改期回归测试；定向 ReminderSnoozeTests 与 OccurrenceOverrideStoreTests：5/5 通过；最终全量 ChronoIsle.Tests 277/277、UI 合约 3/3 通过。 | 已验证 |
 | FIX-013 | 2026-07-22 | 下一行动问题定位 | 初次将工作日提醒纳入 `NextAgenda()`；经界面澄清后确认该入口属于灵动岛，不应显示长期提醒，最终方案见 FIX-015。 | 初步回归通过；后续由 FIX-015 覆盖最终 UI 归属与行为。 | 已替代 |
 | FIX-014 | 2026-07-22 | 本地发布 / .NET 运行时 | 发布脚本不再覆盖 Debug 构建目录，改用专用 Release publish 目录，以保证桌面快捷方式指向自包含 .NET 8 x64 产物。 | 已发布并核对 runtimeconfig 使用 `includedFrameworks`；桌面快捷方式启动专用自包含发布物。 | 已验证 |
 | FIX-015 | 2026-07-22 | 今日作战 / 下一行动 | 灵动岛的 `NextAgenda()` 继续排除长期周期提醒；今日作战的 `TodayDashboardService` 单独动态展开周期提醒，并将最近 occurrence 与普通事项按时间排序。 | 固定周三晚间场景验证今日作战选择周四 00:00 的法定工作日提醒、灵动岛不纳入长期提醒；定向 8/8，全量主测试 278/278、UI 合约 3/3 通过。 | 已验证 |

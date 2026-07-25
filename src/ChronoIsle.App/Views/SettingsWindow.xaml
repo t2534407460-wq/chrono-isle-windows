@@ -1,0 +1,149 @@
+<Window x:Class="ChronoIsle.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ChronoIsle.App"
+        xmlns:svc="clr-namespace:ChronoIsle.App.Services"
+        Title="{Binding [Settings_Title], Source={x:Static svc:Loc.Instance}}"
+        Width="600" Height="720"
+        Background="#1C1C1E"
+        Foreground="#F2F2F7"
+        FontFamily="Segoe UI Variable, Segoe UI"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#E5E5EA"/>
+            <Setter Property="Background" Value="#2C2C2E"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A3A3C"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#0A84FF"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="#2C2C2E"/>
+            <Setter Property="Foreground" Value="#F2F2F7"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#34343A"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#0A84FF"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#2C2C2E"/>
+            <Setter Property="Foreground" Value="#F2F2F7"/>
+            <Setter Property="BorderBrush" Value="#3A3A3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="CaretBrush" Value="#F2F2F7"/>
+            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Setter Property="Foreground" Value="#8E8E93"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- ── 语言 / Language ── -->
+                <TextBlock Text="{Binding [Settings_Language], Source={x:Static svc:Loc.Instance}}"
+                           FontSize="18" FontWeight="Bold" Foreground="#F2F2F7"/>
+                <TextBlock Margin="0,4,0,8" FontSize="12" Foreground="#8E8E93" TextWrapping="Wrap"
+                           Text="{Binding [Settings_Language_Desc], Source={x:Static svc:Loc.Instance}}"/>
+                <ComboBox x:Name="LanguageCombo" Style="{StaticResource ClaudeCombo}"
+                          Width="220" HorizontalAlignment="Left" SelectionChanged="Language_Changed">
+                    <ComboBoxItem Tag="auto" Content="{Binding [Lang_Auto], Source={x:Static svc:Loc.Instance}}"/>
+                    <ComboBoxItem Tag="zh" Content="{Binding [Lang_Zh], Source={x:Static svc:Loc.Instance}}"/>
+                    <ComboBoxItem Tag="en" Content="{Binding [Lang_En], Source={x:Static svc:Loc.Instance}}"/>
+                </ComboBox>
+
+                <!-- ── 区域截图快捷键 / Screenshot hotkey ── -->
+                <TextBlock Text="{Binding [Settings_Screenshot], Source={x:Static svc:Loc.Instance}}"
+                           FontSize="18" FontWeight="Bold" Foreground="#F2F2F7" Margin="0,22,0,0"/>
+                <TextBlock Margin="0,4,0,8" FontSize="12" Foreground="#8E8E93" TextWrapping="Wrap"
+                           Text="{Binding [Settings_Screenshot_Desc], Source={x:Static svc:Loc.Instance}}"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding [Settings_Screenshot_Hotkey], Source={x:Static svc:Loc.Instance}}"
+                               Foreground="#C7C7CC" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Button x:Name="HotkeyBox" Width="180" HorizontalAlignment="Left"
+                            Click="HotkeyBox_Click" PreviewKeyDown="HotkeyBox_PreviewKeyDown"/>
+                </StackPanel>
+
+                <!-- ── 工作区目录 ── -->
+                <TextBlock Text="{Binding [Settings_Workspaces], Source={x:Static svc:Loc.Instance}}"
+                           FontSize="18" FontWeight="Bold" Foreground="#F2F2F7" Margin="0,22,0,0"/>
+                <TextBlock Margin="0,4,0,12" FontSize="12" Foreground="#8E8E93" TextWrapping="Wrap"
+                           Text="{Binding [Settings_Workspaces_Desc], Source={x:Static svc:Loc.Instance}}"/>
+                <Border Background="#2C2C2E" CornerRadius="10" Padding="2">
+                    <ListBox x:Name="WorkspacesList" SelectionMode="Single" Height="120"/>
+                </Border>
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="{Binding [Settings_AddDir], Source={x:Static svc:Loc.Instance}}" Click="AddWorkspace_Click"/>
+                    <Button Content="{Binding [Settings_RemoveSel], Source={x:Static svc:Loc.Instance}}" Click="RemoveWorkspace_Click"/>
+                </StackPanel>
+
+                <!-- ── AI 助手 / 模型 / Providers：占位，阶段 7 在此填充 LLM Provider 配置 UI ── -->
+                <TextBlock Text="{Binding [Settings_Models], Source={x:Static svc:Loc.Instance}}" FontSize="18" FontWeight="Bold" Foreground="#F2F2F7" Margin="0,26,0,0"/>
+                <TextBlock Margin="0,4,0,12" FontSize="12" Foreground="#8E8E93" TextWrapping="Wrap"
+                           Text="（AI 助手配置将在后续阶段接入：DeepSeek / 小米 MiMo 等 OpenAI 兼容服务）"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,16,0,0" HorizontalAlignment="Right">
+            <Button Content="{Binding [Settings_Cancel], Source={x:Static svc:Loc.Instance}}" Click="CancelButton_Click"/>
+            <Button Content="{Binding [Settings_Save], Source={x:Static svc:Loc.Instance}}" Style="{StaticResource PrimaryButton}" Margin="0" Click="SaveButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

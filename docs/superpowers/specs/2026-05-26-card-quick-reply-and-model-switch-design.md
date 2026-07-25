@@ -29,7 +29,7 @@ A single mechanism used by both features. Inputs: a target session + the text to
 - **Desktop path:** reuse the existing Claude Desktop UIA approach (`ActivateClaudeDesktopWindow` + `SetFocus` on the message input element) to focus the Electron input, verify foreground, then paste + Enter.
 - **Empty/whitespace text:** no-op. **Length cap:** reject absurdly long input (e.g. > 16 KB) to avoid pathological pastes.
 
-### New service surface (OpenIsland.App / TerminalJumpService)
+### New service surface (ChronoIsle.App / TerminalJumpService)
 - `Task<InjectResult> SendTextToTerminalAsync(int claudePid, string text, bool submit)`
 - `Task<InjectResult> SendTextToClaudeDesktopAsync(string sessionId, string text, bool submit)`
 - `InjectResult` = `{ bool Ok; string? Reason }` so the card can show a precise status ("没找到终端" / "没切到前台，已取消" / "已发送").
@@ -43,7 +43,7 @@ A single mechanism used by both features. Inputs: a target session + the text to
 ## Feature 2: Model switch
 
 ### Data model — `ModelProfile`
-A named entry the user can switch a session to. Stored in OpenIsland settings (extend `WorkspaceSettings` → `%APPDATA%\OpenIsland\settings.json`).
+A named entry the user can switch a session to. Stored in ChronoIsle settings (extend `WorkspaceSettings` → `%APPDATA%\ChronoIsle\settings.json`).
 
 ```
 ModelProfile {
@@ -77,11 +77,11 @@ ModelProfile {
 ### Per-card toggle UI
 - A compact dropdown/cycle control on each card showing the active profile for that session.
 - Picking a `ClaudeModel` → immediate inject. Picking a `ThirdParty` → write env + toast "新 CLI 会话生效".
-- "Active provider" for the global third-party case is tracked in OpenIsland settings.
+- "Active provider" for the global third-party case is tracked in ChronoIsle settings.
 
 ## Testable units (TDD) vs manual verification
 
-**Unit-testable (xUnit, OpenIsland.Tests):**
+**Unit-testable (xUnit, ChronoIsle.Tests):**
 - `ModelProfile` store: add/edit/delete/serialize round-trip; default profile always present & protected.
 - settings.json **env merge**: applying a ThirdParty profile sets exactly the managed `ANTHROPIC_*` keys, preserves all other settings/keys; selecting official removes only the managed keys. (Pure `JsonObject` function, like the hook merge.)
 - `/model` command construction from a ClaudeModel profile.
@@ -103,5 +103,5 @@ ModelProfile {
 ## Out of scope / caveats
 - Third-party switch is **not** live, **not** per-running-session, **not** for Desktop — it sets the provider for **new CLI sessions** (global `~/.claude/settings.json`). Per-project scoping (`<cwd>/.claude/settings.json`) is a possible future refinement.
 - Windows Terminal's multi-line paste warning (if enabled by the user) may show on multi-line sends.
-- No secret encryption for stored third-party API keys in v1 (stored in OpenIsland settings.json like other config) — note for the user.
+- No secret encryption for stored third-party API keys in v1 (stored in ChronoIsle settings.json like other config) — note for the user.
 ```

@@ -31,11 +31,11 @@ jobs:
           "Version: $version, Tag: $tag"
 
       - name: Restore
-        run: dotnet restore OpenIsland.sln
+        run: dotnet restore ChronoIsle.sln
 
-      - name: Publish OpenIsland.App (self-contained, win-x64)
+      - name: Publish ChronoIsle.App (self-contained, win-x64)
         run: |
-          dotnet publish src/OpenIsland.App/OpenIsland.App.csproj `
+          dotnet publish src/ChronoIsle.App/ChronoIsle.App.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
@@ -43,19 +43,19 @@ jobs:
             -p:Version=${{ steps.ver.outputs.version }} `
             -o publish/app
 
-      - name: Publish OpenIsland.Hooks
+      - name: Publish ChronoIsle.Hooks
         # Hooks 必须带完整运行时（.deps.json / .runtimeconfig.json / System.CommandLine.dll 等）—— 见 deploy.ps1
         run: |
-          dotnet publish src/OpenIsland.Hooks/OpenIsland.Hooks.csproj `
+          dotnet publish src/ChronoIsle.Hooks/ChronoIsle.Hooks.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
             -p:Version=${{ steps.ver.outputs.version }} `
             -o publish/hooks
 
-      - name: Publish OpenIsland.Setup
+      - name: Publish ChronoIsle.Setup
         run: |
-          dotnet publish src/OpenIsland.Setup/OpenIsland.Setup.csproj `
+          dotnet publish src/ChronoIsle.Setup/ChronoIsle.Setup.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
@@ -65,14 +65,14 @@ jobs:
       - name: Stage final layout
         shell: pwsh
         run: |
-          $stage = "publish/OpenIsland-${{ steps.ver.outputs.tag }}-win-x64"
+          $stage = "publish/ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64"
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
           # 拷贝顺序关键：先 hooks/setup（net8.0），最后 App（net8.0-windows）。
           # 三个 self-contained 发布有同名 DLL 冲突，最后写入的赢。
           # 关键冲突文件 WindowsBase.dll：
           #   - net8.0 publish 产出 16 KB / AssemblyVersion=4.0.0.0 的 .NET Framework 兼容 facade
           #   - net8.0-windows publish 产出 2.2 MB / AssemblyVersion=8.0.0.0 的 WPF 真实现
-          # OpenIsland.exe (WPF) 运行时绑定 8.0.0.0，必须让 App 的真实现胜出 —— 否则启动
+          # ChronoIsle.exe (WPF) 运行时绑定 8.0.0.0，必须让 App 的真实现胜出 —— 否则启动
           # FileNotFoundException for WindowsBase 8.0.0.0，进程秒挂、屏幕没任何反应。
           # 经在 release 0.1.0 复现：旧顺序（App 在最前）会让 facade 覆盖真实现。
           Copy-Item publish/hooks/* $stage -Recurse -Force
@@ -85,8 +85,8 @@ jobs:
       - name: Create ZIP
         shell: pwsh
         run: |
-          $stage = "publish/OpenIsland-${{ steps.ver.outputs.tag }}-win-x64"
-          $zip = "publish/OpenIsland-${{ steps.ver.outputs.tag }}-win-x64.zip"
+          $stage = "publish/ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64"
+          $zip = "publish/ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64.zip"
           Compress-Archive -Path $stage/* -DestinationPath $zip -Force
           Get-ChildItem $zip
 
@@ -94,7 +94,7 @@ jobs:
         # ISCC.exe 在 windows-latest runner 默认预装在 C:\Program Files (x86)\Inno Setup 6\
         env:
           APP_VERSION: ${{ steps.ver.outputs.version }}
-          STAGING_DIR: ${{ github.workspace }}\publish\OpenIsland-${{ steps.ver.outputs.tag }}-win-x64
+          STAGING_DIR: ${{ github.workspace }}\publish\ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
@@ -102,26 +102,26 @@ jobs:
             Write-Host "Inno Setup 没找到，安装中..."
             choco install innosetup --no-progress -y
           }
-          & $iscc /Qp "installer\openisland.iss"
+          & $iscc /Qp "installer\chronoisle.iss"
           Get-ChildItem installer-output
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            publish/OpenIsland-${{ steps.ver.outputs.tag }}-win-x64.zip
-            installer-output/OpenIsland-Setup-${{ steps.ver.outputs.version }}-win-x64.exe
+            publish/ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64.zip
+            installer-output/ChronoIsle-Setup-${{ steps.ver.outputs.version }}-win-x64.exe
           generate_release_notes: true
           body: |
-            **Open Island ${{ steps.ver.outputs.tag }}**
+            **ChronoIsle ${{ steps.ver.outputs.tag }}**
 
             ## 下载方式
 
-            🟢 **推荐 · 普通用户** — 下载 `OpenIsland-Setup-${{ steps.ver.outputs.version }}-win-x64.exe`，双击安装。
-            自动装到 `%LOCALAPPDATA%\OpenIsland`，无需管理员；可在 Add/Remove Programs 卸载。
+            🟢 **推荐 · 普通用户** — 下载 `ChronoIsle-Setup-${{ steps.ver.outputs.version }}-win-x64.exe`，双击安装。
+            自动装到 `%LOCALAPPDATA%\ChronoIsle`，无需管理员；可在 Add/Remove Programs 卸载。
 
-            🟦 **绿色版 · 老司机** — 下载 `OpenIsland-${{ steps.ver.outputs.tag }}-win-x64.zip`，
-            右键属性 → 解除锁定 → 解压 → 双击 `OpenIsland.exe`。
+            🟦 **绿色版 · 老司机** — 下载 `ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64.zip`，
+            右键属性 → 解除锁定 → 解压 → 双击 `ChronoIsle.exe`。
 
             ## 注意
 
@@ -129,4 +129,4 @@ jobs:
 
             首次启动会自动注册 Claude Code hooks 到 `~/.claude/settings.json`。
 
-            完整变更：[CHANGELOG](https://github.com/ludiwangfpga/open-island-windows/blob/main/CHANGELOG.md)
+            完整变更：[CHANGELOG](https://gitee.com/Tr11111/chrono-isle-windows/blob/main/CHANGELOG.md)
