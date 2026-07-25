@@ -101,6 +101,25 @@ public sealed class M0AFoundationTests
         Assert.Equal(1, deliveries);
     }
     [Fact]
+    public async Task ReminderPolling_UsesTheInjectedLocalClockForDueTime()
+    {
+        using var scope = new TempDatabase();
+        var localNow = DateTime.Now.AddHours(1);
+        var data = new LifeDataService(scope.Path, () => localNow);
+        data.SaveReminder("local-clock", null, localNow.AddMinutes(-1));
+        using var service = new ReminderService(
+            data,
+            new LifePreferencesService(),
+            new WindowsNotificationService(),
+            localNow: () => localNow);
+        var deliveries = 0;
+        service.ReminderDue += (_, _) => deliveries++;
+
+        Assert.True(await service.PollNowAsync());
+        Assert.Equal(1, deliveries);
+    }
+
+    [Fact]
     public async Task ReminderPolling_SkipsAnOverlappingTickAndReportsSuccess()
     {
         using var scope = new TempDatabase();

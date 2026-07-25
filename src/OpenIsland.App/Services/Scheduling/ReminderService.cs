@@ -39,6 +39,7 @@ public sealed class ReminderService : IDisposable
     readonly Dictionary<string, AgendaItem> occurrenceItems = new(StringComparer.Ordinal);
     readonly object occurrenceItemsLock = new();
     readonly FocusService? focus;
+    readonly Func<DateTime> localNow;
 
     public event EventHandler<AgendaItem>? ReminderDue;
     public event EventHandler<ReminderSchedulerHealth>? HealthChanged;
@@ -55,12 +56,18 @@ public sealed class ReminderService : IDisposable
 
     public NotificationDispatcherHealth NotificationHealth => notificationDispatcher.Health;
 
-    public ReminderService(LifeDataService data, LifePreferencesService preferences, WindowsNotificationService notifications, FocusService? focus = null)
+    public ReminderService(
+        LifeDataService data,
+        LifePreferencesService preferences,
+        WindowsNotificationService notifications,
+        FocusService? focus = null,
+        Func<DateTime>? localNow = null)
     {
         this.data = data;
         this.preferences = preferences;
         this.notifications = notifications;
         this.focus = focus;
+        this.localNow = localNow ?? (() => DateTime.Now);
         var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
         deliveryStore = new ReminderDeliveryStore(runtime.WriteQueue);
         dueDetector = new ReminderDueDetector(deliveryStore);
@@ -114,6 +121,17 @@ public sealed class ReminderService : IDisposable
         return deleted;
     }
 
+    public void Archive(AgendaItem item) => Archive([item]);
+
+    public int Archive(IEnumerable<AgendaItem> items)
+    {
+        var targets = items.GroupBy(item => (item.Kind, item.Id)).Select(group => group.First()).ToList();
+        foreach (var item in targets) notifications.Remove(item);
+        var archived = data.ArchiveAgendaItems(targets);
+        RefreshSchedule();
+        return archived;
+    }
+
     public void Cancel(AgendaItem item) => notifications.Remove(item);
 
     public bool IsDoNotDisturbEnabled => preferences.Load().DoNotDisturbEnabled;
@@ -130,11 +148,15 @@ public sealed class ReminderService : IDisposable
         preferences.Save(current with { FullScreenSilentEnabled = enabled }); RefreshSchedule();
     }
 
-    public Task<bool> PollNowAsync() => ScanOnceAsync(DateTimeOffset.UtcNow);
+    public Task<bool> PollNowAsync() => ScanOnceAsync(localNow());
 
-    public async Task<bool> ScanOnceAsync(DateTimeOffset nowUtc)
+    public Task<bool> ScanOnceAsync(DateTimeOffset now) =>
+        ScanOnceAsync(now.ToLocalTime().DateTime);
+
+    public async Task<bool> ScanOnceAsync(DateTime now)
     {
-        nowUtc = nowUtc.ToUniversalTime();
+        var currentLocalTime = NormalizeLocalTime(now);
+        var nowUtc = new DateTimeOffset(currentLocalTime).ToUniversalTime();
         if (Volatile.Read(ref disposed) != 0) return false;
         if (!await pollGate.WaitAsync(0).ConfigureAwait(false))
         {
@@ -145,7 +167,7 @@ public sealed class ReminderService : IDisposable
         UpdateHealth(current => current with { IsPolling = true });
         try
         {
-            await Task.Run(() => PollCore(nowUtc)).ConfigureAwait(false);
+            await Task.Run(() => PollCore(currentLocalTime, nowUtc)).ConfigureAwait(false);
             RecordSuccess();
             return true;
         }
@@ -160,10 +182,9 @@ public sealed class ReminderService : IDisposable
         }
     }
 
-    void PollCore(DateTimeOffset nowUtc)
+    void PollCore(DateTime currentLocalTime, DateTimeOffset nowUtc)
     {
-        var localNow = TimeZoneInfo.ConvertTime(nowUtc, TimeZoneInfo.Local).DateTime;
-        var due = data.ClaimDueReminders(localNow);
+        var due = data.ClaimDueReminders(currentLocalTime);
         foreach (var item in due)
         {
             var dueAt = item.RemindAt ?? item.StartsAt;
@@ -231,6 +252,13 @@ public sealed class ReminderService : IDisposable
         RefreshSchedule();
     }
 
+    static DateTime NormalizeLocalTime(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value.ToLocalTime(),
+        DateTimeKind.Local => value,
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Local)
+    };
+
     void RegisterUpcoming(AgendaItem item)
     {
         if (item.RemindAt is not { } dueAt) return;
@@ -272,10 +300,18 @@ public sealed class ReminderService : IDisposable
             request.OccurrenceKey, request.ItemId, request.TargetDeliveryAtUtc, 1,
             request.ClaimToken, DateTimeOffset.UtcNow, request.AttemptCount))
             ?? throw new InvalidOperationException("The reminder item no longer exists.");
-        if (string.Equals(request.ActionType, "ToastAndIsland", StringComparison.Ordinal) &&
-            preferences.Load().WindowsNotifications)
+        var isAudibleAlert = string.Equals(
+            request.ActionType,
+            "ToastAndIsland",
+            StringComparison.Ordinal);
+        if (isAudibleAlert && preferences.Load().WindowsNotifications)
             notifications.ShowNow(item);
         ReminderDue?.Invoke(this, item);
+        if (isAudibleAlert)
+        {
+            try { System.Media.SystemSounds.Exclamation.Play(); }
+            catch { /* Sound failures must not retry or duplicate the reminder. */ }
+        }
         await Task.CompletedTask;
     }
 
