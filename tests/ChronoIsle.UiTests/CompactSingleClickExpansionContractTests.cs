@@ -23,6 +23,27 @@ public sealed class CompactSingleClickExpansionContractTests
         Assert.DoesNotContain("compactContentMinHeight", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TimedRefresh_DoesNotReplaceFocusedDashboardInput()
+    {
+        var workspace = FindWorkspace();
+        var source = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml.cs"));
+
+        Assert.Contains(
+            "todayDashboardContent?.IsKeyboardFocusWithin != true",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "quickInput.TextChanged += (_, _) => Touch();",
+            source,
+            StringComparison.Ordinal);
+    }
+
     static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

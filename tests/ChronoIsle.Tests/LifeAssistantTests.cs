@@ -125,7 +125,21 @@ public sealed class LifeAssistantTests
     }
 
     [Fact]
-    public void ArchiveCompletedAndOverdue_ArchivesAllDatedOneOffItemsBeforeToday()
+    public void IndicatorState_StopsUsingReminderAtItsReminderTime()
+    {
+        using var scope = new TempDatabase();
+        var data = new LifeDataService(scope.Path);
+        var remindAt = new DateTime(2030, 1, 2, 10, 0, 0);
+
+        data.SaveReminder("到点后结束", null, remindAt);
+
+        Assert.Equal(IslandIndicatorState.ReminderOnly, data.GetIslandIndicatorState(remindAt.AddTicks(-1)));
+        Assert.Equal(IslandIndicatorState.Idle, data.GetIslandIndicatorState(remindAt));
+        Assert.Equal(IslandIndicatorState.Idle, data.GetIslandIndicatorState(remindAt.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void ArchiveCompletedAndOverdue_OnlyRecordsTodosAsOverdue()
     {
         using var scope = new TempDatabase();
         var now = new DateTime(2030, 1, 2, 10, 0, 0);
@@ -143,23 +157,28 @@ public sealed class LifeAssistantTests
         data.ArchiveCompletedAndOverdue();
 
         var archived = data.ArchivedTodos();
-        Assert.Equal(3, archived.Count);
-        Assert.Equal(new[] { yesterdayEvent.Id, yesterdayReminder.Id, yesterdayTodo.Id }.Order().ToArray(), archived.Select(item => item.Id).Order().ToArray());
-        Assert.All(archived, item => Assert.Equal("已逾期", item.Reason));
+        Assert.Equal(2, archived.Count);
+        Assert.Equal(new[] { yesterdayEvent.Id, yesterdayTodo.Id }.Order().ToArray(), archived.Select(item => item.Id).Order().ToArray());
+        Assert.Equal("已逾期", archived.Single(item => item.Id == yesterdayTodo.Id).Reason);
+        Assert.Equal("已结束", archived.Single(item => item.Id == yesterdayEvent.Id).Reason);
         Assert.Equal("todo", archived.Single(item => item.Id == yesterdayTodo.Id).Kind);
         Assert.Equal("event", archived.Single(item => item.Id == yesterdayEvent.Id).Kind);
-        Assert.Equal("reminder", archived.Single(item => item.Id == yesterdayReminder.Id).Kind);
 
         var activeIds = data.ManagedItems().Select(item => item.Id).ToHashSet();
         Assert.DoesNotContain(yesterdayTodo.Id, activeIds);
         Assert.DoesNotContain(yesterdayEvent.Id, activeIds);
-        Assert.DoesNotContain(yesterdayReminder.Id, activeIds);
+        Assert.Contains(yesterdayReminder.Id, activeIds);
         Assert.Contains(todayTodo.Id, activeIds);
         Assert.Contains(tomorrow.Id, activeIds);
         Assert.Contains(inbox.Id, activeIds);
         Assert.Contains(todayEvent.Id, activeIds);
         Assert.Contains(todayReminder.Id, activeIds);
         Assert.Contains(recurring.Id, activeIds);
+
+        Assert.Contains(data.ClaimDueReminders(now), item => item.Id == yesterdayReminder.Id);
+        data.ArchiveCompletedAndOverdue();
+        var triggeredReminder = data.ArchivedTodos().Single(item => item.Id == yesterdayReminder.Id);
+        Assert.Equal("已提醒", triggeredReminder.Reason);
     }
 
     [Fact]

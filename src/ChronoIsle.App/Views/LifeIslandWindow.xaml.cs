@@ -25,6 +25,7 @@ public partial class LifeIslandWindow : Window
     const double ExpandedWidth = 620;
     const double SnapThreshold = 28;
     const double UnsnapThreshold = 48;
+    const double TopDockVisibleHeight = 6;
     const double TaskbarIconPadding = 6;
     const double ContextMenuTaskbarProximity = 24;
     const int HeaderDoubleClickMilliseconds = 280;
@@ -62,12 +63,15 @@ public partial class LifeIslandWindow : Window
     bool expanded;
     bool pointerHover;
     int windowBoundsAnimationVersion;
+    int topDockAnimationVersion;
     int expandedContentAnimationVersion;
     int taskbarHeightAnimationVersion;
     bool taskbarHeightAnimationActive;
     bool updatingTaskbarHeaderAnchor;
     double taskbarHeaderAnchorTop;
     bool suppressDoubleClickMouseUp;
+    bool topDockFolded;
+    double topDockUnfoldedTop = double.NaN;
     IslandPlacement placement;
     string? taskbarMonitorDeviceName;
     double taskbarHorizontalRatio = 0.5;
@@ -360,6 +364,7 @@ public partial class LifeIslandWindow : Window
 
     void ApplyPlacementVisuals(Rect? taskbar = null)
     {
+        if (placement != IslandPlacement.Top) ResetTopDockFold();
         var taskbarMode = placement == IslandPlacement.Taskbar && taskbar is Rect;
         Grid.SetRow(Header, taskbarMode ? 1 : 0);
         Grid.SetRow(ExpandedScrollViewer, taskbarMode ? 0 : 1);
@@ -618,7 +623,8 @@ public partial class LifeIslandWindow : Window
         ResizeCollapsedToContent();
         BuildCalendar();
         BuildDayAgenda();
-        if (!HasOpenDropDown()) BuildTodayDashboard();
+        if (!HasOpenDropDown() && todayDashboardContent?.IsKeyboardFocusWithin != true)
+            BuildTodayDashboard();
     }
 
     internal static System.Windows.Media.Brush IndicatorBrush(IslandIndicatorState state) => state switch
@@ -635,7 +641,7 @@ public partial class LifeIslandWindow : Window
         IslandIndicatorState.OverdueTodo => "红色：有待办已超过设置的超时宽限。",
         IslandIndicatorState.DueSoonTodo => "橙色：有未完成待办，将在未来 1 小时内到期。",
         IslandIndicatorState.PendingTodo => "黄色：有未完成待办，且不在未来 1 小时内到期，也未逾期。",
-        IslandIndicatorState.ReminderOnly => "蓝色：只有提醒或日程，没有待办。",
+        IslandIndicatorState.ReminderOnly => "蓝色：有尚未到点的提醒或今日日程，且没有待办。",
         _ => "绿色：没有待办，当前空闲。"
     };
 
@@ -942,6 +948,7 @@ public partial class LifeIslandWindow : Window
             ToolTip = "例如：明早九点提醒我开会"
         };
         var quickSubmit = new Button { Content = "发送", Style = (Style)FindResource("IslandPrimary"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 7, 12, 7), ToolTip = "发送给 AI 助手" };
+        quickInput.TextChanged += (_, _) => Touch();
         quickSubmit.Click += (_, _) => SubmitQuickNaturalLanguage(quickInput);
         quickInput.KeyDown += (_, eventArgs) =>
         {
@@ -1968,6 +1975,11 @@ public partial class LifeIslandWindow : Window
 
     void CollapseWhenForegroundMovesToAnotherProcess()
     {
+        if (HasOpenDropDown())
+        {
+            collapseTimer.Stop();
+            return;
+        }
         var foregroundWindow = GetForegroundWindow();
         if (foregroundWindow == IntPtr.Zero) return;
 
@@ -1995,11 +2007,14 @@ public partial class LifeIslandWindow : Window
     void Expand()
     {
         if (expanded) return;
+        SetTopDockFolded(false);
         DashboardTabs.Visibility = Visibility.Visible;
         ExpandedScrollViewer.ScrollToTop();
         expanded = true;
         AnimateExpandedState(true);
         Touch();
+        if (placement == IslandPlacement.Top && !pointerHover)
+            collapseTimer.Start();
     }
 
     void Collapse()
@@ -2108,6 +2123,8 @@ public partial class LifeIslandWindow : Window
             ExpandedScrollViewer.MaxHeight = targetHeight;
             if (expand) ExpandedScrollViewer.MinHeight = targetMinimumHeight;
             else ExpandedContent.Visibility = Visibility.Collapsed;
+            if (!expand && placement == IslandPlacement.Top && !pointerHover)
+                SetTopDockFolded(true);
             if (heightAnimationVersion == taskbarHeightAnimationVersion && taskbarHeightAnimationActive)
             {
                 Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
@@ -2182,10 +2199,17 @@ public partial class LifeIslandWindow : Window
 
     void Touch() => collapseTimer.Stop();
 
+    void ScheduleMouseLeaveCollapse()
+    {
+        collapseTimer.Stop();
+        collapseTimer.Start();
+    }
+
     void Island_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         pointerHover = true;
         collapseTimer.Stop();
+        SetTopDockFolded(false);
         ResizeCollapsedToContent();
     }
 
@@ -2199,11 +2223,134 @@ public partial class LifeIslandWindow : Window
         }
         if (!expanded)
         {
+            if (placement == IslandPlacement.Top) SetTopDockFolded(true);
             ResizeCollapsedToContent();
             return;
         }
-        collapseTimer.Stop();
-        collapseTimer.Start();
+        ScheduleMouseLeaveCollapse();
+    }
+
+    void SetTopDockFolded(bool folded)
+    {
+        folded = folded && placement == IslandPlacement.Top && !expanded && !pointerHover;
+        if (folded == topDockFolded) return;
+
+        var headerHeight = Header.ActualHeight > 0 ? Header.ActualHeight : Header.Height;
+        var offset = Math.Max(0, headerHeight - TopDockVisibleHeight);
+        if (folded)
+        {
+            if (!double.IsFinite(topDockUnfoldedTop)) topDockUnfoldedTop = Top;
+            TopDockStatusLight.Visibility = Visibility.Collapsed;
+        }
+
+        var targetTop = folded
+            ? topDockUnfoldedTop - offset
+            : double.IsFinite(topDockUnfoldedTop) ? topDockUnfoldedTop : Top;
+        topDockFolded = folded;
+        AnimateTopDock(targetTop, folded);
+    }
+
+    void AnimateTopDock(double targetTop, bool folded)
+    {
+        var version = ++topDockAnimationVersion;
+        var fromTop = Top;
+        BeginAnimation(TopProperty, null);
+        MainBorder.BeginAnimation(OpacityProperty, null);
+        Top = targetTop;
+
+        if (!folded)
+        {
+            ShowIslandSurface();
+            topDockUnfoldedTop = double.NaN;
+            if (!IsLoaded)
+            {
+                MainBorder.Opacity = 1;
+                return;
+            }
+
+            MainBorder.Opacity = 1;
+            var appearance = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(60),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                FillBehavior = FillBehavior.Stop
+            };
+            appearance.Completed += (_, _) =>
+            {
+                if (version != topDockAnimationVersion) return;
+                MainBorder.BeginAnimation(OpacityProperty, null);
+                MainBorder.Opacity = 1;
+            };
+            MainBorder.BeginAnimation(OpacityProperty, appearance);
+            return;
+        }
+
+        if (!IsLoaded || Math.Abs(fromTop - targetTop) < 0.5)
+        {
+            ShowFoldedStatusStrip();
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = fromTop,
+            To = targetTop,
+            Duration = TimeSpan.FromMilliseconds(90),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (version != topDockAnimationVersion) return;
+            BeginAnimation(TopProperty, null);
+            Top = targetTop;
+            ShowFoldedStatusStrip();
+        };
+        BeginAnimation(TopProperty, animation);
+    }
+
+    void ShowFoldedStatusStrip()
+    {
+        MainBorder.BeginAnimation(OpacityProperty, null);
+        MainBorder.Opacity = 1;
+        MainBorder.Background = Brushes.Transparent;
+        MainBorder.BorderThickness = new Thickness(0);
+        TopDockStatusLight.Visibility = Visibility.Visible;
+        TopDockStatusPulse.BeginAnimation(OpacityProperty, null);
+        TopDockStatusPulse.Opacity = 1;
+        TopDockStatusPulse.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            From = 1,
+            To = .18,
+            Duration = TimeSpan.FromMilliseconds(1800),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        });
+    }
+
+    void ShowIslandSurface()
+    {
+        TopDockStatusPulse.BeginAnimation(OpacityProperty, null);
+        TopDockStatusPulse.Opacity = 1;
+        TopDockStatusLight.Visibility = Visibility.Collapsed;
+        MainBorder.Background = Brushes.Black;
+        MainBorder.BorderThickness = new Thickness(1);
+    }
+
+    void ResetTopDockFold()
+    {
+        ++topDockAnimationVersion;
+        BeginAnimation(TopProperty, null);
+        MainBorder.BeginAnimation(OpacityProperty, null);
+        MainBorder.Opacity = 1;
+        if (topDockFolded && double.IsFinite(topDockUnfoldedTop))
+            Top = topDockUnfoldedTop;
+        topDockFolded = false;
+        topDockUnfoldedTop = double.NaN;
+        ShowIslandSurface();
     }
 
     bool HasOpenDropDown() => HasOpenDropDown(ExpandedContent);
@@ -2220,6 +2367,14 @@ public partial class LifeIslandWindow : Window
     void ExpandedContent_MouseMove(object sender, System.Windows.Input.MouseEventArgs e) => Touch();
     void QuickAddInput_TextChanged(object sender, TextChangedEventArgs e) => Touch();
     void TimeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e) => Touch();
+    void TimeSelector_DropDownOpened(object? sender, EventArgs e) => Touch();
+
+    void TimeSelector_DropDownClosed(object? sender, EventArgs e)
+    {
+        pointerHover = IsMouseOver;
+        if (!pointerHover && expanded)
+            ScheduleMouseLeaveCollapse();
+    }
 
     void InitializeQuickAdd()
     {
@@ -2367,6 +2522,9 @@ public partial class LifeIslandWindow : Window
             UpdateLayout();
             Top = geometry.WorkArea.Top;
             Left = geometry.WorkArea.Left + (geometry.WorkArea.Width - ActualWidth) / 2;
+            pointerHover = false;
+            if (expanded) Collapse();
+            else SetTopDockFolded(true);
             return;
         }
 

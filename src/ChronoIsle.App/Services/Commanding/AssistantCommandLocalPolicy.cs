@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace ChronoIsle.App.Services.Commanding;
 
@@ -26,8 +27,17 @@ public static class AssistantAmbiguityLexicon
     public static IReadOnlyList<string> FindMatches(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return [];
-        return FixedTerms.Where(term => input.Contains(term, StringComparison.Ordinal)).ToArray();
+        return FixedTerms
+            .Where(term => input.Contains(term, StringComparison.Ordinal))
+            .Where(term => term is not ("下午" or "晚上") || !HasExplicitClock(input, term))
+            .ToArray();
     }
+
+    static bool HasExplicitClock(string input, string period) =>
+        Regex.IsMatch(
+            input,
+            Regex.Escape(period) + @"\s*(?:\d{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*(?:点|时|:)",
+            RegexOptions.CultureInvariant);
 }
 
 /// <summary>Computes clarity from trusted local rules. Model explanation fields are never consulted.</summary>

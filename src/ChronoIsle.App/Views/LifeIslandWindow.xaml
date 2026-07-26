@@ -210,7 +210,7 @@
     </Style>
   </Window.Resources>
   <Border x:Name="Outer" Margin="8,8,8,11">
-    <Border x:Name="MainBorder" Background="#111111" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="24">
+    <Border x:Name="MainBorder" Background="#000000" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="24">
       <Grid x:Name="IslandLayout">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid x:Name="Header" Grid.Row="0" Height="43" Background="Transparent" Cursor="Hand" MouseLeftButtonDown="Header_MouseDown" MouseMove="Header_MouseMove" MouseLeftButtonUp="Header_MouseUp">
@@ -229,6 +229,19 @@
             <TextBlock x:Name="Clock" Foreground="#F2F2F7" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
             <TextBlock Text="›" Foreground="#98989D" FontSize="20" VerticalAlignment="Center" RenderTransformOrigin=".5,.5"><TextBlock.RenderTransform><RotateTransform x:Name="ChevronRotate" Angle="0"/></TextBlock.RenderTransform></TextBlock>
           </StackPanel>
+          <Border x:Name="TopDockStatusLight" Height="6"
+                  Background="#000000"
+                  ToolTip="{Binding ToolTip, ElementName=StatusLight}"
+                  CornerRadius="0,0,4,4"
+                  HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                  Visibility="Collapsed" IsHitTestVisible="False"
+                  Grid.ColumnSpan="2"
+                  Panel.ZIndex="10">
+            <Border x:Name="TopDockStatusPulse"
+                    Background="{Binding Fill, ElementName=StatusLight}"
+                    CornerRadius="0,0,4,4"
+                    Opacity="1"/>
+          </Border>
         </Grid>
         <ScrollViewer x:Name="ExpandedScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="0">
           <StackPanel x:Name="ExpandedContent" Visibility="Collapsed" MouseMove="ExpandedContent_MouseMove">
@@ -276,9 +289,9 @@
                   </Grid>
                   <DockPanel LastChildFill="True">
                     <Button Content="添加" Click="QuickAdd_Click" AutomationProperties.AutomationId="IslandQuickAddButton" Style="{StaticResource IslandPrimary}" DockPanel.Dock="Right" Margin="8,0,0,0"/>
-                    <ComboBox x:Name="HourSelector" Width="56" Height="34" Style="{StaticResource IslandSelect}" SelectionChanged="TimeSelector_SelectionChanged"/>
+                    <ComboBox x:Name="HourSelector" Width="56" Height="34" Style="{StaticResource IslandSelect}" SelectionChanged="TimeSelector_SelectionChanged" DropDownOpened="TimeSelector_DropDownOpened" DropDownClosed="TimeSelector_DropDownClosed"/>
                     <TextBlock Text=":" Foreground="#98989D" VerticalAlignment="Center" Margin="5,0"/>
-                    <ComboBox x:Name="MinuteSelector" Width="56" Height="34" Style="{StaticResource IslandSelect}" SelectionChanged="TimeSelector_SelectionChanged"/>
+                    <ComboBox x:Name="MinuteSelector" Width="56" Height="34" Style="{StaticResource IslandSelect}" SelectionChanged="TimeSelector_SelectionChanged" DropDownOpened="TimeSelector_DropDownOpened" DropDownClosed="TimeSelector_DropDownClosed"/>
                     <TextBox x:Name="QuickAddInput" AutomationProperties.AutomationId="IslandQuickAddInput" Height="34" Margin="8,0,0,0" TextChanged="QuickAddInput_TextChanged" Style="{StaticResource IslandTextInput}"/>
                   </DockPanel>
                 </StackPanel>

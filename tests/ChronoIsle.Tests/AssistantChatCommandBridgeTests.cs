@@ -128,6 +128,34 @@ public sealed class AssistantChatCommandBridgeTests : IDisposable
         Assert.Equal("去洗澡", reminder.Title);
         Assert.Equal(new TimeOnly(0, 45), TimeOnly.FromDateTime(reminder.RemindAt!.Value));
     }
+
+    [Fact]
+    public async Task Explicit_chinese_afternoon_reminder_does_not_depend_on_model_schema()
+    {
+        var data = new LifeDataService(path);
+        var session = data.NewSession();
+        var service = new AssistantActionService(
+            data,
+            new ChinaStatutoryHolidayCalendar(),
+            new ConversationRouter(),
+            new LocalAgendaQueryService(data),
+            new FakeChatCompletionClient("not valid command json"));
+
+        var result = await service.HandleAsync(
+            ProviderSettings.Default,
+            session,
+            [],
+            "下午四点提醒我腌鸡胸肉");
+
+        var reminder = Assert.Single(data.ReminderItems());
+        Assert.False(result.IsFailure);
+        Assert.Equal("腌鸡胸肉", reminder.Title);
+        Assert.Equal(
+            new TimeOnly(16, 0),
+            TimeOnly.FromDateTime(reminder.RemindAt!.Value));
+        Assert.DoesNotContain("schema_rejected", result.Reply);
+    }
+
     sealed class FakeChatCompletionClient(string response) : IChatCompletionClient
     {
         public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) => Task.FromResult(response);

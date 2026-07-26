@@ -192,11 +192,12 @@ public sealed partial class LifeDataService
                         t.completed=0 AND t.due_at IS NOT NULL
                         AND julianday(t.due_at) < julianday($today))
                     UNION ALL
-                    SELECT id,'event','已逾期' FROM calendar_events
+                    SELECT id,'event','已结束' FROM calendar_events
                     WHERE julianday(end_at) < julianday($today)
                     UNION ALL
-                    SELECT id,'reminder','已逾期' FROM single_reminders
-                    WHERE julianday(remind_at) < julianday($today)
+                    SELECT id,'reminder','已提醒' FROM single_reminders
+                    WHERE notified_at IS NOT NULL
+                        AND julianday(remind_at) < julianday($today)
                     """;
                 command.Parameters.AddWithValue("$today", now.Date.ToString("O"));
                 using var reader = command.ExecuteReader();
@@ -707,7 +708,9 @@ public sealed partial class LifeDataService
         if (pendingTodos.Any(item => IsOverdue(item.StartsAt, now, graceMinutes.GetValueOrDefault(item.Id, 5)))) return IslandIndicatorState.OverdueTodo;
         if (pendingTodos.Any(item => item.StartsAt > now && item.StartsAt <= now.AddHours(1))) return IslandIndicatorState.DueSoonTodo;
         if (pendingTodos.Count > 0) return IslandIndicatorState.PendingTodo;
-        return items.Any(item => item.Kind is "event" or "reminder")
+        return items.Any(item =>
+                item.Kind == "event" ||
+                item.Kind == "reminder" && item.StartsAt > now)
             ? IslandIndicatorState.ReminderOnly
             : IslandIndicatorState.Idle;
     }
@@ -737,9 +740,9 @@ public sealed partial class LifeDataService
                 : IslandIndicatorState.PendingTodo;
         }
 
-        return kind is "event" or "reminder" or "recurring"
-            ? IslandIndicatorState.ReminderOnly
-            : IslandIndicatorState.Idle;
+        if (kind == "reminder")
+            return scheduledAt > now ? IslandIndicatorState.ReminderOnly : IslandIndicatorState.Idle;
+        return kind is "event" or "recurring" ? IslandIndicatorState.ReminderOnly : IslandIndicatorState.Idle;
     }
 
     Dictionary<string, int> TodoOverdueGraceMinutes()

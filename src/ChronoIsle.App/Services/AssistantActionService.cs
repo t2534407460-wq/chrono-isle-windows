@@ -144,21 +144,21 @@ public sealed class AssistantActionService
     static bool TryParseExplicitSingleReminder(string input, DateTime now, out AssistantCommandEnvelope envelope)
     {
         envelope = default!;
-        if (AssistantAmbiguityLexicon.FindMatches(input).Count > 0 ||
-            input.Contains("每天", StringComparison.Ordinal) || input.Contains("每周", StringComparison.Ordinal) ||
+        if (input.Contains("每天", StringComparison.Ordinal) || input.Contains("每周", StringComparison.Ordinal) ||
             input.Contains("工作日", StringComparison.Ordinal) || input.Contains("节假日", StringComparison.Ordinal))
             return false;
 
-        const string timePattern = @"(?<time>(?:(?<date>今天|明天|后天)\s*)?(?<period>凌晨|上午|中午)?\s*(?<hour>\d{1,2})\s*(?:(?:点|时)\s*(?:(?<half>半)|(?<minute>\d{1,2})\s*分?)?|:\s*(?<colonMinute>\d{2})))";
+        const string timePattern = @"(?<time>(?:(?<date>今天|明天|后天)\s*)?(?<period>凌晨|上午|中午|下午|晚上)?\s*(?<hour>\d{1,2}|[零〇一二两三四五六七八九十]{1,3})\s*(?:(?:点|时)\s*(?:(?<half>半)|(?<minute>\d{1,2})\s*分?)?|:\s*(?<colonMinute>\d{2})))";
         var match = Regex.Match(input, $@"^\s*{timePattern}\s*(?:提醒(?:我)?|叫我|记得)\s*(?<title>.+?)\s*[。！？!?]?\s*$");
         if (!match.Success)
             match = Regex.Match(input, $@"^\s*(?:提醒(?:我)?|叫我|记得)\s*{timePattern}\s*(?<title>.+?)\s*[。！？!?]?\s*$");
         if (!match.Success) return false;
 
-        if (!int.TryParse(match.Groups["hour"].Value, out var hour) || hour is < 0 or > 23)
+        if (!TryParseReminderHour(match.Groups["hour"].Value, out var hour))
             return false;
-        if (match.Groups["period"].Value == "凌晨" && hour == 12) hour = 0;
-        if (match.Groups["period"].Value == "中午" && hour is >= 1 and <= 11) hour += 12;
+        var period = match.Groups["period"].Value;
+        if (period == "凌晨" && hour == 12) hour = 0;
+        if ((period == "中午" || period == "下午" || period == "晚上") && hour is >= 1 and <= 11) hour += 12;
         var minuteText = match.Groups["minute"].Success
             ? match.Groups["minute"].Value
             : match.Groups["colonMinute"].Value;
@@ -193,6 +193,40 @@ public sealed class AssistantActionService
             []);
         return true;
     }
+
+    static bool TryParseReminderHour(string value, out int hour)
+    {
+        if (int.TryParse(value, out hour)) return hour is >= 0 and <= 23;
+
+        var normalized = value.Replace('〇', '零').Replace('两', '二');
+        var tenIndex = normalized.IndexOf('十');
+        if (tenIndex < 0)
+        {
+            hour = normalized.Length == 1 ? ChineseDigit(normalized[0]) : -1;
+            return hour is >= 0 and <= 9;
+        }
+
+        if (tenIndex != normalized.LastIndexOf('十') ||
+            tenIndex > 1 ||
+            normalized.Length - tenIndex > 2)
+        {
+            hour = 0;
+            return false;
+        }
+
+        var tens = tenIndex == 0 ? 1 : ChineseDigit(normalized[0]);
+        var ones = tenIndex == normalized.Length - 1 ? 0 : ChineseDigit(normalized[^1]);
+        hour = tens * 10 + ones;
+        return tens is >= 1 and <= 2 && ones is >= 0 and <= 9 && hour <= 23;
+    }
+
+    static int ChineseDigit(char value) => value switch
+    {
+        '零' => 0, '一' => 1, '二' => 2, '三' => 3, '四' => 4,
+        '五' => 5, '六' => 6, '七' => 7, '八' => 8, '九' => 9,
+        _ => -1
+    };
+
     async Task<AssistantConversationResult> HandleLocalQueryAsync(
         ProviderSettings provider,
         IReadOnlyList<ChatMessage> history,
