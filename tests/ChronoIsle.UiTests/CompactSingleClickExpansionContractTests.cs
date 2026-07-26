@@ -5,7 +5,7 @@ namespace ChronoIsle.UiTests;
 public sealed class CompactSingleClickExpansionContractTests
 {
     [Fact]
-    public void SingleClickExpansion_ShowsNavigationAndIncludesItInHeight()
+    public void SingleClickExpansion_ShowsNavigationAndSizesToContent()
     {
         var workspace = FindWorkspace();
         var source = File.ReadAllText(Path.Combine(
@@ -15,12 +15,19 @@ public sealed class CompactSingleClickExpansionContractTests
             "Views",
             "LifeIslandWindow.xaml.cs"));
 
-        Assert.Contains("else Expand();", source, StringComparison.Ordinal);
+        Assert.Contains("if (media.Current is { IsPlaying: true, IsMusic: true }) ShowMediaDashboard();", source, StringComparison.Ordinal);
+        Assert.Contains("Expand();", source, StringComparison.Ordinal);
         Assert.Contains("void Expand()", source, StringComparison.Ordinal);
         Assert.Contains("DashboardTabs.Visibility = Visibility.Visible;", source, StringComparison.Ordinal);
         Assert.Contains("ExpandedScrollViewer.ScrollToTop();", source, StringComparison.Ordinal);
-        Assert.Contains("const double contentMinHeight = 620;", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("compactContentMinHeight", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "targetHeight = Math.Min(ExpandedContent.DesiredSize.Height, contentMaxHeight);",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("void ResizeExpandedToContent()", source, StringComparison.Ordinal);
+        Assert.Contains("ResizeExpandedToContent();", source, StringComparison.Ordinal);
+        Assert.Contains("AvailableExpandedContentHeight(hasGeometry, geometry, HeaderScreenRect())", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("contentMinHeight", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -42,6 +49,22 @@ public sealed class CompactSingleClickExpansionContractTests
             "quickInput.TextChanged += (_, _) => Touch();",
             source,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MusicHeader_UsesDefaultHeaderStatusLight()
+    {
+        var workspace = FindWorkspace();
+        var xaml = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml"));
+
+        Assert.Contains("x:Name=\"CollapsedMediaStatusLight\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Fill=\"{Binding Fill, ElementName=StatusLight}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTip=\"{Binding ToolTip, ElementName=StatusLight}\"", xaml, StringComparison.Ordinal);
     }
 
     static string FindWorkspace()

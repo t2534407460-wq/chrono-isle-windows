@@ -1,32 +1,40 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <Color x:Key="Color.Window">#0D0F12</Color>
-  <Color x:Key="Color.Card">#17191E</Color>
-  <Color x:Key="Color.Surface">#202229</Color>
-  <Color x:Key="Color.Hover">#292C34</Color>
-  <Color x:Key="Color.TextPrimary">#F2F4F7</Color>
-  <Color x:Key="Color.TextSecondary">#A5AAB4</Color>
-  <Color x:Key="Color.TextTertiary">#747A86</Color>
-  <Color x:Key="Color.Accent">#5B7CFA</Color>
-  <Color x:Key="Color.Success">#46C780</Color>
-  <Color x:Key="Color.Warning">#F2B84B</Color>
-  <Color x:Key="Color.Danger">#FF6868</Color>
-  <Color x:Key="Color.Reminder">#A78BFA</Color>
-  <Color x:Key="Color.Stroke">#1AFFFFFF</Color>
+  <Color x:Key="Color.Window">#101214</Color>
+  <Color x:Key="Color.Island">#090B0C</Color>
+  <Color x:Key="Color.Card">#181B1D</Color>
+  <Color x:Key="Color.Surface">#212528</Color>
+  <Color x:Key="Color.Control">#292E32</Color>
+  <Color x:Key="Color.Hover">#343A3F</Color>
+  <Color x:Key="Color.TextPrimary">#F3F5F4</Color>
+  <Color x:Key="Color.TextSecondary">#B7BFBB</Color>
+  <Color x:Key="Color.TextTertiary">#7D8782</Color>
+  <Color x:Key="Color.Accent">#39C98B</Color>
+  <Color x:Key="Color.AccentSoft">#18392C</Color>
+  <Color x:Key="Color.Success">#39C98B</Color>
+  <Color x:Key="Color.Warning">#DFAF57</Color>
+  <Color x:Key="Color.Danger">#E76C72</Color>
+  <Color x:Key="Color.Reminder">#A99BCD</Color>
+  <Color x:Key="Color.Stroke">#38403C</Color>
+  <Color x:Key="Color.StrokeSoft">#242A27</Color>
 
   <SolidColorBrush x:Key="Brush.Window" Color="{StaticResource Color.Window}"/>
+  <SolidColorBrush x:Key="Brush.Island" Color="{StaticResource Color.Island}"/>
   <SolidColorBrush x:Key="Brush.Card" Color="{StaticResource Color.Card}"/>
   <SolidColorBrush x:Key="Brush.Surface" Color="{StaticResource Color.Surface}"/>
+  <SolidColorBrush x:Key="Brush.Control" Color="{StaticResource Color.Control}"/>
   <SolidColorBrush x:Key="Brush.Hover" Color="{StaticResource Color.Hover}"/>
   <SolidColorBrush x:Key="Brush.TextPrimary" Color="{StaticResource Color.TextPrimary}"/>
   <SolidColorBrush x:Key="Brush.TextSecondary" Color="{StaticResource Color.TextSecondary}"/>
   <SolidColorBrush x:Key="Brush.TextTertiary" Color="{StaticResource Color.TextTertiary}"/>
   <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}"/>
+  <SolidColorBrush x:Key="Brush.AccentSoft" Color="{StaticResource Color.AccentSoft}"/>
   <SolidColorBrush x:Key="Brush.Success" Color="{StaticResource Color.Success}"/>
   <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource Color.Warning}"/>
   <SolidColorBrush x:Key="Brush.Danger" Color="{StaticResource Color.Danger}"/>
   <SolidColorBrush x:Key="Brush.Reminder" Color="{StaticResource Color.Reminder}"/>
   <SolidColorBrush x:Key="Brush.Stroke" Color="{StaticResource Color.Stroke}"/>
+  <SolidColorBrush x:Key="Brush.StrokeSoft" Color="{StaticResource Color.StrokeSoft}"/>
 
   <CornerRadius x:Key="Radius.Window">16</CornerRadius>
   <CornerRadius x:Key="Radius.Card">16</CornerRadius>

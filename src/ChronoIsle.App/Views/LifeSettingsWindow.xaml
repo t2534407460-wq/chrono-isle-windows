@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="时屿设置" Width="680" Height="680" MinWidth="560" MinHeight="520"
-        Background="Transparent" Foreground="{StaticResource Brush.TextPrimary}"
+        Background="Transparent" Foreground="{DynamicResource Brush.TextPrimary}"
         FontFamily="{StaticResource Font.UI}" WindowStartupLocation="CenterScreen"
         WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize">
   <WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="8" CornerRadius="16" UseAeroCaptionButtons="False"/></WindowChrome.WindowChrome>
@@ -13,7 +13,7 @@
       <Setter Property="Width" Value="34"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="0"/>
     </Style>
   </Window.Resources>
-  <Border Background="{StaticResource Brush.Window}" BorderBrush="{StaticResource Brush.Stroke}" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}">
+  <Border Background="{DynamicResource Brush.Window}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}">
     <Grid>
       <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
       <Grid Grid.Row="0" Margin="18,0,10,0" MouseLeftButtonDown="TitleBar_MouseDown">
@@ -32,7 +32,7 @@
               <TextBlock Text="Base URL" Style="{StaticResource Text.Secondary}"/><TextBox x:Name="Url" Margin="0,5,0,12"/>
               <TextBlock Text="模型" Style="{StaticResource Text.Secondary}"/><TextBox x:Name="Model" Margin="0,5,0,12"/>
               <TextBlock Text="API Key" Style="{StaticResource Text.Secondary}"/><PasswordBox x:Name="Key" Margin="0,5,0,12"/>
-              <StackPanel Orientation="Horizontal"><Button Content="测试连接" Click="Test_Click"/><TextBlock x:Name="Result" Foreground="{StaticResource Brush.Success}" VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap"/></StackPanel>
+              <StackPanel Orientation="Horizontal"><Button Content="测试连接" Click="Test_Click"/><TextBlock x:Name="Result" Foreground="{DynamicResource Brush.Success}" VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap"/></StackPanel>
             </StackPanel></Border>
             <Border Style="{StaticResource Card.Standard}" Padding="18" Margin="0,0,0,14"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel>
               <TextBlock Text="通知与启动" Style="{StaticResource Text.SectionTitle}"/>
@@ -40,10 +40,33 @@
               <TextBlock Text="开机自启" FontSize="14" Margin="0,14,0,2"/><TextBlock x:Name="AutoStartStatus" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap"/>
             </StackPanel><StackPanel Grid.Column="1" VerticalAlignment="Center"><CheckBox x:Name="WindowsNotifications" Margin="0,0,0,20"/><CheckBox x:Name="AutoStart" Checked="AutoStart_Changed" Unchecked="AutoStart_Changed"/></StackPanel></Grid></Border>
             <Border Style="{StaticResource Card.Standard}" Padding="18" Margin="0,0,0,14"><StackPanel>
+              <TextBlock Text="灵动岛、媒体与系统" Style="{StaticResource Text.SectionTitle}"/>
+              <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
+                <StackPanel><TextBlock Text="主题"/><TextBlock Text="可跟随 Windows，也可固定深色或浅色。" Style="{StaticResource Text.Secondary}" Margin="0,3,12,0"/></StackPanel>
+                <ComboBox x:Name="ThemeModeSelector" Grid.Column="1" SelectedValuePath="Tag">
+                  <ComboBoxItem Tag="System" Content="跟随 Windows"/><ComboBoxItem Tag="Dark" Content="深色"/><ComboBoxItem Tag="Light" Content="浅色"/>
+                </ComboBox>
+              </Grid>
+              <CheckBox x:Name="TelemetryEnabled" Content="显示实时网速、流量、CPU 与内存" Margin="0,14,0,0"/>
+              <CheckBox x:Name="ToastInboxEnabled" Content="收纳新的 Windows 通知，并在灵动岛显示 5 秒" Margin="0,12,0,0"/>
+              <CheckBox x:Name="GlowBorderEnabled" Content="启用低饱和青绿流光边框与弹簧动画" Margin="0,12,0,0"/>
+              <CheckBox x:Name="MediaAutoTakeover" Content="播放音乐时在折叠岛显示歌曲信息" Margin="0,14,0,0"/>
+              <CheckBox x:Name="LyricsEnabled" Content="从 LRCLIB 获取并缓存同步歌词" Margin="0,12,0,0"/>
+              <CheckBox x:Name="MoveIslandDuringFullscreen" Content="游戏全屏时将灵动岛移至其他屏幕" Margin="0,12,0,0"/>
+              <TextBlock Text="全屏结束后会恢复原位置；没有其他屏幕时才临时隐藏。" Style="{StaticResource Text.Secondary}" Margin="24,3,0,12" TextWrapping="Wrap"/>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions>
+                <TextBlock Text="歌词校准" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Slider x:Name="LyricsOffset" Grid.Column="1" Minimum="-5000" Maximum="5000" TickFrequency="100" IsSnapToTickEnabled="True"/>
+                <TextBlock Grid.Column="2" Text="{Binding ElementName=LyricsOffset, Path=Value, StringFormat={}{0:0} ms}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+              </Grid>
+            </StackPanel></Border>
+            <Border Style="{StaticResource Card.Standard}" Padding="18" Margin="0,0,0,14"><StackPanel>
               <TextBlock Text="本地数据" Style="{StaticResource Text.SectionTitle}"/>
               <TextBlock Text="便携备份不会携带外部账户令牌；在新设备恢复后需重新登录。ICS 导入会保存为本地副本。" Style="{StaticResource Text.Secondary}" Margin="0,5,0,12" TextWrapping="Wrap"/>
               <WrapPanel><Button Content="创建备份" Click="CreateBackup_Click" Margin="0,0,8,8"/><Button Content="恢复备份" Click="RestoreBackup_Click" Margin="0,0,8,8"/><Button Content="导出 ICS" Click="ExportIcs_Click" Margin="0,0,8,8"/><Button Content="导入 ICS" Click="ImportIcs_Click" Margin="0,0,8,8"/></WrapPanel>
-              <TextBlock x:Name="DataResult" Foreground="{StaticResource Brush.Success}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+              <TextBlock x:Name="DataResult" Foreground="{DynamicResource Brush.Success}" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel></Border>
             <Border Style="{StaticResource Card.Standard}" Padding="18" Margin="0,0,0,14"><StackPanel>
               <TextBlock Text="助手人格" Style="{StaticResource Text.SectionTitle}"/>
@@ -54,7 +77,7 @@
               <TextBlock Text="操作记录与隐私" Style="{StaticResource Text.SectionTitle}"/>
               <TextBlock Text="只显示命令、结果状态和时间，不显示任务标题或原始聊天内容。" Style="{StaticResource Text.Secondary}" Margin="0,5,0,10" TextWrapping="Wrap"/>
               <WrapPanel><Button Content="刷新最近操作" Click="RefreshAudit_Click" Margin="0,0,8,8"/><Button Content="清理本地审计记录" Click="ClearAudit_Click" Style="{StaticResource Button.Danger}" Margin="0,0,8,8"/></WrapPanel>
-              <TextBlock x:Name="AuditEntries" Foreground="{StaticResource Brush.TextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+              <TextBlock x:Name="AuditEntries" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
             </StackPanel></Border>
           </StackPanel>
         </ScrollViewer>

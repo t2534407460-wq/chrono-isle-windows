@@ -5,7 +5,7 @@ namespace ChronoIsle.UiTests;
 public sealed class TopDockAutoFoldContractTests
 {
     [Fact]
-    public void TopDockedIsland_FoldsToPureBlackIndicatorStripWhenPointerLeaves()
+    public void TopDockedIsland_FoldsToSemanticIslandIndicatorStripWhenPointerLeaves()
     {
         var workspace = FindWorkspace();
         var source = File.ReadAllText(Path.Combine(
@@ -21,7 +21,7 @@ public sealed class TopDockAutoFoldContractTests
             "Views",
             "LifeIslandWindow.xaml"));
 
-        Assert.Contains("Background=\"#000000\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{DynamicResource Brush.Island}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<Border x:Name=\"TopDockStatusLight\" Height=\"6\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<Border x:Name=\"TopDockStatusPulse\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Background=\"{Binding Fill, ElementName=StatusLight}\"", xaml, StringComparison.Ordinal);

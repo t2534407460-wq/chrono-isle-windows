@@ -20,8 +20,8 @@ public sealed class TaskbarExpansionAnimationContractTests
         Assert.Contains("TaskbarExpandedContentMaxHeight(", source, StringComparison.Ordinal);
         Assert.Contains(": headerRect.Top;", source, StringComparison.Ordinal);
         Assert.Contains("MaintainTaskbarHeaderAnchor();", source, StringComparison.Ordinal);
-        Assert.Contains("TimeSpan.FromMilliseconds(expand ? 180 : 240)", source, StringComparison.Ordinal);
-        Assert.Contains("expand ? EasingMode.EaseOut : EasingMode.EaseInOut", source, StringComparison.Ordinal);
+        Assert.Contains("TimeSpan.FromMilliseconds(expand ? 230 : 190)", source, StringComparison.Ordinal);
+        Assert.Contains("new BackEase { Amplitude = .16, EasingMode = EasingMode.EaseOut }", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ExpandedScrollViewer.MaxHeight = double.PositiveInfinity", source, StringComparison.Ordinal);
         Assert.DoesNotContain("AnimateWindowProperty(TopProperty", source, StringComparison.Ordinal);
     }

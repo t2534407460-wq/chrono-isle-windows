@@ -59,7 +59,9 @@ public sealed class AssistantActionService
         ProviderSettings provider,
         ChatSession session,
         IReadOnlyList<ChatMessage> history,
-        string input)
+        string input,
+        Action<string>? onDelta = null,
+        CancellationToken cancellationToken = default)
     {
         if (TryParseOfficialSleepSchedule(input, out var sleepSchedule))
         {
@@ -85,7 +87,7 @@ public sealed class AssistantActionService
             ConversationRouteKind.CreateAction => await HandleCreationAsync(provider, session, history, input, activeDraft),
             ConversationRouteKind.ModificationClarification => HandleModificationClarification(session, input, activeDraft),
             ConversationRouteKind.LocalQuery => await HandleLocalQueryAsync(provider, history, input, route.Query!),
-            _ => await HandleGeneralChatAsync(provider, history, input)
+            _ => await HandleGeneralChatAsync(provider, history, input, onDelta, cancellationToken)
         };
         return ApplyPersona(result);
     }
@@ -255,7 +257,9 @@ public sealed class AssistantActionService
     async Task<AssistantConversationResult> HandleGeneralChatAsync(
         ProviderSettings provider,
         IReadOnlyList<ChatMessage> history,
-        string input)
+        string input,
+        Action<string>? onDelta,
+        CancellationToken cancellationToken)
     {
         var messages = new List<ModelMessage>
         {
@@ -263,7 +267,17 @@ public sealed class AssistantActionService
         };
         messages.AddRange(history.Select(message => new ModelMessage(message.Role, message.Content)));
         messages.Add(new("user", input));
-        return new(await chat.Complete(provider, messages), null, false);
+        if (onDelta is null)
+            return new(await chat.Complete(provider, messages), null, false);
+
+        var reply = new System.Text.StringBuilder();
+        await foreach (var delta in chat.StreamComplete(provider, messages, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            reply.Append(delta);
+            onDelta(delta);
+        }
+        return new(reply.ToString(), null, false);
     }
 
     public CommandDraftView? GetPendingDecompositionDraft(string actionId)

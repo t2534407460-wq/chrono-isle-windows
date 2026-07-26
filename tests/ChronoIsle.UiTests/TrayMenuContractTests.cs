@@ -19,10 +19,10 @@ public sealed class TrayMenuContractTests
         Assert.Contains("<Setter Property=\"FontSize\" Value=\"12\"/>", xaml, StringComparison.Ordinal);
         Assert.Contains("WindowStyle=\"None\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AllowsTransparency=\"True\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Background=\"#111111\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("BorderBrush=\"#3A3A3C\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Foreground=\"#F2F2F7\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Value=\"#2C2C2E\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{DynamicResource Brush.Island}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("BorderBrush=\"{DynamicResource Brush.Stroke}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Foreground=\"{DynamicResource Brush.TextPrimary}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Value=\"{DynamicResource Brush.Control}\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("#161920", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("#262B38", xaml, StringComparison.Ordinal);
         foreach (var id in new[] { "TrayOpenButton", "TrayManageButton", "TrayNamingButton", "TrayNotificationsButton", "TrayDoNotDisturbButton", "TraySettingsButton", "TrayExitButton" })

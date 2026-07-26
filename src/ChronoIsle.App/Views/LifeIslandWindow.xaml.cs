@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -6,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Runtime.InteropServices;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -15,6 +17,8 @@ using ChronoIsle.App.Services.State;
 using ChronoIsle.App.Services.Productivity;
 using ChronoIsle.App.Services.Reporting;
 using ChronoIsle.App.Services;
+using ChronoIsle.App.Services.Media;
+using ChronoIsle.App.ViewModels;
 
 namespace ChronoIsle.App.Views;
 
@@ -34,6 +38,8 @@ public partial class LifeIslandWindow : Window
     const uint SwpNoActivate = 0x0010;
     const uint SwpNoOwnerZOrder = 0x0200;
     static readonly IntPtr HwndTopmost = new(-1);
+    static readonly System.Windows.Media.Brush KaraokeHighlightBrush = new SolidColorBrush(Color.FromRgb(242, 242, 247));
+    static readonly System.Windows.Media.Brush KaraokeCollapsedPendingBrush = new SolidColorBrush(Color.FromRgb(142, 142, 147));
     readonly IIslandStateCoordinator islandState;
 
     readonly TaskAttributesService taskAttributes;
@@ -44,7 +50,14 @@ public partial class LifeIslandWindow : Window
     readonly FocusService focus;
     readonly ReportService reports;
     readonly LifePreferencesService preferences;
+    readonly MediaSessionService media;
+    readonly LyricsService lyrics;
+    readonly SystemTelemetryService telemetry;
+    readonly SystemToastInboxService toastInbox;
+    readonly SourceLyricTimeline sourceLyricTimeline = new();
+    readonly LifeViewModel assistant;
     readonly DispatcherTimer focusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    readonly DispatcherTimer mediaProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     readonly RectangleGeometry taskbarClipGeometry = new();
     FocusSession? activeFocus;
     FocusCompletion? pendingFocusCompletion;
@@ -53,6 +66,7 @@ public partial class LifeIslandWindow : Window
     StackPanel? todayDashboardContent;
     readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer collapseTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    readonly DispatcherTimer toastRetractTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     readonly DispatcherTimer headerSingleClickTimer = new();
     readonly DispatcherTimer taskbarTopmostTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     DateTime displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -65,6 +79,8 @@ public partial class LifeIslandWindow : Window
     int windowBoundsAnimationVersion;
     int topDockAnimationVersion;
     int expandedContentAnimationVersion;
+    int expandedContentResizeVersion;
+    int toastAnimationVersion;
     int taskbarHeightAnimationVersion;
     bool taskbarHeightAnimationActive;
     bool updatingTaskbarHeaderAnchor;
@@ -72,6 +88,8 @@ public partial class LifeIslandWindow : Window
     bool suppressDoubleClickMouseUp;
     bool topDockFolded;
     double topDockUnfoldedTop = double.NaN;
+    byte[]? displayedArtworkBytes;
+    ImageSource? displayedArtworkImage;
     IslandPlacement placement;
     string? taskbarMonitorDeviceName;
     double taskbarHorizontalRatio = 0.5;
@@ -98,6 +116,14 @@ public partial class LifeIslandWindow : Window
     long lastHeaderMouseDownTick;
     System.Windows.Point quickActionMenuAnchor;
     bool addingReminder = true;
+    bool fullscreenAvoiding;
+    bool fullscreenFallbackHidden;
+    int lyricsOffsetMs;
+    IslandPlacement fullscreenOriginalPlacement;
+    double fullscreenOriginalLeft;
+    double fullscreenOriginalTop;
+    string? fullscreenOriginalTaskbarMonitor;
+    double fullscreenOriginalTaskbarRatio;
 
     enum IslandPlacement { Free, Top, Taskbar }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
@@ -126,7 +152,11 @@ public partial class LifeIslandWindow : Window
     DateOnly? automaticWeeklyReportDate;
     bool nextWeekPlanVisible;
 
-    public LifeIslandWindow(LifeDataService data, ReminderService reminders, ChinaStatutoryHolidayCalendar holidays, TodayDashboardService todayDashboard, FocusService focus, ReportService reports, IIslandStateCoordinator islandState, TaskAttributesService taskAttributes, LifePreferencesService preferences)
+    public LifeIslandWindow(LifeDataService data, ReminderService reminders, ChinaStatutoryHolidayCalendar holidays,
+        TodayDashboardService todayDashboard, FocusService focus, ReportService reports, IIslandStateCoordinator islandState,
+        TaskAttributesService taskAttributes, LifePreferencesService preferences, MediaSessionService media, LyricsService lyrics,
+        SystemTelemetryService telemetry, SystemToastInboxService toastInbox,
+        LifeViewModel assistant)
     {
         InitializeComponent();
         this.data = data;
@@ -137,7 +167,20 @@ public partial class LifeIslandWindow : Window
         this.reports = reports;
         this.islandState = islandState;
         focusTimer.Tick += (_, _) => RefreshFocusSummary();
+        mediaProgressTimer.Tick += (_, _) => UpdateTimedMediaProgress();
         this.preferences = preferences;
+        this.media = media;
+        this.lyrics = lyrics;
+        this.telemetry = telemetry;
+        this.toastInbox = toastInbox;
+        this.assistant = assistant;
+        media.SnapshotChanged += _ => Dispatcher.BeginInvoke(Refresh);
+        lyrics.Changed += () => Dispatcher.BeginInvoke(Refresh);
+        telemetry.SnapshotChanged += snapshot => Dispatcher.BeginInvoke(() => UpdateTelemetryView(snapshot));
+        toastInbox.ToastReceived += message => Dispatcher.BeginInvoke(() => ShowSystemToast(message));
+        toastRetractTimer.Tick += (_, _) => HideSystemToast();
+        assistant.Messages.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
+        assistant.PropertyChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         Header.ContextMenuOpening += Header_ContextMenuOpening;
         Header.ContextMenu = CreateQuickActionMenu();
         clockTimer.Tick += (_, _) => Refresh();
@@ -162,6 +205,8 @@ public partial class LifeIslandWindow : Window
         Closed += (_, _) =>
         {
             taskbarTopmostTimer.Stop();
+            mediaProgressTimer.Stop();
+            toastRetractTimer.Stop();
             windowHandle = IntPtr.Zero;
         };
         Loaded += (_, _) =>
@@ -169,11 +214,18 @@ public partial class LifeIslandWindow : Window
             InitializeQuickAdd();
             InitializeReminderActions();
             InitializeTodayDashboard();
+            ConfigureGlowBorder();
             RestoreInitialPlacement();
             Refresh();
             clockTimer.Start();
             focusTimer.Start();
+            mediaProgressTimer.Start();
         };
+        preferences.Changed += () => Dispatcher.BeginInvoke(() =>
+        {
+            ConfigureGlowBorder();
+            UpdateTelemetryView(telemetry.Current);
+        });
         data.AgendaChanged += (_, _) => Dispatcher.BeginInvoke(Refresh);
         islandState.StateChanged += _ => Dispatcher.BeginInvoke(Refresh);
         reminders.DeferredSummaryReleased += (_, summary) => Dispatcher.BeginInvoke(() =>
@@ -612,19 +664,47 @@ public partial class LifeIslandWindow : Window
                     : "绿色：当前状态正常。";
                 Summary.Text = transient.DisplayText;
             }
+            else if (ReminderBanner.Visibility == Visibility.Visible)
+            {
+                StatusLight.Fill = new SolidColorBrush(Color.FromRgb(255, 159, 10));
+                StatusLight.ToolTip = "橙色：有待处理提醒。";
+                Summary.Text = reminderBannerItem is null ? ReminderText.Text : $"提醒 · {reminderBannerItem.Title}";
+            }
+            else if (preferences.Load().MediaAutoTakeover && media.Current is { IsPlaying: true, IsMusic: true } mediaSnapshot)
+            {
+                StatusLight.Fill = new SolidColorBrush(Color.FromRgb(50, 173, 230));
+                StatusLight.ToolTip = mediaSnapshot.IsPlaying ? "蓝色：正在播放音乐。" : "蓝色：媒体已暂停。";
+                Summary.Text = $"♫ {mediaSnapshot.Title}{(string.IsNullOrWhiteSpace(mediaSnapshot.Artist) ? "" : $" · {mediaSnapshot.Artist}")}";
+            }
             else
             {
-                var next = data.NextAgenda();
-                Summary.Text = next is null
-                    ? "今天暂无安排"
-                    : $"下一项 · {next.StartsAt:HH:mm} {next.Title}";
+                var system = telemetry.Current;
+                Summary.Text = preferences.Load().TelemetryEnabled
+                    ? $"↑ {FormatRate(system.UploadBytesPerSecond)}  ↓ {FormatRate(system.DownloadBytesPerSecond)}"
+                    : data.NextAgenda() is { } next
+                        ? $"下一项 · {next.StartsAt:HH:mm} {next.Title}"
+                        : "今天暂无安排";
             }
         }
+        var collapsedMedia = preferences.Load().MediaAutoTakeover && media.Current is { IsPlaying: true, IsMusic: true } musicSnapshot
+            ? musicSnapshot
+            : null;
+        UpdateCollapsedMediaView(collapsedMedia);
+        UpdateTelemetryView(telemetry.Current);
+        if (SystemToastHeader.Visibility == Visibility.Visible)
+        {
+            DefaultHeaderLeft.Visibility = Visibility.Collapsed;
+            ClockGroup.Visibility = Visibility.Collapsed;
+            CollapsedMedia.Visibility = Visibility.Collapsed;
+        }
+        if (media.Current is { IsPlaying: true, IsMusic: true }) SetTopDockFolded(false);
         ResizeCollapsedToContent();
         BuildCalendar();
         BuildDayAgenda();
+        UpdateMediaView();
         if (!HasOpenDropDown() && todayDashboardContent?.IsKeyboardFocusWithin != true)
             BuildTodayDashboard();
+        ResizeExpandedToContent();
     }
 
     internal static System.Windows.Media.Brush IndicatorBrush(IslandIndicatorState state) => state switch
@@ -1176,7 +1256,7 @@ public partial class LifeIslandWindow : Window
                 }
                 break;
             case IslandQuickAction.ViewToday: ShowTodayDashboard(); break;
-            case IslandQuickAction.AskAi: OpenAssistant(); break;
+            case IslandQuickAction.AskAi: Expand(); ShowQuickAskDashboard(); Dispatcher.BeginInvoke(QuickAskInput.Focus); break;
             case IslandQuickAction.ManageItems: OpenManagement(); break;
             case IslandQuickAction.Naming: OpenNaming(); break;
             case IslandQuickAction.Settings: OpenSettings(); break;
@@ -1487,16 +1567,19 @@ public partial class LifeIslandWindow : Window
         if (weeklyReportPanel is not null) weeklyReportPanel.Visibility = Visibility.Visible;
         if (weeklyHistoryPanel is not null) weeklyHistoryPanel.Visibility = Visibility.Visible;
         CalendarPanel.Visibility = Visibility.Collapsed;
-        TodayDashboardTab.Background = new SolidColorBrush(Color.FromRgb(72, 72, 74));
-        TodayDashboardTab.Foreground = Brushes.White;
-        CalendarDashboardTab.Background = new SolidColorBrush(Color.FromRgb(44, 44, 46));
-        CalendarDashboardTab.Foreground = new SolidColorBrush(Color.FromRgb(184, 184, 191));
+        TelemetryPanel.Visibility = Visibility.Collapsed;
+        MediaPanel.Visibility = Visibility.Collapsed;
+        QuickAskPanel.Visibility = Visibility.Collapsed;
+        SelectDashboardTab(TodayDashboardTab);
         BuildTodayDashboard();
         Touch();
     }
     void TodayTab_Click(object sender, RoutedEventArgs e) => ShowTodayDashboard();
 
     void CalendarTab_Click(object sender, RoutedEventArgs e) => ShowCalendarDashboard();
+    void StatusTab_Click(object sender, RoutedEventArgs e) => ShowTelemetryDashboard();
+    void MediaTab_Click(object sender, RoutedEventArgs e) => ShowMediaDashboard();
+    void QuickAskTab_Click(object sender, RoutedEventArgs e) => ShowQuickAskDashboard();
 
     void ShowCalendarDashboard()
     {
@@ -1505,11 +1588,539 @@ public partial class LifeIslandWindow : Window
         if (weeklyReportPanel is not null) weeklyReportPanel.Visibility = Visibility.Collapsed;
         if (weeklyHistoryPanel is not null) weeklyHistoryPanel.Visibility = Visibility.Collapsed;
         CalendarPanel.Visibility = Visibility.Visible;
-        CalendarDashboardTab.Background = new SolidColorBrush(Color.FromRgb(72, 72, 74));
-        CalendarDashboardTab.Foreground = Brushes.White;
-        TodayDashboardTab.Background = new SolidColorBrush(Color.FromRgb(44, 44, 46));
-        TodayDashboardTab.Foreground = new SolidColorBrush(Color.FromRgb(184, 184, 191));
+        TelemetryPanel.Visibility = Visibility.Collapsed;
+        MediaPanel.Visibility = Visibility.Collapsed;
+        QuickAskPanel.Visibility = Visibility.Collapsed;
+        SelectDashboardTab(CalendarDashboardTab);
         Touch();
+    }
+
+    void ShowTelemetryDashboard()
+    {
+        if (todayPanel is null) return;
+        todayPanel.Visibility = Visibility.Collapsed;
+        if (weeklyReportPanel is not null) weeklyReportPanel.Visibility = Visibility.Collapsed;
+        if (weeklyHistoryPanel is not null) weeklyHistoryPanel.Visibility = Visibility.Collapsed;
+        CalendarPanel.Visibility = Visibility.Collapsed;
+        TelemetryPanel.Visibility = Visibility.Visible;
+        MediaPanel.Visibility = Visibility.Collapsed;
+        QuickAskPanel.Visibility = Visibility.Collapsed;
+        SelectDashboardTab(StatusDashboardTab);
+        UpdateTelemetryView(telemetry.Current);
+        Touch();
+    }
+
+    void ShowMediaDashboard()
+    {
+        if (todayPanel is null) return;
+        todayPanel.Visibility = Visibility.Collapsed;
+        if (weeklyReportPanel is not null) weeklyReportPanel.Visibility = Visibility.Collapsed;
+        if (weeklyHistoryPanel is not null) weeklyHistoryPanel.Visibility = Visibility.Collapsed;
+        CalendarPanel.Visibility = Visibility.Collapsed;
+        TelemetryPanel.Visibility = Visibility.Collapsed;
+        MediaPanel.Visibility = Visibility.Visible;
+        QuickAskPanel.Visibility = Visibility.Collapsed;
+        SelectDashboardTab(MediaDashboardTab);
+        UpdateMediaView();
+        Touch();
+    }
+
+    void ShowQuickAskDashboard()
+    {
+        if (todayPanel is null) return;
+        todayPanel.Visibility = Visibility.Collapsed;
+        if (weeklyReportPanel is not null) weeklyReportPanel.Visibility = Visibility.Collapsed;
+        if (weeklyHistoryPanel is not null) weeklyHistoryPanel.Visibility = Visibility.Collapsed;
+        CalendarPanel.Visibility = Visibility.Collapsed;
+        TelemetryPanel.Visibility = Visibility.Collapsed;
+        MediaPanel.Visibility = Visibility.Collapsed;
+        QuickAskPanel.Visibility = Visibility.Visible;
+        SelectDashboardTab(QuickAskDashboardTab);
+        UpdateQuickAskView();
+        Touch();
+    }
+
+    void SelectDashboardTab(Button selected)
+    {
+        foreach (var tab in new[] { TodayDashboardTab, CalendarDashboardTab, StatusDashboardTab, MediaDashboardTab, QuickAskDashboardTab })
+        {
+            var active = ReferenceEquals(tab, selected);
+            tab.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, active ? "Brush.AccentSoft" : "Brush.Control");
+            tab.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, active ? "Brush.TextPrimary" : "Brush.TextSecondary");
+            tab.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, active ? "Brush.Accent" : "Brush.Stroke");
+        }
+        ResizeExpandedToContent();
+    }
+
+    void UpdateTelemetryView(SystemTelemetrySnapshot snapshot)
+    {
+        var enabled = preferences.Load().TelemetryEnabled;
+        var label = enabled
+            ? snapshot.NetworkHealth switch
+            {
+                NetworkHealth.Connected => "网络正常",
+                NetworkHealth.Busy => "网络繁忙",
+                NetworkHealth.Poor => "网络延迟",
+                _ => "网络不可用"
+            }
+            : "系统监控已关闭";
+        var brushKey = enabled
+            ? snapshot.NetworkHealth switch
+            {
+                NetworkHealth.Connected => "Brush.Success",
+                NetworkHealth.Busy or NetworkHealth.Poor => "Brush.Warning",
+                _ => "Brush.Danger"
+            }
+            : "Brush.TextTertiary";
+        var statusBrush = FindResource(brushKey) as System.Windows.Media.Brush ?? Brushes.Gray;
+        NetworkStatusLight.Fill = statusBrush;
+        NetworkStatusLight.ToolTip = snapshot.LatencyMilliseconds is { } latency
+            ? $"{label} · {latency} ms"
+            : label;
+        TelemetryStatusLight.Fill = statusBrush;
+        TelemetryNetworkStatus.Text = label;
+        TelemetryLatency.Text = enabled && snapshot.LatencyMilliseconds is { } value ? $"{value} ms" : "-- ms";
+        TelemetryUploadSpeed.Text = FormatRate(snapshot.UploadBytesPerSecond);
+        TelemetryDownloadSpeed.Text = FormatRate(snapshot.DownloadBytesPerSecond);
+        TelemetryCpuText.Text = $"{snapshot.CpuPercent:0}%";
+        TelemetryCpuProgress.Value = snapshot.CpuPercent;
+        TelemetryMemoryText.Text = $"{snapshot.MemoryPercent:0}%";
+        TelemetryMemoryProgress.Value = snapshot.MemoryPercent;
+        TelemetryTodayTraffic.Text = $"↑ {FormatBytes(snapshot.TodayUploadedBytes)}  ↓ {FormatBytes(snapshot.TodayDownloadedBytes)}";
+        TelemetryMonthTraffic.Text = $"↑ {FormatBytes(snapshot.MonthUploadedBytes)}  ↓ {FormatBytes(snapshot.MonthDownloadedBytes)}";
+
+        TelemetryHistoryList.Children.Clear();
+        foreach (var day in snapshot.RecentDays.OrderByDescending(item => item.Day))
+        {
+            var row = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var date = new TextBlock { Text = day.Day.ToString("MM-dd"), FontSize = 10 };
+            date.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextTertiary");
+            var uploaded = new TextBlock { Text = $"↑ {FormatBytes(day.UploadedBytes)}", FontSize = 10 };
+            uploaded.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSecondary");
+            Grid.SetColumn(uploaded, 1);
+            var downloaded = new TextBlock { Text = $"↓ {FormatBytes(day.DownloadedBytes)}", FontSize = 10 };
+            downloaded.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSecondary");
+            Grid.SetColumn(downloaded, 2);
+            row.Children.Add(date);
+            row.Children.Add(uploaded);
+            row.Children.Add(downloaded);
+            TelemetryHistoryList.Children.Add(row);
+        }
+        if (TelemetryPanel.Visibility == Visibility.Visible) ResizeExpandedToContent();
+    }
+
+    static string FormatRate(double bytesPerSecond) => $"{FormatBytes(bytesPerSecond)}/s";
+
+    static string FormatBytes(double bytes)
+    {
+        var value = Math.Max(0, bytes);
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        var format = unit == 0 || value >= 100 ? "0" : value >= 10 ? "0.0" : "0.00";
+        return $"{value.ToString(format, CultureInfo.InvariantCulture)} {units[unit]}";
+    }
+
+    void ShowSystemToast(SystemToastMessage message)
+    {
+        if (!preferences.Load().ToastInboxEnabled) return;
+        var version = ++toastAnimationVersion;
+        toastRetractTimer.Stop();
+        SystemToastTitle.Text = $"{message.AppName} · {message.Title}";
+        SystemToastBody.Text = message.Body;
+        SystemToastBody.Visibility = string.IsNullOrWhiteSpace(message.Body) ? Visibility.Collapsed : Visibility.Visible;
+        SystemToastHeader.Visibility = Visibility.Visible;
+        SystemToastHeader.Opacity = 1;
+        Header.Height = string.IsNullOrWhiteSpace(message.Body) ? 52 : 62;
+        DefaultHeaderLeft.Visibility = Visibility.Collapsed;
+        ClockGroup.Visibility = Visibility.Collapsed;
+        CollapsedMedia.Visibility = Visibility.Collapsed;
+        var translate = SystemToastHeader.RenderTransform as TranslateTransform ?? new TranslateTransform();
+        SystemToastHeader.RenderTransform = translate;
+        translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+        {
+            From = -8,
+            To = 0,
+            Duration = SystemParameters.ClientAreaAnimation ? TimeSpan.FromMilliseconds(260) : TimeSpan.FromMilliseconds(1),
+            EasingFunction = new BackEase { Amplitude = .18, EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        });
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+        {
+            if (version != toastAnimationVersion) return;
+            ResizeCollapsedToContent();
+            MaintainTaskbarHeaderAnchor();
+        }));
+        SetTopDockFolded(false);
+        toastRetractTimer.Start();
+    }
+
+    void HideSystemToast()
+    {
+        toastRetractTimer.Stop();
+        if (SystemToastHeader.Visibility != Visibility.Visible) return;
+        var version = ++toastAnimationVersion;
+        var animation = new DoubleAnimation
+        {
+            From = 1,
+            To = 0,
+            Duration = SystemParameters.ClientAreaAnimation ? TimeSpan.FromMilliseconds(130) : TimeSpan.FromMilliseconds(1),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+            FillBehavior = FillBehavior.Stop
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (version != toastAnimationVersion) return;
+            SystemToastHeader.BeginAnimation(OpacityProperty, null);
+            SystemToastHeader.Opacity = 1;
+            SystemToastHeader.Visibility = Visibility.Collapsed;
+            Header.Height = 43;
+            Refresh();
+        };
+        SystemToastHeader.BeginAnimation(OpacityProperty, animation);
+    }
+
+    void ConfigureGlowBorder()
+    {
+        if (!preferences.Load().GlowBorderEnabled || !SystemParameters.ClientAreaAnimation)
+        {
+            MainBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.Stroke");
+            return;
+        }
+
+        var stroke = (FindResource("Brush.Stroke") as SolidColorBrush)?.Color ?? Color.FromRgb(56, 64, 60);
+        var accent = (FindResource("Brush.Accent") as SolidColorBrush)?.Color ?? Color.FromRgb(57, 201, 139);
+        var glow = Color.FromArgb(170, accent.R, accent.G, accent.B);
+        var gradient = new LinearGradientBrush
+        {
+            StartPoint = new System.Windows.Point(0, 0),
+            EndPoint = new System.Windows.Point(1, 1),
+            RelativeTransform = new RotateTransform(0, .5, .5)
+        };
+        gradient.GradientStops.Add(new GradientStop(stroke, 0));
+        gradient.GradientStops.Add(new GradientStop(glow, .45));
+        gradient.GradientStops.Add(new GradientStop(stroke, 1));
+        MainBorder.BorderBrush = gradient;
+        ((RotateTransform)gradient.RelativeTransform).BeginAnimation(
+            RotateTransform.AngleProperty,
+            new DoubleAnimation
+            {
+                From = 0,
+                To = 360,
+                Duration = TimeSpan.FromSeconds(8),
+                RepeatBehavior = RepeatBehavior.Forever
+            });
+    }
+
+    void UpdateQuickAskView()
+    {
+        QuickAskStatus.Text = assistant.HasPendingAction
+            ? "需要在完整对话中确认操作"
+            : assistant.Status;
+        QuickAskSend.IsEnabled = !assistant.IsSending && !string.IsNullOrWhiteSpace(QuickAskInput.Text);
+        QuickAskStop.Visibility = assistant.IsSending ? Visibility.Visible : Visibility.Collapsed;
+        var latest = assistant.Messages.LastOrDefault(message => message.Role == "assistant");
+        if (latest is not null) QuickAskAnswer.Markdown = latest.Content;
+        ResizeExpandedToContent();
+    }
+
+    async void QuickAskSend_Click(object sender, RoutedEventArgs e)
+    {
+        var text = QuickAskInput.Text.Trim();
+        if (text.Length == 0 || assistant.IsSending) return;
+        QuickAskInput.Clear();
+        QuickAskAnswer.Markdown = string.Empty;
+        UpdateQuickAskView();
+        await assistant.SubmitAsync(text);
+        UpdateQuickAskView();
+    }
+
+    void QuickAskStop_Click(object sender, RoutedEventArgs e)
+    {
+        if (assistant.StopGeneratingCommand.CanExecute(null))
+            assistant.StopGeneratingCommand.Execute(null);
+    }
+
+    void QuickAskInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (QuickAskSend is not null) UpdateQuickAskView();
+    }
+
+    void QuickAskInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;
+        e.Handled = true;
+        QuickAskSend_Click(QuickAskSend, new RoutedEventArgs());
+    }
+
+    void OpenFullChat_Click(object sender, RoutedEventArgs e) => OpenAssistant();
+
+    void UpdateMediaView()
+    {
+        var snapshot = media.Current;
+        UpdateArtwork(snapshot?.Artwork);
+        if (snapshot is null)
+        {
+            MediaTitle.Text = "当前没有可控制的媒体";
+            MediaArtist.Text = "支持系统媒体会话及网易云、QQ 音乐";
+            MediaProgress.Value = 0;
+            MediaPosition.Text = MediaDuration.Text = "00:00";
+            UpdateMediaPlayPauseIcons(false);
+            LyricCurrent.Text = "等待同步歌词";
+            LyricNext.Text = string.Empty;
+            LyricsStatus.Text = lyrics.Status;
+            return;
+        }
+
+        MediaTitle.Text = snapshot.Title;
+        MediaArtist.Text = string.IsNullOrWhiteSpace(snapshot.Artist) ? snapshot.SourceAppId : snapshot.Artist;
+        var document = lyrics.Current;
+        lyricsOffsetMs = preferences.Load().LyricsOffsetMs;
+        UpdateMediaPlayPauseIcons(snapshot.IsPlaying);
+        LyricsStatus.Text = lyrics.Status;
+        UpdateTimedMediaProgress(snapshot, document);
+    }
+
+    void UpdateCollapsedMediaView(MediaSessionSnapshot? snapshot)
+    {
+        var takeover = snapshot is not null;
+        DefaultHeaderLeft.Visibility = takeover ? Visibility.Collapsed : Visibility.Visible;
+        ClockGroup.Visibility = takeover ? Visibility.Collapsed : Visibility.Visible;
+        CollapsedMedia.Visibility = takeover ? Visibility.Visible : Visibility.Collapsed;
+        if (snapshot is null) return;
+
+        CollapsedMediaTitle.Text = snapshot.Title;
+        var artist = string.IsNullOrWhiteSpace(snapshot.Artist)
+            ? snapshot.SourceAppId
+            : snapshot.Artist;
+        var document = lyrics.Current;
+        var effectivePosition = EffectiveMediaPosition(snapshot, document);
+        var index = document?.CurrentLineIndex(effectivePosition, lyricsOffsetMs) ?? -1;
+        var displayIndex = document is not null && document.Lines.Count > 0
+            ? Math.Max(0, index)
+            : -1;
+        if (displayIndex >= 0)
+        {
+            var line = document!.Lines[displayIndex];
+            CollapsedMediaArtist.Text = line.Text;
+            CollapsedMediaArtist.Foreground = KaraokeHighlightBrush;
+        }
+        else
+        {
+            CollapsedMediaArtist.Text = document is null && lyrics.Status is not "等待播放音乐"
+                ? lyrics.Status
+                : artist;
+            CollapsedMediaArtist.Foreground = KaraokeCollapsedPendingBrush;
+        }
+        CollapsedMediaArtist.ToolTip = displayIndex >= 0 ? artist : null;
+    }
+
+    void UpdateTimedMediaProgress()
+    {
+        if (media.Current is not { } snapshot) return;
+        var document = lyrics.Current;
+        UpdateTimedMediaProgress(snapshot, document);
+        if (CollapsedMedia.Visibility == Visibility.Visible)
+            UpdateCollapsedMediaView(snapshot);
+    }
+
+    void UpdateTimedMediaProgress(
+        MediaSessionSnapshot snapshot,
+        LyricsDocument? document)
+    {
+        var effectivePosition = EffectiveMediaPosition(snapshot, document);
+        var effectiveDuration = snapshot.Duration > TimeSpan.Zero
+            ? snapshot.Duration
+            : document?.DurationSeconds > 0
+                ? TimeSpan.FromSeconds(document.DurationSeconds)
+                : TimeSpan.Zero;
+        MediaProgress.Value = effectiveDuration > TimeSpan.Zero
+            ? Math.Clamp(effectivePosition.TotalSeconds / effectiveDuration.TotalSeconds, 0, 1)
+            : snapshot.ProgressRatio ?? 0;
+        MediaPosition.Text = effectiveDuration > TimeSpan.Zero ? FormatMediaTime(effectivePosition) : "--:--";
+        MediaDuration.Text = effectiveDuration > TimeSpan.Zero ? FormatMediaTime(effectiveDuration) : "--:--";
+
+        var index = document?.CurrentLineIndex(effectivePosition, lyricsOffsetMs) ?? -1;
+        var displayIndex = document is not null && document.Lines.Count > 0
+            ? Math.Max(0, index)
+            : -1;
+        if (displayIndex >= 0)
+        {
+            var line = document!.Lines[displayIndex];
+            LyricCurrent.Text = line.Text;
+            LyricCurrent.Foreground = KaraokeHighlightBrush;
+        }
+        else LyricCurrent.Text = "♪";
+        LyricNext.Text = displayIndex >= 0 && document is not null && displayIndex + 1 < document.Lines.Count
+            ? document.Lines[displayIndex + 1].Text
+            : string.Empty;
+    }
+
+    void UpdateMediaPlayPauseIcons(bool isPlaying)
+    {
+        var playVisibility = isPlaying ? Visibility.Collapsed : Visibility.Visible;
+        var pauseVisibility = isPlaying ? Visibility.Visible : Visibility.Collapsed;
+        MediaPlayIcon.Visibility = playVisibility;
+        CollapsedMediaPlayIcon.Visibility = playVisibility;
+        MediaPauseIcon.Visibility = pauseVisibility;
+        CollapsedMediaPauseIcon.Visibility = pauseVisibility;
+    }
+
+    void UpdateArtwork(byte[]? artworkBytes)
+    {
+        if (!ReferenceEquals(displayedArtworkBytes, artworkBytes))
+        {
+            displayedArtworkBytes = artworkBytes;
+            displayedArtworkImage = CreateArtworkImage(artworkBytes);
+        }
+
+        MediaArtwork.Source = displayedArtworkImage;
+        CollapsedMediaArtwork.Source = displayedArtworkImage;
+        var placeholderVisibility = displayedArtworkImage is null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        MediaArtworkPlaceholder.Visibility = placeholderVisibility;
+        CollapsedMediaArtworkPlaceholder.Visibility = placeholderVisibility;
+    }
+
+    static ImageSource? CreateArtworkImage(byte[]? artworkBytes)
+    {
+        if (artworkBytes is null || artworkBytes.Length == 0) return null;
+        try
+        {
+            using var stream = new MemoryStream(artworkBytes, writable: false);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Media artwork decode failed: {exception.Message}");
+            return null;
+        }
+    }
+
+    TimeSpan EffectiveMediaPosition(
+        MediaSessionSnapshot snapshot,
+        LyricsDocument? document)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        if (snapshot.Duration > TimeSpan.Zero)
+            return DesktopMediaTimeline.EstimatePosition(
+                snapshot.Position,
+                snapshot.Duration.TotalSeconds,
+                snapshot.ProgressSampledAtUtc,
+                nowUtc,
+                snapshot.IsPlaying);
+
+        var sourcePosition = sourceLyricTimeline.Update(
+            snapshot.TrackKey,
+            snapshot.SourceLyric,
+            snapshot.IsPlaying,
+            snapshot.SourceLyricSampledAtUtc,
+            document,
+            nowUtc);
+        if (sourcePosition is { } synchronized) return synchronized;
+
+        var durationSeconds = document?.DurationSeconds > 0
+            ? document.DurationSeconds
+            : document?.Lines.Count > 0
+                ? (document.Lines[^1].Timestamp + TimeSpan.FromSeconds(12)).TotalSeconds
+                : 0;
+        return snapshot.ProgressRatio is double ratio
+            ? DesktopMediaTimeline.EstimatePosition(
+                ratio,
+                durationSeconds,
+                snapshot.ProgressSampledAtUtc,
+                nowUtc,
+                snapshot.IsPlaying)
+            : DesktopMediaTimeline.EstimatePosition(
+                snapshot.Position,
+                durationSeconds,
+                snapshot.ProgressSampledAtUtc,
+                nowUtc,
+                snapshot.IsPlaying);
+    }
+
+    static string FormatMediaTime(TimeSpan value)
+    {
+        if (value < TimeSpan.Zero) value = TimeSpan.Zero;
+        return value.TotalHours >= 1 ? value.ToString(@"h\:mm\:ss") : value.ToString(@"m\:ss");
+    }
+
+    async void MediaPrevious_Click(object sender, RoutedEventArgs e) => await media.PreviousAsync();
+    async void MediaPlayPause_Click(object sender, RoutedEventArgs e) => await media.TogglePlayPauseAsync();
+    async void MediaNext_Click(object sender, RoutedEventArgs e) => await media.NextAsync();
+
+    public void SetFullscreenAvoidance(FullscreenWindowInfo? context)
+    {
+        if (!preferences.Load().MoveIslandDuringFullscreen || context is null)
+        {
+            RestoreAfterFullscreen();
+            return;
+        }
+
+        if (!fullscreenAvoiding)
+        {
+            fullscreenAvoiding = true;
+            fullscreenOriginalPlacement = placement;
+            fullscreenOriginalLeft = Left;
+            fullscreenOriginalTop = Top;
+            fullscreenOriginalTaskbarMonitor = taskbarMonitorDeviceName;
+            fullscreenOriginalTaskbarRatio = taskbarHorizontalRatio;
+        }
+
+        var destination = System.Windows.Forms.Screen.AllScreens
+            .Where(screen => !string.Equals(screen.DeviceName, context.MonitorDeviceName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(screen => screen.Primary)
+            .FirstOrDefault();
+        if (destination is null)
+        {
+            fullscreenFallbackHidden = true;
+            Hide();
+            return;
+        }
+
+        fullscreenFallbackHidden = false;
+        if (!IsVisible) Show();
+        Collapse();
+        PositionAtTopCenter(destination);
+    }
+
+    void RestoreAfterFullscreen()
+    {
+        if (!fullscreenAvoiding) return;
+        fullscreenAvoiding = false;
+        placement = fullscreenOriginalPlacement;
+        taskbarMonitorDeviceName = fullscreenOriginalTaskbarMonitor;
+        taskbarHorizontalRatio = fullscreenOriginalTaskbarRatio;
+        if (placement == IslandPlacement.Taskbar &&
+            System.Windows.Forms.Screen.AllScreens.FirstOrDefault(screen =>
+                string.Equals(screen.DeviceName, taskbarMonitorDeviceName, StringComparison.OrdinalIgnoreCase)) is { } taskbarScreen &&
+            TryGetMonitorGeometry(taskbarScreen, out var geometry) && geometry.Taskbar is not null)
+        {
+            ApplyPlacementVisuals(geometry.Taskbar);
+            PositionAtTaskbar(geometry);
+        }
+        else
+        {
+            ApplyPlacementVisuals();
+            Left = fullscreenOriginalLeft;
+            Top = fullscreenOriginalTop;
+        }
+        if (fullscreenFallbackHidden && !IsVisible) Show();
+        fullscreenFallbackHidden = false;
     }
 
     void BuildCalendar()
@@ -2001,7 +2612,11 @@ public partial class LifeIslandWindow : Window
     void ToggleExpanded()
     {
         if (expanded) Collapse();
-        else Expand();
+        else
+        {
+            if (media.Current is { IsPlaying: true, IsMusic: true }) ShowMediaDashboard();
+            Expand();
+        }
     }
 
     void Expand()
@@ -2054,12 +2669,54 @@ public partial class LifeIslandWindow : Window
         }
     }
 
+    double AvailableExpandedContentHeight(bool hasGeometry, MonitorGeometry geometry, Rect headerRect)
+    {
+        var maximum = hasGeometry
+            ? placement == IslandPlacement.Taskbar
+                ? IslandPlacementGeometry.TaskbarExpandedContentMaxHeight(
+                    geometry.Bounds,
+                    geometry.Taskbar,
+                    headerRect.Top,
+                    Header.ActualHeight,
+                    12)
+                : geometry.WorkArea.Bottom - headerRect.Bottom - 12
+            : SystemParameters.WorkArea.Bottom - headerRect.Bottom - 12;
+        return Math.Max(0, maximum);
+    }
+
+    void ResizeExpandedToContent()
+    {
+        if (!expanded || ExpandedContent.Visibility != Visibility.Visible) return;
+        var resizeVersion = ++expandedContentResizeVersion;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (resizeVersion != expandedContentResizeVersion ||
+                !expanded ||
+                ExpandedContent.Visibility != Visibility.Visible)
+                return;
+
+            ExpandedScrollViewer.BeginAnimation(MaxHeightProperty, null);
+            ExpandedScrollViewer.MinHeight = 0;
+            ExpandedContent.Measure(new System.Windows.Size(ExpandedWidth, double.PositiveInfinity));
+            var hasGeometry = TryGetMonitorGeometry(ScreenForHeader(), out var geometry);
+            var targetHeight = Math.Min(
+                ExpandedContent.DesiredSize.Height,
+                AvailableExpandedContentHeight(hasGeometry, geometry, HeaderScreenRect()));
+            ExpandedScrollViewer.MaxHeight = targetHeight;
+            if (placement == IslandPlacement.Taskbar)
+                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(AlignTaskbarAfterLayout));
+        }));
+    }
+
     void AnimateExpandedState(bool expand)
     {
         var contentAnimationVersion = ++expandedContentAnimationVersion;
-        const double contentMinHeight = 620;
-        var duration = TimeSpan.FromMilliseconds(expand ? 180 : 240);
-        var easing = new CubicEase { EasingMode = expand ? EasingMode.EaseOut : EasingMode.EaseInOut };
+        var duration = SystemParameters.ClientAreaAnimation
+            ? TimeSpan.FromMilliseconds(expand ? 230 : 190)
+            : TimeSpan.FromMilliseconds(1);
+        IEasingFunction easing = expand
+            ? new BackEase { Amplitude = .16, EasingMode = EasingMode.EaseOut }
+            : new CubicEase { EasingMode = EasingMode.EaseInOut };
         var hasGeometry = TryGetMonitorGeometry(ScreenForHeader(), out var geometry);
         var fromWidth = ActualWidth;
         var fromLeft = Left;
@@ -2084,19 +2741,8 @@ public partial class LifeIslandWindow : Window
             ExpandedScrollViewer.MaxHeight = fromHeight;
             ExpandedContent.Visibility = Visibility.Visible;
             ExpandedContent.Measure(new System.Windows.Size(ExpandedWidth, double.PositiveInfinity));
-            var contentMaxHeight = hasGeometry
-                ? placement == IslandPlacement.Taskbar
-                    ? IslandPlacementGeometry.TaskbarExpandedContentMaxHeight(
-                        geometry.Bounds,
-                        geometry.Taskbar,
-                        headerRect.Top,
-                        Header.ActualHeight,
-                        12)
-                    : geometry.WorkArea.Bottom - headerRect.Bottom - 12
-                : SystemParameters.WorkArea.Bottom - headerRect.Bottom - 12;
-            contentMaxHeight = Math.Max(0, contentMaxHeight);
-            targetMinimumHeight = Math.Min(contentMinHeight, contentMaxHeight);
-            targetHeight = Math.Clamp(ExpandedContent.DesiredSize.Height, targetMinimumHeight, contentMaxHeight);
+            var contentMaxHeight = AvailableExpandedContentHeight(hasGeometry, geometry, headerRect);
+            targetHeight = Math.Min(ExpandedContent.DesiredSize.Height, contentMaxHeight);
         }
         else ExpandedScrollViewer.MinHeight = 0;
 
@@ -2232,7 +2878,8 @@ public partial class LifeIslandWindow : Window
 
     void SetTopDockFolded(bool folded)
     {
-        folded = folded && placement == IslandPlacement.Top && !expanded && !pointerHover;
+        folded = folded && placement == IslandPlacement.Top && !expanded && !pointerHover &&
+                 media.Current?.IsPlaying != true;
         if (folded == topDockFolded) return;
 
         var headerHeight = Header.ActualHeight > 0 ? Header.ActualHeight : Header.Height;
@@ -2336,7 +2983,7 @@ public partial class LifeIslandWindow : Window
         TopDockStatusPulse.BeginAnimation(OpacityProperty, null);
         TopDockStatusPulse.Opacity = 1;
         TopDockStatusLight.Visibility = Visibility.Collapsed;
-        MainBorder.Background = Brushes.Black;
+        MainBorder.SetResourceReference(Border.BackgroundProperty, "Brush.Island");
         MainBorder.BorderThickness = new Thickness(1);
     }
 

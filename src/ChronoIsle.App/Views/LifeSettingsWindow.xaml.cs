@@ -6,6 +6,7 @@ using ChronoIsle.App.Services.Commanding;
 using ChronoIsle.App.Services.Reporting;
 using ChronoIsle.App.Services.Persistence;
 using ChronoIsle.App.Services.Sync;
+using ChronoIsle.App.Services.Media;
 
 namespace ChronoIsle.App.Views;
 
@@ -16,6 +17,7 @@ public partial class LifeSettingsWindow : Window
     readonly ReminderService reminders;
     readonly OpenAiChatService ai;
     readonly AutoStartService autoStart;
+    readonly LyricsService lyrics;
     readonly SqliteOnlineBackupService backups;
     readonly IcsExportService icsExport;
     readonly IcsImportService icsImport;
@@ -24,7 +26,8 @@ public partial class LifeSettingsWindow : Window
     readonly string databasePath;
     readonly AssistantCommandPipeline commandPipeline;
 
-    public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders, OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline)
+    public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders,
+        OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline, LyricsService lyrics)
     {
         InitializeComponent();
         this.settings = settings;
@@ -32,6 +35,7 @@ public partial class LifeSettingsWindow : Window
         this.reminders = reminders;
         this.ai = ai;
         this.autoStart = autoStart;
+        this.lyrics = lyrics;
         var provider = settings.Load();
         var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
         backups = new SqliteOnlineBackupService(runtime.ConnectionFactory, runtime.WriteQueue);
@@ -46,6 +50,14 @@ public partial class LifeSettingsWindow : Window
         loading = true;
         var savedPreferences = preferences.Load();
         WindowsNotifications.IsChecked = savedPreferences.WindowsNotifications;
+        MediaAutoTakeover.IsChecked = savedPreferences.MediaAutoTakeover;
+        ThemeModeSelector.SelectedValue = savedPreferences.ThemeMode;
+        TelemetryEnabled.IsChecked = savedPreferences.TelemetryEnabled;
+        ToastInboxEnabled.IsChecked = savedPreferences.ToastInboxEnabled;
+        GlowBorderEnabled.IsChecked = savedPreferences.GlowBorderEnabled;
+        LyricsEnabled.IsChecked = savedPreferences.LyricsEnabled;
+        MoveIslandDuringFullscreen.IsChecked = savedPreferences.MoveIslandDuringFullscreen;
+        LyricsOffset.Value = savedPreferences.LyricsOffsetMs;
         Persona.SelectedValue = Enum.TryParse<AssistantPersona>(savedPreferences.AssistantPersona, out _) ? savedPreferences.AssistantPersona : "Direct";
         AutoStart.IsEnabled = autoStart.IsSupported;
         AutoStart.IsChecked = autoStart.IsEnabled;
@@ -88,8 +100,17 @@ public partial class LifeSettingsWindow : Window
         preferences.Save(current with
         {
             WindowsNotifications = WindowsNotifications.IsChecked == true,
-            AssistantPersona = Persona.SelectedValue as string ?? "Direct"
+            AssistantPersona = Persona.SelectedValue as string ?? "Direct",
+            MediaAutoTakeover = MediaAutoTakeover.IsChecked == true,
+            ThemeMode = ThemeModeSelector.SelectedValue as string ?? "System",
+            TelemetryEnabled = TelemetryEnabled.IsChecked == true,
+            ToastInboxEnabled = ToastInboxEnabled.IsChecked == true,
+            GlowBorderEnabled = GlowBorderEnabled.IsChecked == true,
+            LyricsEnabled = LyricsEnabled.IsChecked == true,
+            LyricsOffsetMs = (int)LyricsOffset.Value,
+            MoveIslandDuringFullscreen = MoveIslandDuringFullscreen.IsChecked == true
         });
+        lyrics.Refresh();
         reminders.RefreshSchedule();
         Result.Text = "设置已保存。";
     }

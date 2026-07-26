@@ -7,6 +7,8 @@ public sealed class LifePreferencesService
 {
     readonly string path;
 
+    public event Action? Changed;
+
     public LifePreferencesService()
     {
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ChronoIsle");
@@ -20,5 +22,9 @@ public sealed class LifePreferencesService
         catch { return LifePreferences.Default; }
     }
 
-    public void Save(LifePreferences preferences) => File.WriteAllText(path, JsonSerializer.Serialize(preferences));
+    public void Save(LifePreferences preferences)
+    {
+        File.WriteAllText(path, JsonSerializer.Serialize(preferences));
+        Changed?.Invoke();
+    }
 }

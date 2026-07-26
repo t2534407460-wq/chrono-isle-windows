@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ChronoIsle.App.Services;
@@ -14,10 +15,12 @@ public partial class LifeViewModel : ObservableObject
     readonly AssistantActionService actions;
     readonly ProviderSettingsService settings;
     readonly ReminderService reminders;
+    CancellationTokenSource? sendCancellation;
 
     [ObservableProperty] string chatInput = "";
     readonly IIslandStateCoordinator islandState;
     [ObservableProperty] string status = "准备就绪";
+    [ObservableProperty] bool isSending;
     [ObservableProperty] ChatSession? selectedSession;
     [ObservableProperty] AssistantAction? pendingAction;
     [ObservableProperty] string pendingActionText = "";
@@ -39,6 +42,21 @@ public partial class LifeViewModel : ObservableObject
     }
 
     partial void OnPendingActionChanged(AssistantAction? value) => OnPropertyChanged(nameof(HasPendingAction));
+    partial void OnChatInputChanged(string value) => SendCommand.NotifyCanExecuteChanged();
+    partial void OnIsSendingChanged(bool value)
+    {
+        SendCommand.NotifyCanExecuteChanged();
+        StopGeneratingCommand.NotifyCanExecuteChanged();
+    }
+
+    bool CanSend() => !IsSending && !string.IsNullOrWhiteSpace(ChatInput) && SelectedSession is not null;
+    bool CanStopGenerating() => IsSending;
+
+    public async Task SubmitAsync(string input)
+    {
+        ChatInput = input;
+        if (CanSend()) await Send();
+    }
 
     void RefreshSessions()
     {
@@ -48,6 +66,7 @@ public partial class LifeViewModel : ObservableObject
 
     partial void OnSelectedSessionChanged(ChatSession? value)
     {
+        sendCancellation?.Cancel();
         if (value is null) return;
         Messages.Clear();
         foreach (var message in data.Messages(value.Id)) Messages.Add(message);
@@ -74,20 +93,41 @@ public partial class LifeViewModel : ObservableObject
         if (SelectedSession is null) NewChat();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSend))]
     async Task Send()
     {
-        if (string.IsNullOrWhiteSpace(ChatInput) || SelectedSession is null) return;
+        if (!CanSend() || SelectedSession is null) return;
 
+        var session = SelectedSession;
         var text = ChatInput.Trim();
-        var history = data.Messages(SelectedSession.Id);
+        var history = data.Messages(session.Id);
         ChatInput = "";
         AddMessage("user", text);
+        IsSending = true;
+        var cancellation = new CancellationTokenSource();
+        sendCancellation = cancellation;
+        var streamed = new StringBuilder();
+        var streamingIndex = -1;
         Status = "正在理解…";
         try
         {
             var stopwatch = Stopwatch.StartNew();
-            var handling = actions.HandleAsync(settings.Load(), SelectedSession, history, text);
+            var handling = actions.HandleAsync(settings.Load(), session, history, text, delta =>
+            {
+                if (string.IsNullOrEmpty(delta) || SelectedSession?.Id != session.Id) return;
+                streamed.Append(delta);
+                var message = new ChatMessage("streaming", session.Id, "assistant", streamed.ToString(), DateTime.Now);
+                if (streamingIndex < 0)
+                {
+                    streamingIndex = Messages.Count;
+                    Messages.Add(message);
+                }
+                else if (streamingIndex < Messages.Count)
+                {
+                    Messages[streamingIndex] = message;
+                }
+                Status = "正在生成…";
+            }, cancellation.Token);
             var processingVisible = false;
             if (await Task.WhenAny(handling, Task.Delay(300)) != handling)
             {
@@ -105,20 +145,54 @@ public partial class LifeViewModel : ObservableObject
                     islandState.Publish(IslandStateCoordinator.AiSucceeded(
                         result.PendingAction is null ? "AI 已生成建议" : "AI 已生成待确认操作", DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
             }
-            AddMessage("assistant", result.Reply);
+            if (streamingIndex >= 0)
+            {
+                data.Message(session.Id, "assistant", result.Reply);
+                if (SelectedSession?.Id == session.Id && streamingIndex < Messages.Count)
+                    Messages[streamingIndex] = new("", session.Id, "assistant", result.Reply, DateTime.Now);
+            }
+            else AddMessage(session, "assistant", result.Reply);
             if (result.RefreshReminders) reminders.RefreshSchedule();
             PendingAction = result.PendingAction?.Status == "awaiting_confirmation" ? result.PendingAction : null;
             PendingActionText = PendingAction is null ? "" : result.Reply;
             Status = result.IsFailure ? "未创建" : PendingAction is null ? "准备就绪" : "等待确认";
         }
+        catch (OperationCanceledException)
+        {
+            islandState.Clear("ai:processing", DateTimeOffset.UtcNow);
+            var partial = streamed.Length == 0 ? "已停止生成。" : $"{streamed}\n\n> 已停止生成";
+            if (streamingIndex >= 0)
+            {
+                data.Message(session.Id, "assistant", partial);
+                if (SelectedSession?.Id == session.Id && streamingIndex < Messages.Count)
+                    Messages[streamingIndex] = new("", session.Id, "assistant", partial, DateTime.Now);
+            }
+            else AddMessage(session, "assistant", partial);
+            Status = "已停止";
+        }
         catch (Exception exception)
         {
             islandState.Clear("ai:processing", DateTimeOffset.UtcNow);
             var message = $"处理失败：{exception.Message}。未创建任何事项。";
-            AddMessage("assistant", message);
+            if (streamingIndex >= 0)
+            {
+                data.Message(session.Id, "assistant", message);
+                if (SelectedSession?.Id == session.Id && streamingIndex < Messages.Count)
+                    Messages[streamingIndex] = new("", session.Id, "assistant", message, DateTime.Now);
+            }
+            else AddMessage(session, "assistant", message);
             Status = "未创建";
         }
+        finally
+        {
+            if (ReferenceEquals(sendCancellation, cancellation)) sendCancellation = null;
+            cancellation.Dispose();
+            IsSending = false;
+        }
     }
+
+    [RelayCommand(CanExecute = nameof(CanStopGenerating))]
+    void StopGenerating() => sendCancellation?.Cancel();
 
     [RelayCommand]
     void ConfirmPendingAction()
@@ -160,7 +234,13 @@ public partial class LifeViewModel : ObservableObject
     void AddMessage(string role, string text)
     {
         if (SelectedSession is null) return;
-        data.Message(SelectedSession.Id, role, text);
-        Messages.Add(new("", SelectedSession.Id, role, text, DateTime.Now));
+        AddMessage(SelectedSession, role, text);
+    }
+
+    void AddMessage(ChatSession session, string role, string text)
+    {
+        data.Message(session.Id, role, text);
+        if (SelectedSession?.Id == session.Id)
+            Messages.Add(new("", session.Id, role, text, DateTime.Now));
     }
 }

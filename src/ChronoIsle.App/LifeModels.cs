@@ -121,7 +121,15 @@ public sealed record LifePreferences(
     bool FullScreenSilentEnabled = false,
     bool IslandTaskbarDocked = false,
     string? IslandTaskbarMonitor = null,
-    double? IslandTaskbarHorizontalRatio = null)
+    double? IslandTaskbarHorizontalRatio = null,
+    bool MediaAutoTakeover = true,
+    bool LyricsEnabled = true,
+    int LyricsOffsetMs = 0,
+    bool MoveIslandDuringFullscreen = true,
+    string ThemeMode = "System",
+    bool TelemetryEnabled = true,
+    bool ToastInboxEnabled = true,
+    bool GlowBorderEnabled = true)
 {
     public static LifePreferences Default => new(true, "Direct");
 }

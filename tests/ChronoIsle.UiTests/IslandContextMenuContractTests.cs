@@ -28,9 +28,9 @@ public sealed class IslandContextMenuContractTests
         Assert.Contains("StartsQuickActionGroup(action)", code, StringComparison.Ordinal);
         Assert.Contains("x:Key=\"IslandContextMenu\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Key=\"IslandContextMenuItem\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Background=\"#111111\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("BorderBrush=\"#3A3A3C\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Value=\"#2C2C2E\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{DynamicResource Brush.Island}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("BorderBrush=\"{DynamicResource Brush.Stroke}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Value=\"{DynamicResource Brush.Control}\"", xaml, StringComparison.Ordinal);
     }
 
     static string FindWorkspace()

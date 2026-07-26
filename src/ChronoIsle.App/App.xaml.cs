@@ -8,6 +8,7 @@ using ChronoIsle.App.Services.Domain;
 using ChronoIsle.App.Services.Persistence;
 using ChronoIsle.App.Services.Productivity;
 using ChronoIsle.App.Services.Reporting;
+using ChronoIsle.App.Services.Media;
 using ChronoIsle.App.Services.State;
 using ChronoIsle.App.ViewModels;
 using ChronoIsle.App.Views;
@@ -34,6 +35,12 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<ProviderSettingsService>();
         collection.AddSingleton<LifePreferencesService>();
         collection.AddSingleton<OpenAiChatService>();
+        collection.AddSingleton<MediaSessionService>();
+        collection.AddSingleton<LyricsService>();
+        collection.AddSingleton<FullscreenAvoidanceService>();
+        collection.AddSingleton<SystemTelemetryService>();
+        collection.AddSingleton<SystemToastInboxService>();
+        collection.AddSingleton<ThemeService>();
         collection.AddSingleton<IChatCompletionClient>(provider => provider.GetRequiredService<OpenAiChatService>());
         collection.AddSingleton<ChinaStatutoryHolidayCalendar>();
         collection.AddSingleton<AssistantIntentService>();
@@ -82,9 +89,11 @@ public partial class App : System.Windows.Application
         collection.AddTransient<LifeManagementWindow>();
         collection.AddTransient<NamingWindow>();
         services = collection.BuildServiceProvider();
+        services.GetRequiredService<ThemeService>().Start();
 
+        var uiTestMode = string.Equals(Environment.GetEnvironmentVariable("CHRONOISLE_UI_TEST_MODE"), "1", StringComparison.Ordinal);
         var notifications = services.GetRequiredService<WindowsNotificationService>();
-        if (!string.Equals(Environment.GetEnvironmentVariable("CHRONOISLE_UI_TEST_MODE"), "1", StringComparison.Ordinal))
+        if (!uiTestMode)
             notifications.Register();
         notifications.Activated += (_, target) => Dispatcher.BeginInvoke(() =>
         {
@@ -114,6 +123,37 @@ public partial class App : System.Windows.Application
         tray.ExitRequested += (_, _) => Dispatcher.BeginInvoke(Shutdown);
         tray.Initialize();
         island.Show();
+        if (!uiTestMode)
+        {
+            var lyrics = services.GetRequiredService<LyricsService>();
+            var media = services.GetRequiredService<MediaSessionService>();
+            lyrics.Refresh();
+            _ = media.StartAsync().ContinueWith(task =>
+            {
+                if (task.Exception is not null)
+                    System.Diagnostics.Debug.WriteLine($"Media session start failed: {task.Exception.GetBaseException().Message}");
+            }, TaskScheduler.Default);
+
+            var fullscreen = services.GetRequiredService<FullscreenAvoidanceService>();
+            fullscreen.ContextChanged += context =>
+                Dispatcher.BeginInvoke(() => island.SetFullscreenAvoidance(context));
+            services.GetRequiredService<LifePreferencesService>().Changed += () =>
+                Dispatcher.BeginInvoke(() =>
+                {
+                    island.SetFullscreenAvoidance(fullscreen.Current);
+                    var currentPreferences = services.GetRequiredService<LifePreferencesService>().Load();
+                    if (currentPreferences.TelemetryEnabled)
+                        services.GetRequiredService<SystemTelemetryService>().Start();
+                    if (currentPreferences.ToastInboxEnabled)
+                        _ = services.GetRequiredService<SystemToastInboxService>().StartAsync();
+                });
+            fullscreen.Start();
+
+            if (services.GetRequiredService<LifePreferencesService>().Load().TelemetryEnabled)
+                services.GetRequiredService<SystemTelemetryService>().Start();
+            if (services.GetRequiredService<LifePreferencesService>().Load().ToastInboxEnabled)
+                _ = services.GetRequiredService<SystemToastInboxService>().StartAsync();
+        }
         services.GetRequiredService<ReminderService>().Start();
     }
 

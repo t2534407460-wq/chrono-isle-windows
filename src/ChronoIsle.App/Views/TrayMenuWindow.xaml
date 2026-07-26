@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="时屿 ChronoIsle" Width="184" SizeToContent="Height"
-        Background="Transparent" Foreground="#F2F2F7"
+        Background="Transparent" Foreground="{DynamicResource Brush.TextPrimary}"
         FontFamily="{StaticResource Font.UI}" WindowStyle="None" AllowsTransparency="True"
         ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         AutomationProperties.AutomationId="TrayMenuWindow">
@@ -10,15 +10,15 @@
     <Style x:Key="TrayMenuItem" TargetType="Button" BasedOn="{StaticResource Button.Ghost}">
       <Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="6,0"/>
-      <Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="#F2F2F7"/>
+      <Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Surface" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="7">
           <ContentPresenter Content="{TemplateBinding Content}" VerticalAlignment="Center" HorizontalAlignment="Stretch"/>
         </Border>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#2C2C2E"/></Trigger>
-          <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#3A3A3C"/></Trigger>
-          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#636366"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Control}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Stroke}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Brush.TextTertiary}"/></Trigger>
           <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".45"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
@@ -37,18 +37,18 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
   </Window.Resources>
-  <Border Background="#111111" BorderBrush="#3A3A3C" BorderThickness="1" CornerRadius="12" Padding="5" SnapsToDevicePixels="True">
+  <Border Background="{DynamicResource Brush.Island}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="12" Padding="5" SnapsToDevicePixels="True">
     <StackPanel>
       <Button Click="Open_Click" Style="{StaticResource TrayMenuItem}" AutomationProperties.AutomationId="TrayOpenButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M3,3 L13,3 L13,13 L3,13 Z M6,6 L16,6 L16,16 L6,16 Z" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="控制中心" VerticalAlignment="Center"/></Grid></Button>
       <Button Click="Manage_Click" Style="{StaticResource TrayMenuItem}" AutomationProperties.AutomationId="TrayManageButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M3,4 L13,4 M3,9 L13,9 M3,14 L13,14 M16,4 L17,5 L20,1 M16,9 L17,10 L20,6 M16,14 L17,15 L20,11" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="14" Height="13" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="事项管理" VerticalAlignment="Center"/></Grid></Button>
       <Button Click="Naming_Click" Style="{StaticResource TrayMenuItem}" AutomationProperties.AutomationId="TrayNamingButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M3,3 L15,3 L15,15 L3,15 Z M6,7 L12,7 M6,11 L10,11" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="取名" VerticalAlignment="Center"/></Grid></Button>
-      <Border Height="1" Background="#2C2C2E" Margin="6,3"/>
+      <Border Height="1" Background="{DynamicResource Brush.Control}" Margin="6,3"/>
       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <Button Click="Notifications_Click" Style="{StaticResource TrayMenuItem}" Margin="0,0,1,0" AutomationProperties.AutomationId="TrayNotificationsButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M10,2 C6.7,2 5,4.6 5,8 L5,12 L3,15 L17,15 L15,12 L15,8 C15,4.6 13.3,2 10,2 M8,18 L12,18" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeLineJoin="Round" Width="13" Height="14" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock x:Name="NotificationsValue" Grid.Column="1" Foreground="#98989D" FontSize="11" VerticalAlignment="Center"/></Grid></Button>
-        <Button Grid.Column="1" Click="DoNotDisturb_Click" Style="{StaticResource TrayMenuItem}" Margin="1,0,0,0" AutomationProperties.AutomationId="TrayDoNotDisturbButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M12,2 A8,8 0 1 0 18,14 A7,7 0 1 1 12,2 Z" Fill="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock x:Name="DoNotDisturbValue" Grid.Column="1" Foreground="#98989D" FontSize="11" VerticalAlignment="Center"/></Grid></Button>
+        <Button Click="Notifications_Click" Style="{StaticResource TrayMenuItem}" Margin="0,0,1,0" AutomationProperties.AutomationId="TrayNotificationsButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M10,2 C6.7,2 5,4.6 5,8 L5,12 L3,15 L17,15 L15,12 L15,8 C15,4.6 13.3,2 10,2 M8,18 L12,18" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeLineJoin="Round" Width="13" Height="14" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock x:Name="NotificationsValue" Grid.Column="1" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" VerticalAlignment="Center"/></Grid></Button>
+        <Button Grid.Column="1" Click="DoNotDisturb_Click" Style="{StaticResource TrayMenuItem}" Margin="1,0,0,0" AutomationProperties.AutomationId="TrayDoNotDisturbButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M12,2 A8,8 0 1 0 18,14 A7,7 0 1 1 12,2 Z" Fill="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock x:Name="DoNotDisturbValue" Grid.Column="1" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" VerticalAlignment="Center"/></Grid></Button>
       </Grid>
       <Button Click="Settings_Click" Style="{StaticResource TrayMenuItem}" AutomationProperties.AutomationId="TraySettingsButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Path Data="M10,2 L12,4.5 L15,4 L15.5,7 L18,9 L15.5,11 L15,14 L12,13.5 L10,16 L8,13.5 L5,14 L4.5,11 L2,9 L4.5,7 L5,4 L8,4.5 Z M10,7 A2,2 0 1 0 10,11 A2,2 0 1 0 10,7" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="设置" VerticalAlignment="Center"/></Grid></Button>
-      <Border Height="1" Background="#2C2C2E" Margin="6,3"/>
+      <Border Height="1" Background="{DynamicResource Brush.Control}" Margin="6,3"/>
       <Button Click="Exit_Click" Style="{StaticResource TrayDangerItem}" AutomationProperties.AutomationId="TrayExitButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Viewbox Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="M12,3 L12,11 M7.2,6 C4.5,7.8 3,10.6 3,13.4 C3,18 7,21 12,21 C17,21 21,18 21,13.4 C21,10.6 19.5,7.8 16.8,6" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/></Canvas></Viewbox><TextBlock Grid.Column="1" Text="退出" VerticalAlignment="Center"/></Grid></Button>
     </StackPanel>
   </Border>
