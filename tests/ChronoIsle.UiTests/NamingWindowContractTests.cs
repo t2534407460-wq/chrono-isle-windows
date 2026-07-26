@@ -59,6 +59,10 @@ public sealed class NamingWindowContractTests
             code,
             StringComparison.Ordinal);
         Assert.Contains(
+            "IslandQuickAction.Naming => \"✎ 取名\"",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "Where(action => action != IslandQuickAction.Naming)",
             code,
             StringComparison.Ordinal);

@@ -125,6 +125,19 @@ internal static class IslandPlacementGeometry
     internal static double TaskbarHeaderTop(Rect taskbar, double headerHeight)
         => taskbar.Top + Math.Max(0, taskbar.Height - headerHeight) / 2;
 
+    internal static double TaskbarExpandedContentMaxHeight(
+        Rect bounds,
+        Rect? taskbar,
+        double currentHeaderTop,
+        double headerHeight,
+        double margin)
+    {
+        var headerTop = taskbar is Rect visibleTaskbar
+            ? TaskbarHeaderTop(visibleTaskbar, headerHeight)
+            : currentHeaderTop;
+        return Math.Max(0, headerTop - bounds.Top - Math.Max(0, margin));
+    }
+
     internal static double WindowTopForHeaderAnchor(double targetHeaderTop, double headerOffset)
         => targetHeaderTop - headerOffset;
 }

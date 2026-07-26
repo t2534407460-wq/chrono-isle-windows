@@ -13,6 +13,21 @@ public sealed class IslandTaskbarEdgeCaseTests
     }
 
     [Fact]
+    public void AutoHiddenTaskbar_UsesCurrentHeaderToCalculateExpansionHeight()
+    {
+        var bounds = new Rect(0, 0, 1920, 1080);
+
+        var height = IslandPlacementGeometry.TaskbarExpandedContentMaxHeight(
+            bounds,
+            taskbar: null,
+            currentHeaderTop: 1034,
+            headerHeight: 43,
+            margin: 12);
+
+        Assert.Equal(1022, height);
+    }
+
+    [Fact]
     public void InvalidSavedRatio_FallsBackToTaskbarCenter()
     {
         var bounds = new Rect(0, 0, 1920, 1080);

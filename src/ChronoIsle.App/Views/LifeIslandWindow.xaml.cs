@@ -1135,7 +1135,7 @@ public partial class LifeIslandWindow : Window
         IslandQuickAction.ViewToday => "▣ 查看今天",
         IslandQuickAction.AskAi => "✦ 问 AI",
         IslandQuickAction.ManageItems => "☰ 事项管理",
-        IslandQuickAction.Naming => "取名",
+        IslandQuickAction.Naming => "✎ 取名",
         IslandQuickAction.Settings => "⚙ 设置",
         IslandQuickAction.PauseReminders => "Ⅱ 暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "◐ 勿扰模式",
@@ -2043,8 +2043,8 @@ public partial class LifeIslandWindow : Window
     {
         var contentAnimationVersion = ++expandedContentAnimationVersion;
         const double contentMinHeight = 620;
-        var duration = TimeSpan.FromMilliseconds(400);
-        var easing = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var duration = TimeSpan.FromMilliseconds(expand ? 180 : 240);
+        var easing = new CubicEase { EasingMode = expand ? EasingMode.EaseOut : EasingMode.EaseInOut };
         var hasGeometry = TryGetMonitorGeometry(ScreenForHeader(), out var geometry);
         var fromWidth = ActualWidth;
         var fromLeft = Left;
@@ -2057,6 +2057,7 @@ public partial class LifeIslandWindow : Window
                 ? IslandPlacementGeometry.ClampLeft(desiredLeft, targetWidth, geometry.Bounds)
                 : desiredLeft;
         var fromHeight = ExpandedScrollViewer.ActualHeight;
+        var headerRect = HeaderScreenRect();
         if (!double.IsFinite(fromHeight) || fromHeight < 0) fromHeight = 0;
 
         var targetHeight = 0d;
@@ -2069,10 +2070,15 @@ public partial class LifeIslandWindow : Window
             ExpandedContent.Visibility = Visibility.Visible;
             ExpandedContent.Measure(new System.Windows.Size(ExpandedWidth, double.PositiveInfinity));
             var contentMaxHeight = hasGeometry
-                ? placement == IslandPlacement.Taskbar && geometry.Taskbar is Rect taskbar
-                    ? IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight) - geometry.WorkArea.Top - 12
-                    : geometry.WorkArea.Bottom - HeaderScreenRect().Bottom - 12
-                : SystemParameters.WorkArea.Bottom - HeaderScreenRect().Bottom - 12;
+                ? placement == IslandPlacement.Taskbar
+                    ? IslandPlacementGeometry.TaskbarExpandedContentMaxHeight(
+                        geometry.Bounds,
+                        geometry.Taskbar,
+                        headerRect.Top,
+                        Header.ActualHeight,
+                        12)
+                    : geometry.WorkArea.Bottom - headerRect.Bottom - 12
+                : SystemParameters.WorkArea.Bottom - headerRect.Bottom - 12;
             contentMaxHeight = Math.Max(0, contentMaxHeight);
             targetMinimumHeight = Math.Min(contentMinHeight, contentMaxHeight);
             targetHeight = Math.Clamp(ExpandedContent.DesiredSize.Height, targetMinimumHeight, contentMaxHeight);
@@ -2082,13 +2088,12 @@ public partial class LifeIslandWindow : Window
         var heightAnimationVersion = ++taskbarHeightAnimationVersion;
         taskbarHeightAnimationActive =
             placement == IslandPlacement.Taskbar &&
-            hasGeometry &&
-            geometry.Taskbar is Rect;
+            hasGeometry;
         if (taskbarHeightAnimationActive)
         {
-            taskbarHeaderAnchorTop = IslandPlacementGeometry.TaskbarHeaderTop(
-                geometry.Taskbar!.Value,
-                Header.ActualHeight);
+            taskbarHeaderAnchorTop = geometry.Taskbar is Rect taskbar
+                ? IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight)
+                : headerRect.Top;
             UpdateLayout();
             MaintainTaskbarHeaderAnchor();
         }
