@@ -24,62 +24,24 @@ public sealed class CollapsedIslandCustomizationContractTests
     }
 
     [Fact]
-    public void CollapsedIsland_UsesFiveSecondSummaryRotationAndContentWidthBounds()
+    public void CollapsedIsland_ShowsEnabledSummaryWidgetsInParallelAndUsesContentWidth()
     {
-        var (_, source) = IslandFiles();
+        var (xaml, source) = IslandFiles();
 
-        Assert.Contains("CollapsedIslandDisplayPolicy.SelectSummary(", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedSummaryKind.CpuUsage", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedSummaryKind.MemoryUsage", source, StringComparison.Ordinal);
-        Assert.Contains("telemetry.Current.CpuPercent", source, StringComparison.Ordinal);
-        Assert.Contains("telemetry.Current.MemoryPercent", source, StringComparison.Ordinal);
-        Assert.Contains("DateTimeOffset.UtcNow.ToUnixTimeSeconds()", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedIslandDisplayPolicy.SelectWidth(", source, StringComparison.Ordinal);
-        Assert.Contains("const double RotatingSummaryWidth = 112;", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "Summary.Width = rotatingSummary && !pointerHover ? RotatingSummaryWidth : double.NaN;",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "MainBorder.BorderThickness.Left + MainBorder.BorderThickness.Right",
-            source,
-            StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"SummaryWidgets\" Orientation=\"Horizontal\"", xaml, StringComparison.Ordinal);
+        foreach (var widget in new[] { "Summary", "NetworkSpeedSummary", "CpuUsageSummary", "MemoryUsageSummary" })
+            Assert.Contains($"x:Name=\"{widget}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("void SetIdleSummaryWidgetVisibility(LifePreferences currentPreferences)", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedSummary.Visibility = VisibilityFor", source, StringComparison.Ordinal);
+        Assert.Contains("CpuUsageSummary.Visibility = VisibilityFor", source, StringComparison.Ordinal);
+        Assert.Contains("MemoryUsageSummary.Visibility = VisibilityFor", source, StringComparison.Ordinal);
+        Assert.Contains("return Math.Max(CollapsedIslandDisplayPolicy.MinimumWidth, compactWidth);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CollapsedIslandDisplayPolicy.SelectSummary(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("RotatingSummaryWidth", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("UpdateCollapsedSummaryWidth", source, StringComparison.Ordinal);
         Assert.Contains("ApplyCollapsedPreferences(currentPreferences);", source, StringComparison.Ordinal);
         Assert.Contains("Refresh();", source, StringComparison.Ordinal);
         Assert.DoesNotContain("UpdateCollapsedMediaView(snapshot, preferences.Load())", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CollapsedIsland_HoverTemporarilyShowsTheFullSummary()
-    {
-        var (_, source) = IslandFiles();
-        var mouseEnter = Handler(source, "void Island_MouseEnter", "void Island_MouseLeave");
-        var mouseLeave = Handler(source, "void Island_MouseLeave", "void ConfirmTopDockHoverExit");
-        var confirmedTopExit = Handler(source, "void ConfirmTopDockHoverExit", "void SetTopDockFolded");
-
-        Assert.Contains(
-            "void UpdateCollapsedSummaryWidth(LifePreferences currentPreferences)",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains("pointerHover = true;", mouseEnter, StringComparison.Ordinal);
-        Assert.Contains("UpdateCollapsedSummaryWidth(collapsedPreferences);", mouseEnter, StringComparison.Ordinal);
-        Assert.Contains("pointerHover = false;", mouseLeave, StringComparison.Ordinal);
-        Assert.Contains("UpdateCollapsedSummaryWidth(collapsedPreferences);", mouseLeave, StringComparison.Ordinal);
-        Assert.Contains("pointerHover = false;", confirmedTopExit, StringComparison.Ordinal);
-        Assert.Contains("UpdateCollapsedSummaryWidth(collapsedPreferences);", confirmedTopExit, StringComparison.Ordinal);
-        Assert.Contains("double FullCollapsedContentWidth()", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "Summary.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains("CollapsedIslandDisplayPolicy.SelectWidth(", source, StringComparison.Ordinal);
-    }
-
-    static string Handler(string source, string startMarker, string endMarker)
-    {
-        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
-        var end = source.IndexOf(endMarker, start, StringComparison.Ordinal);
-        return source[start..end];
     }
 
     static (string Xaml, string Source) IslandFiles()

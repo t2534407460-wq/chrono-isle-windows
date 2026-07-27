@@ -273,8 +273,16 @@
                     AutomationProperties.AutomationId="IslandAgendaButton"
                     Style="{StaticResource CollapsedHeaderButton}"
                     ToolTip="打开月历">
-              <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
-                         Margin="9,1,10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              <StackPanel x:Name="SummaryWidgets" Orientation="Horizontal" Margin="9,1,10,0" VerticalAlignment="Center">
+                <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="NetworkSpeedSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="CpuUsageSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="MemoryUsageSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
             </Button>
           </Grid>
           <StackPanel x:Name="ClockGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,13,0">
