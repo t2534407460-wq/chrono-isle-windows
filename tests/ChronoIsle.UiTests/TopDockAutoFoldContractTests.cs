@@ -35,7 +35,20 @@ public sealed class TopDockAutoFoldContractTests
         Assert.Contains("MainBorder.Background = Brushes.Transparent;", source, StringComparison.Ordinal);
         Assert.Contains("TopDockStatusLight.Visibility = Visibility.Collapsed;", source, StringComparison.Ordinal);
         Assert.Contains("const double TopDockVisibleHeight = 6;", source, StringComparison.Ordinal);
-        Assert.Contains("if (placement == IslandPlacement.Top) SetTopDockFolded(true);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "readonly DispatcherTimer topDockHoverExitTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("topDockHoverExitTimer.Stop();", source, StringComparison.Ordinal);
+        Assert.Contains("void ConfirmTopDockHoverExit()", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (placement != IslandPlacement.Top || expanded || IsMouseOver) return;",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "if (placement == IslandPlacement.Top) SetTopDockFolded(true);",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("SetTopDockFolded(false);", source, StringComparison.Ordinal);
         Assert.Contains("Duration = TimeSpan.FromMilliseconds(60)", source, StringComparison.Ordinal);
         Assert.Contains("Duration = TimeSpan.FromMilliseconds(90)", source, StringComparison.Ordinal);
@@ -45,6 +58,39 @@ public sealed class TopDockAutoFoldContractTests
         Assert.Contains("RepeatBehavior = RepeatBehavior.Forever", source, StringComparison.Ordinal);
         Assert.Contains("TopDockStatusPulse.BeginAnimation(OpacityProperty, null);", source, StringComparison.Ordinal);
         Assert.Contains("if (expanded) Collapse();\r\n            else SetTopDockFolded(true);", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TopDockAutoFold_CanBeDisabledFromTheContextMenu()
+    {
+        var workspace = FindWorkspace();
+        var source = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml.cs"));
+
+        Assert.Contains(
+            "case IslandQuickAction.ToggleTopDockAutoFold: ToggleTopDockAutoFold(); break;",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("void ToggleTopDockAutoFold()", source, StringComparison.Ordinal);
+        Assert.Contains("var enabled = !current.IslandTopDockAutoFold;", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "collapsedPreferences = current with { IslandTopDockAutoFold = enabled };",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("preferences.Save(collapsedPreferences);", source, StringComparison.Ordinal);
+        Assert.Contains("if (enabled) return;", source, StringComparison.Ordinal);
+        Assert.Contains("topDockHoverExitTimer.Stop();", source, StringComparison.Ordinal);
+        Assert.Contains("SetTopDockFolded(false);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "folded = folded && collapsedPreferences.IslandTopDockAutoFold &&",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("this.preferences = preferences;", source, StringComparison.Ordinal);
+        Assert.Contains("collapsedPreferences = preferences.Load();", source, StringComparison.Ordinal);
     }
 
     static string FindWorkspace()

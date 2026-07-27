@@ -1,2 +1,2 @@
-cb28523538b89b7e302288874b65e0cb7edb49c66c4a56fa1f525a46a94680cb  ChronoIsle-Setup-0.4.1-win-x64.exe
-a7979da4c86e905142261751553de8eb10bad54b5a9040d2bf8e7f3a5ed65e6a  ChronoIsle-v0.4.1-win-x64.zip
+b73bb55afc7cf915ae0eb9b9a519c9146118c2ab8f99e159370298c2676fe7f9  ChronoIsle-Setup-0.4.1-win-x64.exe
+2cc91b20310ba4af6f4fa4e179ac2daf7e57b16ce45104a67b49436c41e86fc4  ChronoIsle-v0.4.1-win-x64.zip
