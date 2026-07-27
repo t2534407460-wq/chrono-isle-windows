@@ -346,7 +346,7 @@
               <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <Ellipse x:Name="SystemToastStatusLight" Width="8" Height="8" Fill="{DynamicResource Brush.Accent}"
                        VerticalAlignment="Top" Margin="0,5,9,0"/>
-              <StackPanel Grid.Column="1">
+              <StackPanel x:Name="SystemToastText" Grid.Column="1">
                 <TextBlock x:Name="SystemToastTitle" Foreground="{DynamicResource Brush.TextPrimary}" FontWeight="SemiBold"
                            FontSize="11" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="SystemToastBody" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="9"

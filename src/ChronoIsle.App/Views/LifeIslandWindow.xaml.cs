@@ -84,6 +84,7 @@ public partial class LifeIslandWindow : Window
     int expandedContentAnimationVersion;
     int expandedContentResizeVersion;
     int toastAnimationVersion;
+    double toastPreviousHeaderHeight = 43;
     int taskbarHeightAnimationVersion;
     bool taskbarHeightAnimationActive;
     bool updatingTaskbarHeaderAnchor;
@@ -750,7 +751,10 @@ public partial class LifeIslandWindow : Window
             currentPreferences.IslandShowMascot || currentPreferences.IslandShowStatusLight);
         var showSummary =
             currentPreferences.IslandShowAgendaSummary ||
-            currentPreferences.IslandShowNetworkSpeed && currentPreferences.TelemetryEnabled;
+            currentPreferences.TelemetryEnabled &&
+            (currentPreferences.IslandShowNetworkSpeed ||
+             currentPreferences.IslandShowCpuUsage ||
+             currentPreferences.IslandShowMemoryUsage);
         UpdateCollapsedSummaryWidth(currentPreferences);
         Summary.Visibility = VisibilityFor(showSummary);
         NetworkStatusLight.Visibility = VisibilityFor(
@@ -767,10 +771,12 @@ public partial class LifeIslandWindow : Window
 
     void UpdateCollapsedSummaryWidth(LifePreferences currentPreferences)
     {
-        var rotatingSummary =
-            currentPreferences.IslandShowAgendaSummary &&
-            currentPreferences.IslandShowNetworkSpeed &&
-            currentPreferences.TelemetryEnabled;
+        var enabledSummaryCount =
+            (currentPreferences.IslandShowAgendaSummary ? 1 : 0) +
+            (currentPreferences.TelemetryEnabled && currentPreferences.IslandShowNetworkSpeed ? 1 : 0) +
+            (currentPreferences.TelemetryEnabled && currentPreferences.IslandShowCpuUsage ? 1 : 0) +
+            (currentPreferences.TelemetryEnabled && currentPreferences.IslandShowMemoryUsage ? 1 : 0);
+        var rotatingSummary = enabledSummaryCount > 1;
         Summary.Width = rotatingSummary && !pointerHover ? RotatingSummaryWidth : double.NaN;
     }
 
@@ -789,12 +795,16 @@ public partial class LifeIslandWindow : Window
         var source = CollapsedIslandDisplayPolicy.SelectSummary(
             currentPreferences.IslandShowAgendaSummary,
             currentPreferences.IslandShowNetworkSpeed,
+            currentPreferences.IslandShowCpuUsage,
+            currentPreferences.IslandShowMemoryUsage,
             currentPreferences.TelemetryEnabled,
             DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         Summary.Text = source switch
         {
             CollapsedSummaryKind.NetworkSpeed =>
                 $"↑ {FormatRate(telemetry.Current.UploadBytesPerSecond)}  ↓ {FormatRate(telemetry.Current.DownloadBytesPerSecond)}",
+            CollapsedSummaryKind.CpuUsage => $"CPU {telemetry.Current.CpuPercent:0}%",
+            CollapsedSummaryKind.MemoryUsage => $"内存 {telemetry.Current.MemoryPercent:0}%",
             CollapsedSummaryKind.Agenda when data.NextAgenda() is { } next =>
                 $"下一项 · {next.StartsAt:HH:mm} {next.Title}",
             CollapsedSummaryKind.Agenda => "今天暂无安排",
@@ -1953,13 +1963,24 @@ public partial class LifeIslandWindow : Window
     {
         if (!preferences.Load().ToastInboxEnabled) return;
         var version = ++toastAnimationVersion;
+        var taskbarToast = placement == IslandPlacement.Taskbar;
+        if (SystemToastHeader.Visibility != Visibility.Visible)
+            toastPreviousHeaderHeight = CollapsedHeaderHeight();
         toastRetractTimer.Stop();
         SystemToastTitle.Text = $"{message.AppName} · {message.Title}";
         SystemToastBody.Text = message.Body;
         SystemToastBody.Visibility = string.IsNullOrWhiteSpace(message.Body) ? Visibility.Collapsed : Visibility.Visible;
+        SystemToastText.Orientation = taskbarToast
+            ? System.Windows.Controls.Orientation.Horizontal
+            : System.Windows.Controls.Orientation.Vertical;
+        SystemToastBody.Margin = taskbarToast
+            ? new Thickness(8, 0, 0, 0)
+            : new Thickness(0, 2, 0, 0);
         SystemToastHeader.Visibility = Visibility.Visible;
         SystemToastHeader.Opacity = 1;
-        Header.Height = string.IsNullOrWhiteSpace(message.Body) ? 52 : 62;
+        Header.Height = taskbarToast
+            ? toastPreviousHeaderHeight
+            : string.IsNullOrWhiteSpace(message.Body) ? 52 : 62;
         DefaultHeaderLeft.Visibility = Visibility.Collapsed;
         ClockGroup.Visibility = Visibility.Collapsed;
         CollapsedMedia.Visibility = Visibility.Collapsed;
@@ -2002,10 +2023,27 @@ public partial class LifeIslandWindow : Window
             SystemToastHeader.BeginAnimation(OpacityProperty, null);
             SystemToastHeader.Opacity = 1;
             SystemToastHeader.Visibility = Visibility.Collapsed;
-            Header.Height = 43;
+            Header.Height = CollapsedHeaderHeight();
+            SystemToastText.Orientation = System.Windows.Controls.Orientation.Vertical;
+            SystemToastBody.Margin = new Thickness(0, 2, 0, 0);
             Refresh();
+            if (placement == IslandPlacement.Top && !pointerHover && !expanded)
+                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+                {
+                    if (version != toastAnimationVersion) return;
+                    SetTopDockFolded(true);
+                }));
         };
         SystemToastHeader.BeginAnimation(OpacityProperty, animation);
+    }
+
+    double CollapsedHeaderHeight()
+    {
+        if (placement != IslandPlacement.Taskbar) return 43;
+        return TryGetMonitorGeometry(ScreenForHeader(), out var geometry) &&
+               geometry.Taskbar is Rect taskbar
+            ? Math.Min(43, Math.Max(30, taskbar.Height - 2))
+            : Math.Min(43, Math.Max(30, Header.Height));
     }
 
     void ConfigureGlowBorder()
@@ -3151,9 +3189,9 @@ public partial class LifeIslandWindow : Window
 
     double CollapsedWidthForContent()
     {
-        if (CollapsedMedia.Visibility == Visibility.Visible ||
-            SystemToastHeader.Visibility == Visibility.Visible)
-            return CollapsedWidth;
+        if (CollapsedMedia.Visibility == Visibility.Visible) return CollapsedWidth;
+        if (SystemToastHeader.Visibility == Visibility.Visible)
+            return placement == IslandPlacement.Taskbar ? TaskbarToastWidth() : CollapsedWidth;
         DefaultHeaderLeft.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
         ClockGroup.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
         var compactWidth =
@@ -3168,6 +3206,16 @@ public partial class LifeIslandWindow : Window
             compactWidth,
             fullContentWidth,
             pointerHover);
+    }
+
+    double TaskbarToastWidth()
+    {
+        SystemToastHeader.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
+        var desiredWidth =
+            Outer.Margin.Left + Outer.Margin.Right +
+            MainBorder.BorderThickness.Left + MainBorder.BorderThickness.Right +
+            SystemToastHeader.DesiredSize.Width;
+        return CollapsedIslandDisplayPolicy.ClampWidth(Math.Max(CollapsedWidth, desiredWidth));
     }
 
     double FullCollapsedContentWidth()

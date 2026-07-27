@@ -139,6 +139,20 @@
                                      Foreground="{DynamicResource Brush.TextSecondary}"
                                      FontSize="10" VerticalAlignment="Center"/>
                         </CheckBox>
+                        <CheckBox x:Name="IslandShowCpuUsage"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="CPU 占用" AutomationProperties.Name="CPU 占用">
+                          <TextBlock Text="CPU 19%"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="11" VerticalAlignment="Center"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowMemoryUsage"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="内存占用" AutomationProperties.Name="内存占用">
+                          <TextBlock Text="内存 61%"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="11" VerticalAlignment="Center"/>
+                        </CheckBox>
                         <CheckBox x:Name="IslandShowNetworkStatus"
                                   Style="{StaticResource IslandVisualOption}"
                                   ToolTip="网络状态点" AutomationProperties.Name="网络状态点">

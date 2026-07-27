@@ -34,14 +34,30 @@ internal static class ToastTextComposer
             _ => (lines[0], string.Join(" · ", lines.Skip(1)))
         };
     }
+
+    public static (string Title, string Body) Compose(
+        IEnumerable<string?>? preferredValues,
+        IEnumerable<IEnumerable<string?>> fallbackBindings)
+    {
+        var preferred = preferredValues?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray() ?? [];
+        return preferred.Length > 0
+            ? Compose(preferred)
+            : Compose(fallbackBindings.SelectMany(values => values));
+    }
 }
 
 public sealed class SystemToastInboxService : IDisposable
 {
     readonly System.Threading.Timer timer;
     readonly HashSet<uint> knownIds = [];
+    readonly object knownIdsGate = new();
+    readonly object listenerGate = new();
+    readonly SemaphoreSlim startGate = new(1, 1);
     UserNotificationListener? listener;
     bool initialized;
+    bool listening;
     bool disposed;
     int polling;
 
@@ -55,21 +71,44 @@ public sealed class SystemToastInboxService : IDisposable
     public async Task StartAsync()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        await startGate.WaitAsync();
         try
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             listener ??= UserNotificationListener.Current;
             var status = await listener.RequestAccessAsync();
             SetAccess(status == UserNotificationListenerAccessStatus.Allowed
                 ? ToastInboxAccess.Allowed
                 : ToastInboxAccess.Denied);
             if (Access != ToastInboxAccess.Allowed) return;
-            await PollAsync();
-            timer.Change(TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(2.5));
+            if (!listening)
+            {
+                await PollAsync();
+                lock (listenerGate)
+                {
+                    if (disposed) return;
+                    if (!listening)
+                    {
+                        listener.NotificationChanged += Listener_NotificationChanged;
+                        listening = true;
+                    }
+                }
+                await PollAsync();
+            }
+            lock (listenerGate)
+            {
+                if (disposed) return;
+                timer.Change(TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(2.5));
+            }
         }
         catch (Exception exception)
         {
             System.Diagnostics.Debug.WriteLine($"Toast inbox unavailable: {exception.Message}");
             SetAccess(ToastInboxAccess.Unavailable);
+        }
+        finally
+        {
+            startGate.Release();
         }
     }
 
@@ -90,21 +129,25 @@ public sealed class SystemToastInboxService : IDisposable
 
             if (!initialized)
             {
-                foreach (var message in messages) knownIds.Add(message.Id);
+                lock (knownIdsGate)
+                    foreach (var message in messages) knownIds.Add(message.Id);
                 initialized = true;
                 return;
             }
 
             foreach (var message in messages)
             {
-                if (!knownIds.Add(message.Id)) continue;
+                if (!TryRemember(message.Id)) continue;
                 ToastReceived?.Invoke(message);
             }
 
-            if (knownIds.Count > 512)
+            lock (knownIdsGate)
             {
-                var activeIds = messages.Select(item => item.Id).ToHashSet();
-                knownIds.IntersectWith(activeIds);
+                if (knownIds.Count > 512)
+                {
+                    var activeIds = messages.Select(item => item.Id).ToHashSet();
+                    knownIds.IntersectWith(activeIds);
+                }
             }
         }
         catch (Exception exception)
@@ -117,12 +160,40 @@ public sealed class SystemToastInboxService : IDisposable
         }
     }
 
+    void Listener_NotificationChanged(
+        UserNotificationListener sender,
+        UserNotificationChangedEventArgs args)
+    {
+        if (disposed || args.ChangeKind != UserNotificationChangedKind.Added) return;
+        try
+        {
+            var notification = sender.GetNotification(args.UserNotificationId);
+            if (notification is null) return;
+            var message = ToMessage(notification);
+            if (message is null || !TryRemember(message.Id)) return;
+            ToastReceived?.Invoke(message);
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Toast inbox event failed: {exception.Message}");
+        }
+    }
+
+    bool TryRemember(uint id)
+    {
+        lock (knownIdsGate) return knownIds.Add(id);
+    }
+
     static SystemToastMessage? ToMessage(UserNotification notification)
     {
         try
         {
-            var binding = notification.Notification.Visual.GetBinding(KnownNotificationBindings.ToastGeneric);
-            var text = ToastTextComposer.Compose(binding?.GetTextElements().Select(item => item.Text) ?? []);
+            var visual = notification.Notification.Visual;
+            var binding = visual.GetBinding(KnownNotificationBindings.ToastGeneric);
+            var text = ToastTextComposer.Compose(
+                binding?.GetTextElements().Select(item => item.Text),
+                notification.Notification.Visual.Bindings.Select(item =>
+                    item.GetTextElements().Select(element => element.Text)));
             var appName = notification.AppInfo.DisplayInfo.DisplayName;
             var appId = notification.AppInfo.AppUserModelId;
             return new SystemToastMessage(
@@ -145,8 +216,14 @@ public sealed class SystemToastInboxService : IDisposable
 
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
+        lock (listenerGate)
+        {
+            if (disposed) return;
+            disposed = true;
+            if (listener is not null && listening)
+                listener.NotificationChanged -= Listener_NotificationChanged;
+            listening = false;
+        }
         timer.Dispose();
     }
 }

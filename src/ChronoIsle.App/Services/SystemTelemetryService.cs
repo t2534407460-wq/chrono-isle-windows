@@ -124,12 +124,103 @@ internal sealed class TrafficAccumulator
     }
 }
 
+internal sealed class ProcessorUtilitySampler : IDisposable
+{
+    const uint PdhOk = 0;
+    const uint PdhFormatDouble = 0x00000200;
+    const string CounterPath = @"\Processor Information(_Total)\% Processor Utility";
+
+    IntPtr query;
+    IntPtr counter;
+    bool initializationAttempted;
+
+    public bool TryRead(out double utility)
+    {
+        utility = 0;
+        if (!initializationAttempted)
+        {
+            initializationAttempted = true;
+            if (!TryInitialize()) return false;
+            return false;
+        }
+        if (query == IntPtr.Zero || PdhCollectQueryData(query) != PdhOk) return false;
+        if (PdhGetFormattedCounterValue(
+                counter,
+                PdhFormatDouble,
+                out _,
+                out var formatted) != PdhOk)
+            return false;
+
+        var normalized = Normalize(formatted.Status, formatted.Value);
+        if (normalized is null) return false;
+        utility = normalized.Value;
+        return true;
+    }
+
+    bool TryInitialize()
+    {
+        if (PdhOpenQueryW(null, IntPtr.Zero, out query) != PdhOk) return false;
+        if (PdhAddEnglishCounterW(query, CounterPath, IntPtr.Zero, out counter) != PdhOk ||
+            PdhCollectQueryData(query) != PdhOk)
+        {
+            Dispose();
+            return false;
+        }
+        return true;
+    }
+
+    internal static double? Normalize(uint status, double value)
+    {
+        if (status is not 0 and not 1 || !double.IsFinite(value)) return null;
+        return Math.Clamp(value, 0, 100);
+    }
+
+    public void Dispose()
+    {
+        if (query == IntPtr.Zero) return;
+        PdhCloseQuery(query);
+        query = IntPtr.Zero;
+        counter = IntPtr.Zero;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    struct PdhFormattedCounterValue
+    {
+        [FieldOffset(0)] public uint Status;
+        [FieldOffset(8)] public double Value;
+    }
+
+    [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
+    static extern uint PdhOpenQueryW(string? dataSource, IntPtr userData, out IntPtr query);
+
+    [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
+    static extern uint PdhAddEnglishCounterW(
+        IntPtr query,
+        string fullCounterPath,
+        IntPtr userData,
+        out IntPtr counter);
+
+    [DllImport("pdh.dll")]
+    static extern uint PdhCollectQueryData(IntPtr query);
+
+    [DllImport("pdh.dll")]
+    static extern uint PdhGetFormattedCounterValue(
+        IntPtr counter,
+        uint format,
+        out uint counterType,
+        out PdhFormattedCounterValue value);
+
+    [DllImport("pdh.dll")]
+    static extern uint PdhCloseQuery(IntPtr query);
+}
+
 public sealed class SystemTelemetryService : IDisposable
 {
     readonly object gate = new();
     readonly string storagePath;
     readonly System.Threading.Timer timer;
     readonly TrafficAccumulator traffic;
+    readonly ProcessorUtilitySampler processorUtility = new();
     SystemTelemetrySnapshot current = SystemTelemetrySnapshot.Empty;
     CpuTimes? previousCpuTimes;
     long? latencyMilliseconds;
@@ -252,6 +343,12 @@ public sealed class SystemTelemetryService : IDisposable
 
     double ReadCpuPercent()
     {
+        if (processorUtility.TryRead(out var utility)) return utility;
+        return ReadProcessorTimePercent();
+    }
+
+    double ReadProcessorTimePercent()
+    {
         if (!GetSystemTimes(out var idle, out var kernel, out var user)) return 0;
         var currentTimes = new CpuTimes(ToUInt64(idle), ToUInt64(kernel), ToUInt64(user));
         var previous = previousCpuTimes;
@@ -299,6 +396,7 @@ public sealed class SystemTelemetryService : IDisposable
         if (disposed) return;
         disposed = true;
         timer.Dispose();
+        processorUtility.Dispose();
         SaveTraffic();
     }
 

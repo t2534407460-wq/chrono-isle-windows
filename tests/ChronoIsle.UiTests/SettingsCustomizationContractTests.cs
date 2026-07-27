@@ -5,7 +5,7 @@ namespace ChronoIsle.UiTests;
 public sealed class SettingsCustomizationContractTests
 {
     [Fact]
-    public void Settings_ProvidesNineAccentSchemesAndSevenCollapsedControlOptions()
+    public void Settings_ProvidesNineAccentSchemesAndNineCollapsedControlOptions()
     {
         var (xaml, _) = SettingsFiles();
 
@@ -20,7 +20,8 @@ public sealed class SettingsCustomizationContractTests
         foreach (var option in new[]
                  {
                      "IslandShowMascot", "IslandShowStatusLight", "IslandShowAgendaSummary",
-                     "IslandShowNetworkSpeed", "IslandShowNetworkStatus", "IslandShowClock",
+                     "IslandShowNetworkSpeed", "IslandShowCpuUsage", "IslandShowMemoryUsage",
+                     "IslandShowNetworkStatus", "IslandShowClock",
                      "IslandShowExpandIndicator"
                  })
             Assert.Contains($"x:Name=\"{option}\"", xaml, StringComparison.Ordinal);
@@ -52,6 +53,8 @@ public sealed class SettingsCustomizationContractTests
         Assert.Contains("Assets/island-mascot.png", options, StringComparison.Ordinal);
         Assert.Contains("x:Key=\"Icon.NetworkGlobe\"", controls, StringComparison.Ordinal);
         Assert.Contains("Data=\"{StaticResource Icon.NetworkGlobe}\"", options, StringComparison.Ordinal);
+        Assert.Contains("Text=\"CPU 19%\"", options, StringComparison.Ordinal);
+        Assert.Contains("Text=\"内存 61%\"", options, StringComparison.Ordinal);
         Assert.DoesNotContain("M 3,8 L 7.5,13 L 10,3 L 15,8", options, StringComparison.Ordinal);
         Assert.Contains("Style=\"{StaticResource IslandVisualOption}\"", options, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.Name=\"吉祥物\"", options, StringComparison.Ordinal);
@@ -78,6 +81,8 @@ public sealed class SettingsCustomizationContractTests
         Assert.Contains("ThemeMode = ThemeModeSelector.SelectedValue", source, StringComparison.Ordinal);
         Assert.Contains("AccentScheme = AccentSchemeSelector.SelectedValue", source, StringComparison.Ordinal);
         Assert.Contains("IslandShowMascot = IslandShowMascot.IsChecked == true", source, StringComparison.Ordinal);
+        Assert.Contains("IslandShowCpuUsage = IslandShowCpuUsage.IsChecked == true", source, StringComparison.Ordinal);
+        Assert.Contains("IslandShowMemoryUsage = IslandShowMemoryUsage.IsChecked == true", source, StringComparison.Ordinal);
         Assert.Contains("IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true", source, StringComparison.Ordinal);
     }
 

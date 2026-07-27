@@ -4,6 +4,29 @@ namespace ChronoIsle.Tests;
 
 public sealed class SystemTelemetryTests
 {
+    [Theory]
+    [InlineData(0u, 19.4, 19.4)]
+    [InlineData(1u, 120.0, 100.0)]
+    [InlineData(0u, -5.0, 0.0)]
+    public void ProcessorUtilitySampler_NormalizesValidWindowsValues(
+        uint status,
+        double value,
+        double expected)
+    {
+        var normalized = ProcessorUtilitySampler.Normalize(status, value);
+
+        Assert.Equal(expected, normalized);
+    }
+
+    [Theory]
+    [InlineData(2u, 20.0)]
+    [InlineData(0u, double.NaN)]
+    [InlineData(0u, double.PositiveInfinity)]
+    public void ProcessorUtilitySampler_RejectsInvalidWindowsValues(uint status, double value)
+    {
+        Assert.Null(ProcessorUtilitySampler.Normalize(status, value));
+    }
+
     [Fact]
     public void TrafficAccumulator_ComputesSpeedAndDailyTotals()
     {

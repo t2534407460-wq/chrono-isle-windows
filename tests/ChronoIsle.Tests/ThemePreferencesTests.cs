@@ -7,7 +7,7 @@ namespace ChronoIsle.Tests;
 public sealed class ThemePreferencesTests
 {
     [Fact]
-    public void LegacyPreferences_DefaultToEmeraldAndVisibleCollapsedControls()
+    public void LegacyPreferences_DefaultToEmeraldAndAgendaOnlyTelemetrySummary()
     {
         const string json = """{"WindowsNotifications":true,"AssistantPersona":"Direct"}""";
 
@@ -18,8 +18,10 @@ public sealed class ThemePreferencesTests
         Assert.True(preferences.IslandShowMascot);
         Assert.True(preferences.IslandShowStatusLight);
         Assert.True(preferences.IslandShowAgendaSummary);
-        Assert.True(preferences.IslandShowNetworkSpeed);
-        Assert.True(preferences.IslandShowNetworkStatus);
+        Assert.False(preferences.IslandShowNetworkSpeed);
+        Assert.False(preferences.IslandShowNetworkStatus);
+        Assert.False(preferences.IslandShowCpuUsage);
+        Assert.False(preferences.IslandShowMemoryUsage);
         Assert.True(preferences.IslandShowClock);
         Assert.True(preferences.IslandShowExpandIndicator);
         Assert.True(preferences.IslandTopDockAutoFold);

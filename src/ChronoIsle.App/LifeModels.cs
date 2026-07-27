@@ -134,11 +134,13 @@ public sealed record LifePreferences(
     bool IslandShowMascot = true,
     bool IslandShowStatusLight = true,
     bool IslandShowAgendaSummary = true,
-    bool IslandShowNetworkSpeed = true,
-    bool IslandShowNetworkStatus = true,
+    bool IslandShowNetworkSpeed = false,
+    bool IslandShowNetworkStatus = false,
     bool IslandShowClock = true,
     bool IslandShowExpandIndicator = true,
-    bool IslandTopDockAutoFold = true)
+    bool IslandTopDockAutoFold = true,
+    bool IslandShowCpuUsage = false,
+    bool IslandShowMemoryUsage = false)
 {
     public static LifePreferences Default => new(true, "Direct");
 }

@@ -4,7 +4,9 @@ internal enum CollapsedSummaryKind
 {
     None,
     Agenda,
-    NetworkSpeed
+    NetworkSpeed,
+    CpuUsage,
+    MemoryUsage
 }
 
 internal static class CollapsedIslandDisplayPolicy
@@ -15,15 +17,22 @@ internal static class CollapsedIslandDisplayPolicy
     internal static CollapsedSummaryKind SelectSummary(
         bool showAgenda,
         bool showNetworkSpeed,
+        bool showCpuUsage,
+        bool showMemoryUsage,
         bool telemetryEnabled,
         long elapsedSeconds)
     {
-        var networkAvailable = showNetworkSpeed && telemetryEnabled;
-        if (!showAgenda) return networkAvailable ? CollapsedSummaryKind.NetworkSpeed : CollapsedSummaryKind.None;
-        if (!networkAvailable) return CollapsedSummaryKind.Agenda;
-        return elapsedSeconds / 5 % 2 == 0
-            ? CollapsedSummaryKind.Agenda
-            : CollapsedSummaryKind.NetworkSpeed;
+        var sources = new List<CollapsedSummaryKind>(4);
+        if (showAgenda) sources.Add(CollapsedSummaryKind.Agenda);
+        if (telemetryEnabled)
+        {
+            if (showNetworkSpeed) sources.Add(CollapsedSummaryKind.NetworkSpeed);
+            if (showCpuUsage) sources.Add(CollapsedSummaryKind.CpuUsage);
+            if (showMemoryUsage) sources.Add(CollapsedSummaryKind.MemoryUsage);
+        }
+
+        if (sources.Count == 0) return CollapsedSummaryKind.None;
+        return sources[(int)(elapsedSeconds / 5 % sources.Count)];
     }
 
     internal static double ClampWidth(double desiredWidth) =>

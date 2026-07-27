@@ -16,7 +16,8 @@ public sealed class CollapsedIslandCustomizationContractTests
         foreach (var preference in new[]
                  {
                      "IslandShowMascot", "IslandShowStatusLight", "IslandShowAgendaSummary",
-                     "IslandShowNetworkSpeed", "IslandShowNetworkStatus", "IslandShowClock",
+                     "IslandShowNetworkSpeed", "IslandShowCpuUsage", "IslandShowMemoryUsage",
+                     "IslandShowNetworkStatus", "IslandShowClock",
                      "IslandShowExpandIndicator"
                  })
             Assert.Contains(preference, source, StringComparison.Ordinal);
@@ -28,6 +29,10 @@ public sealed class CollapsedIslandCustomizationContractTests
         var (_, source) = IslandFiles();
 
         Assert.Contains("CollapsedIslandDisplayPolicy.SelectSummary(", source, StringComparison.Ordinal);
+        Assert.Contains("CollapsedSummaryKind.CpuUsage", source, StringComparison.Ordinal);
+        Assert.Contains("CollapsedSummaryKind.MemoryUsage", source, StringComparison.Ordinal);
+        Assert.Contains("telemetry.Current.CpuPercent", source, StringComparison.Ordinal);
+        Assert.Contains("telemetry.Current.MemoryPercent", source, StringComparison.Ordinal);
         Assert.Contains("DateTimeOffset.UtcNow.ToUnixTimeSeconds()", source, StringComparison.Ordinal);
         Assert.Contains("CollapsedIslandDisplayPolicy.SelectWidth(", source, StringComparison.Ordinal);
         Assert.Contains("const double RotatingSummaryWidth = 112;", source, StringComparison.Ordinal);
