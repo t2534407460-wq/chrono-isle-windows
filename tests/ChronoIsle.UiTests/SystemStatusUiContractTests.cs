@@ -31,6 +31,14 @@ public sealed class SystemStatusUiContractTests
         Assert.Contains("x:Name=\"TelemetryMemoryProgress\"", xaml, StringComparison.Ordinal);
         Assert.Contains("void ShowTelemetryDashboard()", source, StringComparison.Ordinal);
         Assert.Contains("UpdateTelemetryView(telemetry.Current);", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkHealth.Offline => \"网络中断\"", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkHealth.Unstable => \"网络波动大\"", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkHealth.Connected => \"网络连接正常\"", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkHealth.Unstable => \"Brush.Warning\"", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkHealth.Connected => \"Brush.Success\"", source, StringComparison.Ordinal);
+        Assert.Contains("new HttpRequestMessage(HttpMethod.Head, LatencyProbeUri)", telemetrySource, StringComparison.Ordinal);
+        Assert.Contains("HttpCompletionOption.ResponseHeadersRead", telemetrySource, StringComparison.Ordinal);
+        Assert.DoesNotContain("new TcpClient()", telemetrySource, StringComparison.Ordinal);
         Assert.Contains("NetworkStatusGlyph.Stroke = statusBrush;", source, StringComparison.Ordinal);
         Assert.Contains(
             @"\Processor Information(_Total)\% Processor Utility",

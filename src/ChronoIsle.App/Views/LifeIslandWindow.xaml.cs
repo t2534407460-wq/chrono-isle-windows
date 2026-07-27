@@ -1877,17 +1877,18 @@ public partial class LifeIslandWindow : Window
         var label = enabled
             ? snapshot.NetworkHealth switch
             {
-                NetworkHealth.Connected => "网络正常",
-                NetworkHealth.Busy => "网络繁忙",
-                NetworkHealth.Poor => "网络延迟",
-                _ => "网络不可用"
+                NetworkHealth.Connected => "网络连接正常",
+                NetworkHealth.Unstable => "网络波动大",
+                NetworkHealth.Offline => "网络中断",
+                _ => "网络中断"
             }
             : "系统监控已关闭";
         var brushKey = enabled
             ? snapshot.NetworkHealth switch
             {
                 NetworkHealth.Connected => "Brush.Success",
-                NetworkHealth.Busy or NetworkHealth.Poor => "Brush.Warning",
+                NetworkHealth.Unstable => "Brush.Warning",
+                NetworkHealth.Offline => "Brush.Danger",
                 _ => "Brush.Danger"
             }
             : "Brush.TextTertiary";

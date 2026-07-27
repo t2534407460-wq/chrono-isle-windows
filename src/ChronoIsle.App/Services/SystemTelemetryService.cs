@@ -1,5 +1,5 @@
 using System.Net.NetworkInformation;
-using System.Net.Sockets;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
@@ -8,9 +8,8 @@ namespace ChronoIsle.App.Services;
 public enum NetworkHealth
 {
     Offline,
-    Poor,
-    Connected,
-    Busy
+    Unstable,
+    Connected
 }
 
 public sealed record DailyTraffic(DateOnly Day, ulong UploadedBytes, ulong DownloadedBytes);
@@ -223,7 +222,13 @@ public sealed class SystemTelemetryService : IDisposable
     readonly ProcessorUtilitySampler processorUtility = new();
     SystemTelemetrySnapshot current = SystemTelemetrySnapshot.Empty;
     CpuTimes? previousCpuTimes;
+    const long UnstableLatencyMilliseconds = 300;
+    const long UnstableLatencyDeltaMilliseconds = 80;
+    static readonly Uri LatencyProbeUri = new("https://www.baidu.com/favicon.ico");
+    static readonly HttpClient LatencyProbeClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
     long? latencyMilliseconds;
+    long? latencyDeltaMilliseconds;
+    long? previousLatencyMilliseconds;
     DateTimeOffset nextLatencyCheck = DateTimeOffset.MinValue;
     DateTimeOffset nextSave = DateTimeOffset.MinValue;
     int sampling;
@@ -260,7 +265,13 @@ public sealed class SystemTelemetryService : IDisposable
             if (now >= nextLatencyCheck)
             {
                 nextLatencyCheck = now.AddSeconds(5.5);
-                latencyMilliseconds = await MeasureLatencyAsync();
+                var measuredLatency = await MeasureLatencyAsync();
+                latencyDeltaMilliseconds = measuredLatency is { } currentLatency && previousLatencyMilliseconds is { } previousLatency
+                    ? Math.Abs(currentLatency - previousLatency)
+                    : null;
+                if (measuredLatency is { } sampledLatency)
+                    previousLatencyMilliseconds = sampledLatency;
+                latencyMilliseconds = measuredLatency;
             }
 
             var localNow = now.ToLocalTime();
@@ -277,7 +288,7 @@ public sealed class SystemTelemetryService : IDisposable
                 ReadCpuPercent(),
                 ReadMemoryPercent(),
                 latencyMilliseconds,
-                ClassifyNetwork(hasNetwork, latencyMilliseconds, delta.UploadSpeed + delta.DownloadSpeed),
+                ClassifyNetwork(hasNetwork, latencyMilliseconds, latencyDeltaMilliseconds),
                 traffic.Recent(day, 7),
                 now);
             Volatile.Write(ref current, snapshot);
@@ -321,21 +332,24 @@ public sealed class SystemTelemetryService : IDisposable
         return (uploaded, downloaded, hasNetwork);
     }
 
-    static NetworkHealth ClassifyNetwork(bool hasNetwork, long? latency, double trafficBytesPerSecond)
+    internal static NetworkHealth ClassifyNetwork(bool hasNetwork, long? latency, long? latencyDeltaMilliseconds)
     {
         if (!hasNetwork) return NetworkHealth.Offline;
-        if (latency is null) return trafficBytesPerSecond >= 128 * 1024 ? NetworkHealth.Busy : NetworkHealth.Poor;
-        return latency < 150 ? NetworkHealth.Connected : NetworkHealth.Poor;
+        if (latency is null || latency >= UnstableLatencyMilliseconds) return NetworkHealth.Unstable;
+        return latencyDeltaMilliseconds is { } delta && delta >= UnstableLatencyDeltaMilliseconds
+            ? NetworkHealth.Unstable
+            : NetworkHealth.Connected;
     }
 
     static async Task<long?> MeasureLatencyAsync()
     {
         try
         {
-            using var client = new TcpClient();
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Head, LatencyProbeUri);
             using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-            await client.ConnectAsync("223.5.5.5", 53, timeout.Token);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            using var response = await LatencyProbeClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             return stopwatch.ElapsedMilliseconds;
         }
         catch { return null; }

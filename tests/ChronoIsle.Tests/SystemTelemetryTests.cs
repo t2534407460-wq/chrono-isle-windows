@@ -27,6 +27,23 @@ public sealed class SystemTelemetryTests
         Assert.Null(ProcessorUtilitySampler.Normalize(status, value));
     }
 
+    [Theory]
+    [InlineData(false, 40, 5, NetworkHealth.Offline)]
+    [InlineData(true, null, null, NetworkHealth.Unstable)]
+    [InlineData(true, 45, null, NetworkHealth.Connected)]
+    [InlineData(true, 300, 5, NetworkHealth.Unstable)]
+    [InlineData(true, 45, 80, NetworkHealth.Unstable)]
+    public void NetworkHealth_UsesReachabilityLatencyAndJitter(
+        bool hasNetwork,
+        int? latencyMilliseconds,
+        int? latencyDeltaMilliseconds,
+        NetworkHealth expected)
+    {
+        long? latency = latencyMilliseconds;
+        long? latencyDelta = latencyDeltaMilliseconds;
+        Assert.Equal(expected, SystemTelemetryService.ClassifyNetwork(
+            hasNetwork, latency, latencyDelta));
+    }
     [Fact]
     public void TrafficAccumulator_ComputesSpeedAndDailyTotals()
     {
