@@ -200,6 +200,7 @@ public partial class LifeIslandWindow : Window
         SourceInitialized += (_, _) =>
         {
             windowHandle = new WindowInteropHelper(this).Handle;
+            IslandWindowStyles.HideFromTaskView(this);
             EnsureTaskbarTopmost();
         };
         Closed += (_, _) =>

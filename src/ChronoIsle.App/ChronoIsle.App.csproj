@@ -38,7 +38,7 @@
     <Compile Include="Services\Scheduling\*.cs" />
     <Compile Include="Services\SchedulingV2\*.cs" />
     <Compile Include="ViewModels\LifeViewModel.cs" />
-    <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs;Views\NamingWindow.xaml.cs;Views\TrayMenuWindow.xaml.cs" />
+    <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs;Views\NamingWindow.xaml.cs;Views\TrayMenuWindow.xaml.cs;Views\IslandWindowStyles.cs" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />

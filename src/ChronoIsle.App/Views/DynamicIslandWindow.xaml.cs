@@ -34,6 +34,7 @@ public partial class DynamicIslandWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         // VM 请求播放一次小章鱼动画（媒体控制 → headphones 等）→ 转给精灵控件
         _viewModel.PlaySprite += name => Dispatcher.BeginInvoke(() => StatusSprite.PlayOnce(name));
+        SourceInitialized += (_, _) => IslandWindowStyles.HideFromTaskView(this);
         Loaded += (_, _) => PositionAtTopCenter();
     }
 
