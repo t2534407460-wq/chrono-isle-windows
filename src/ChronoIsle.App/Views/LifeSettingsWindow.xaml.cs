@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media.Animation;
 using ChronoIsle.App.Services;
 using ChronoIsle.App.Services.Domain;
 using ChronoIsle.App.Services.Commanding;
@@ -18,6 +20,7 @@ public partial class LifeSettingsWindow : Window
     readonly OpenAiChatService ai;
     readonly AutoStartService autoStart;
     readonly LyricsService lyrics;
+    readonly ThemeService theme;
     readonly SqliteOnlineBackupService backups;
     readonly IcsExportService icsExport;
     readonly IcsImportService icsImport;
@@ -25,9 +28,12 @@ public partial class LifeSettingsWindow : Window
     readonly AuditPrivacyService auditPrivacy;
     readonly string databasePath;
     readonly AssistantCommandPipeline commandPipeline;
+    LifePreferences committedPreferences = LifePreferences.Default;
+    bool themePreviewDirty;
 
     public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders,
-        OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline, LyricsService lyrics)
+        OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline,
+        LyricsService lyrics, ThemeService theme)
     {
         InitializeComponent();
         this.settings = settings;
@@ -36,6 +42,7 @@ public partial class LifeSettingsWindow : Window
         this.ai = ai;
         this.autoStart = autoStart;
         this.lyrics = lyrics;
+        this.theme = theme;
         var provider = settings.Load();
         var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
         backups = new SqliteOnlineBackupService(runtime.ConnectionFactory, runtime.WriteQueue);
@@ -49,12 +56,23 @@ public partial class LifeSettingsWindow : Window
         Key.Password = provider.ApiKey;
         loading = true;
         var savedPreferences = preferences.Load();
+        committedPreferences = savedPreferences;
         WindowsNotifications.IsChecked = savedPreferences.WindowsNotifications;
         MediaAutoTakeover.IsChecked = savedPreferences.MediaAutoTakeover;
-        ThemeModeSelector.SelectedValue = savedPreferences.ThemeMode;
+        ThemeModeSelector.SelectedValue = ThemeService.Parse(savedPreferences.ThemeMode).ToString();
+        AccentSchemeSelector.SelectedValue = ThemeService.ParseAccent(savedPreferences.AccentScheme).ToString();
         TelemetryEnabled.IsChecked = savedPreferences.TelemetryEnabled;
         ToastInboxEnabled.IsChecked = savedPreferences.ToastInboxEnabled;
         GlowBorderEnabled.IsChecked = savedPreferences.GlowBorderEnabled;
+        IslandShowMascot.IsChecked = savedPreferences.IslandShowMascot;
+        IslandShowStatusLight.IsChecked = savedPreferences.IslandShowStatusLight;
+        IslandShowAgendaSummary.IsChecked = savedPreferences.IslandShowAgendaSummary;
+        IslandShowNetworkSpeed.IsChecked = savedPreferences.IslandShowNetworkSpeed;
+        IslandShowCpuUsage.IsChecked = savedPreferences.IslandShowCpuUsage;
+        IslandShowMemoryUsage.IsChecked = savedPreferences.IslandShowMemoryUsage;
+        IslandShowNetworkStatus.IsChecked = savedPreferences.IslandShowNetworkStatus;
+        IslandShowClock.IsChecked = savedPreferences.IslandShowClock;
+        IslandShowExpandIndicator.IsChecked = savedPreferences.IslandShowExpandIndicator;
         LyricsEnabled.IsChecked = savedPreferences.LyricsEnabled;
         MoveIslandDuringFullscreen.IsChecked = savedPreferences.MoveIslandDuringFullscreen;
         LyricsOffset.Value = savedPreferences.LyricsOffsetMs;
@@ -76,6 +94,24 @@ public partial class LifeSettingsWindow : Window
     void Close_Click(object sender, RoutedEventArgs e) => Close();
     ProviderSettings Value() => new(Url.Text.Trim(), Model.Text.Trim(), Key.Password);
 
+    void ThemeSelection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (loading) return;
+        themePreviewDirty = true;
+        theme.Preview(
+            ThemeService.Parse(ThemeModeSelector.SelectedValue as string),
+            ThemeService.ParseAccent(AccentSchemeSelector.SelectedValue as string));
+    }
+
+    void LifeSettingsWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (!themePreviewDirty) return;
+        theme.Preview(
+            ThemeService.Parse(committedPreferences.ThemeMode),
+            ThemeService.ParseAccent(committedPreferences.AccentScheme));
+        themePreviewDirty = false;
+    }
+
     void AutoStart_Changed(object sender, RoutedEventArgs e)
     {
         if (loading) return;
@@ -93,26 +129,49 @@ public partial class LifeSettingsWindow : Window
         }
     }
 
-    void Save_Click(object sender, RoutedEventArgs e)
+    async void Save_Click(object sender, RoutedEventArgs e)
     {
         settings.Save(Value());
         var current = preferences.Load();
-        preferences.Save(current with
+        var updated = current with
         {
             WindowsNotifications = WindowsNotifications.IsChecked == true,
             AssistantPersona = Persona.SelectedValue as string ?? "Direct",
             MediaAutoTakeover = MediaAutoTakeover.IsChecked == true,
             ThemeMode = ThemeModeSelector.SelectedValue as string ?? "System",
+            AccentScheme = AccentSchemeSelector.SelectedValue as string ?? "Emerald",
             TelemetryEnabled = TelemetryEnabled.IsChecked == true,
             ToastInboxEnabled = ToastInboxEnabled.IsChecked == true,
             GlowBorderEnabled = GlowBorderEnabled.IsChecked == true,
+            IslandShowMascot = IslandShowMascot.IsChecked == true,
+            IslandShowStatusLight = IslandShowStatusLight.IsChecked == true,
+            IslandShowAgendaSummary = IslandShowAgendaSummary.IsChecked == true,
+            IslandShowNetworkSpeed = IslandShowNetworkSpeed.IsChecked == true,
+            IslandShowCpuUsage = IslandShowCpuUsage.IsChecked == true,
+            IslandShowMemoryUsage = IslandShowMemoryUsage.IsChecked == true,
+            IslandShowNetworkStatus = IslandShowNetworkStatus.IsChecked == true,
+            IslandShowClock = IslandShowClock.IsChecked == true,
+            IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true,
             LyricsEnabled = LyricsEnabled.IsChecked == true,
             LyricsOffsetMs = (int)LyricsOffset.Value,
             MoveIslandDuringFullscreen = MoveIslandDuringFullscreen.IsChecked == true
-        });
+        };
+        preferences.Save(updated);
+        committedPreferences = updated;
+        themePreviewDirty = false;
         lyrics.Refresh();
         reminders.RefreshSchedule();
-        Result.Text = "设置已保存。";
+        SaveButton.IsEnabled = false;
+        CancelButton.IsEnabled = false;
+        SaveSuccessToast.Visibility = Visibility.Visible;
+        SaveSuccessToast.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+        await Task.Delay(900);
+        if (IsLoaded) Close();
     }
 
     void Cancel_Click(object sender, RoutedEventArgs e) => Close();

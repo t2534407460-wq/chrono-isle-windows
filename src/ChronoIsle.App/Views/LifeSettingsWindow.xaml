@@ -5,12 +5,47 @@
         Title="时屿设置" Width="680" Height="680" MinWidth="560" MinHeight="520"
         Background="Transparent" Foreground="{DynamicResource Brush.TextPrimary}"
         FontFamily="{StaticResource Font.UI}" WindowStartupLocation="CenterScreen"
-        WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize">
+        WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize"
+        Closing="LifeSettingsWindow_Closing">
   <WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="8" CornerRadius="16" UseAeroCaptionButtons="False"/></WindowChrome.WindowChrome>
   <Window.Resources>
     <Style TargetType="Button" BasedOn="{StaticResource Button.Secondary}"/>
     <Style x:Key="DialogTitleButton" TargetType="Button" BasedOn="{StaticResource Button.Ghost}">
       <Setter Property="Width" Value="34"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style x:Key="IslandVisualOption" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="4,3"/>
+      <Setter Property="Margin" Value="1,0"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Border x:Name="OptionSurface"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="9" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="OptionSurface" Property="Background" Value="{DynamicResource Brush.AccentSoft}"/>
+                <Setter TargetName="OptionSurface" Property="BorderBrush" Value="{DynamicResource Brush.Accent}"/>
+              </Trigger>
+              <Trigger Property="IsChecked" Value="False">
+                <Setter TargetName="OptionSurface" Property="Opacity" Value=".38"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="OptionSurface" Property="BorderBrush" Value="{DynamicResource Brush.TextTertiary}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
   </Window.Resources>
   <Border Background="{DynamicResource Brush.Window}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}">
@@ -44,10 +79,111 @@
               <Grid Margin="0,14,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
                 <StackPanel><TextBlock Text="主题"/><TextBlock Text="可跟随 Windows，也可固定深色或浅色。" Style="{StaticResource Text.Secondary}" Margin="0,3,12,0"/></StackPanel>
-                <ComboBox x:Name="ThemeModeSelector" Grid.Column="1" SelectedValuePath="Tag">
+                <ComboBox x:Name="ThemeModeSelector" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="ThemeSelection_Changed">
                   <ComboBoxItem Tag="System" Content="跟随 Windows"/><ComboBoxItem Tag="Dark" Content="深色"/><ComboBoxItem Tag="Light" Content="浅色"/>
                 </ComboBox>
               </Grid>
+              <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="180"/></Grid.ColumnDefinitions>
+                <StackPanel><TextBlock Text="强调色"/><TextBlock Text="选择后立即预览，保存后生效。" Style="{StaticResource Text.Secondary}" Margin="0,3,12,0"/></StackPanel>
+                <ComboBox x:Name="AccentSchemeSelector" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="ThemeSelection_Changed">
+                  <ComboBoxItem Tag="Emerald"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#39C98B" Margin="0,0,8,0"/><TextBlock Text="翠绿"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="OceanBlue"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#58A6FF" Margin="0,0,8,0"/><TextBlock Text="海蓝"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="Violet"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#B39DFF" Margin="0,0,8,0"/><TextBlock Text="紫罗兰"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="Amber"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#F0B44C" Margin="0,0,8,0"/><TextBlock Text="琥珀"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="Rose"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#F07FA2" Margin="0,0,8,0"/><TextBlock Text="玫红"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="Cyan"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#4DD4D0" Margin="0,0,8,0"/><TextBlock Text="青色"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="OrangeRed"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#FF8266" Margin="0,0,8,0"/><TextBlock Text="橙红"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="Black"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#202326" Stroke="#737A76" StrokeThickness="1" Margin="0,0,8,0"/><TextBlock Text="黑"/></StackPanel></ComboBoxItem>
+                  <ComboBoxItem Tag="White"><StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" Fill="#F5F7F6" Stroke="#737A76" StrokeThickness="1" Margin="0,0,8,0"/><TextBlock Text="白"/></StackPanel></ComboBoxItem>
+                </ComboBox>
+              </Grid>
+              <Border Background="{DynamicResource Brush.Surface}" CornerRadius="12" Padding="12" Margin="0,14,0,0">
+                <StackPanel>
+                  <TextBlock Text="折叠态显示" FontWeight="SemiBold"/>
+                  <TextBlock Text="选择灵动岛收起时保留的信息与控件。" Style="{StaticResource Text.Secondary}" Margin="0,3,0,9"/>
+                  <Border x:Name="CollapsedIslandOptions"
+                          Background="{DynamicResource Brush.Island}"
+                          BorderBrush="{DynamicResource Brush.Stroke}"
+                          BorderThickness="1" CornerRadius="24" Padding="8">
+                    <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left">
+                      <StackPanel Orientation="Horizontal">
+                        <CheckBox x:Name="IslandShowMascot"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="吉祥物" AutomationProperties.Name="吉祥物">
+                          <Image Source="pack://application:,,,/ChronoIsle;component/Assets/island-mascot.png"
+                                 Width="48" Height="30" Stretch="Uniform"
+                                 RenderOptions.BitmapScalingMode="HighQuality"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowStatusLight"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="事项状态点" AutomationProperties.Name="事项状态点">
+                          <Grid Width="16" Height="30">
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource Brush.Success}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          </Grid>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowAgendaSummary"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="事项与状态摘要" AutomationProperties.Name="事项与状态摘要">
+                          <TextBlock Text="今天暂无安排"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="11" Width="78"
+                                     VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowNetworkSpeed"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="实时网速" AutomationProperties.Name="实时网速">
+                          <TextBlock Text="↑ 1.2 KB/s  ↓ 3.6 KB/s"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="10" VerticalAlignment="Center"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowCpuUsage"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="CPU 占用" AutomationProperties.Name="CPU 占用">
+                          <TextBlock Text="CPU 19%"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="11" VerticalAlignment="Center"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowMemoryUsage"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="内存占用" AutomationProperties.Name="内存占用">
+                          <TextBlock Text="内存 61%"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="11" VerticalAlignment="Center"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowNetworkStatus"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="网络状态点" AutomationProperties.Name="网络状态点">
+                          <Viewbox Width="14" Height="14" Stretch="Uniform">
+                            <Path x:Name="SettingsNetworkStatusGlyph"
+                                  Data="{StaticResource Icon.NetworkGlobe}"
+                                  Stroke="{DynamicResource Brush.Success}" StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" Fill="Transparent"/>
+                          </Viewbox>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowClock"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="时间" AutomationProperties.Name="时间">
+                          <TextBlock Text="12:34:56"
+                                     Foreground="{DynamicResource Brush.TextPrimary}"
+                                     FontSize="15" FontWeight="SemiBold"
+                                     VerticalAlignment="Center"/>
+                        </CheckBox>
+                        <CheckBox x:Name="IslandShowExpandIndicator"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="展开箭头" AutomationProperties.Name="展开箭头">
+                          <TextBlock Text="›"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="20" VerticalAlignment="Center"/>
+                        </CheckBox>
+                      </StackPanel>
+                    </Viewbox>
+                  </Border>
+                </StackPanel>
+              </Border>
               <CheckBox x:Name="TelemetryEnabled" Content="显示实时网速、流量、CPU 与内存" Margin="0,14,0,0"/>
               <CheckBox x:Name="ToastInboxEnabled" Content="收纳新的 Windows 通知，并在灵动岛显示 5 秒" Margin="0,12,0,0"/>
               <CheckBox x:Name="GlowBorderEnabled" Content="启用低饱和青绿流光边框与弹簧动画" Margin="0,12,0,0"/>
@@ -81,8 +217,38 @@
             </StackPanel></Border>
           </StackPanel>
         </ScrollViewer>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="取消" Click="Cancel_Click" Margin="0,0,8,0"/><Button Content="保存" Click="Save_Click" Style="{StaticResource Button.Primary}"/></StackPanel>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click" Margin="0,0,8,0"/>
+          <Button x:Name="SaveButton" Content="保存" Click="Save_Click" Style="{StaticResource Button.Primary}"/>
+        </StackPanel>
       </Grid>
+      <Border x:Name="SaveSuccessToast" Grid.RowSpan="2"
+              Background="{DynamicResource Brush.Surface}"
+              BorderBrush="{DynamicResource Brush.Accent}"
+              BorderThickness="1" CornerRadius="14" Padding="14,10"
+              Margin="24,0,24,70" MinWidth="176"
+              HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              Visibility="Collapsed" Opacity="0"
+              IsHitTestVisible="False" Panel.ZIndex="50">
+        <Border.Effect>
+          <DropShadowEffect Color="#000000" ShadowDepth="3" BlurRadius="14" Opacity="0.28"/>
+        </Border.Effect>
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border Width="26" Height="26" CornerRadius="13"
+                  Background="{DynamicResource Brush.AccentSoft}">
+            <TextBlock Text="✓" Foreground="{DynamicResource Brush.Accent}"
+                       FontSize="14" FontWeight="Bold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="设置已保存" Foreground="{DynamicResource Brush.TextPrimary}"
+                       FontSize="13" FontWeight="SemiBold"/>
+            <TextBlock Text="更改已应用" Foreground="{DynamicResource Brush.TextSecondary}"
+                       FontSize="11" Margin="0,2,0,0"/>
+          </StackPanel>
+        </Grid>
+      </Border>
     </Grid>
   </Border>
 </Window>

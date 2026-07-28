@@ -21,4 +21,18 @@ public sealed class SystemToastInboxTests
         Assert.Equal("新通知", result.Title);
         Assert.Empty(result.Body);
     }
+
+    [Fact]
+    public void ToastTextComposer_UsesLegacyBindingWhenGenericBindingIsMissing()
+    {
+        var result = ToastTextComposer.Compose(
+            preferredValues: null,
+            fallbackBindings:
+            [
+                ["微信", "张三：稍后见"]
+            ]);
+
+        Assert.Equal("微信", result.Title);
+        Assert.Equal("张三：稍后见", result.Body);
+    }
 }

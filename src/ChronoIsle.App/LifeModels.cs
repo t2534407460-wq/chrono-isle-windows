@@ -129,7 +129,18 @@ public sealed record LifePreferences(
     string ThemeMode = "System",
     bool TelemetryEnabled = true,
     bool ToastInboxEnabled = true,
-    bool GlowBorderEnabled = true)
+    bool GlowBorderEnabled = true,
+    string AccentScheme = "Emerald",
+    bool IslandShowMascot = true,
+    bool IslandShowStatusLight = true,
+    bool IslandShowAgendaSummary = true,
+    bool IslandShowNetworkSpeed = false,
+    bool IslandShowNetworkStatus = false,
+    bool IslandShowClock = true,
+    bool IslandShowExpandIndicator = true,
+    bool IslandTopDockAutoFold = true,
+    bool IslandShowCpuUsage = false,
+    bool IslandShowMemoryUsage = false)
 {
     public static LifePreferences Default => new(true, "Direct");
 }

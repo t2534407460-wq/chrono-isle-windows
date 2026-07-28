@@ -1,5 +1,5 @@
 using System.Net.NetworkInformation;
-using System.Net.Sockets;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
@@ -8,9 +8,8 @@ namespace ChronoIsle.App.Services;
 public enum NetworkHealth
 {
     Offline,
-    Poor,
-    Connected,
-    Busy
+    Unstable,
+    Connected
 }
 
 public sealed record DailyTraffic(DateOnly Day, ulong UploadedBytes, ulong DownloadedBytes);
@@ -124,15 +123,112 @@ internal sealed class TrafficAccumulator
     }
 }
 
+internal sealed class ProcessorUtilitySampler : IDisposable
+{
+    const uint PdhOk = 0;
+    const uint PdhFormatDouble = 0x00000200;
+    const string CounterPath = @"\Processor Information(_Total)\% Processor Utility";
+
+    IntPtr query;
+    IntPtr counter;
+    bool initializationAttempted;
+
+    public bool TryRead(out double utility)
+    {
+        utility = 0;
+        if (!initializationAttempted)
+        {
+            initializationAttempted = true;
+            if (!TryInitialize()) return false;
+            return false;
+        }
+        if (query == IntPtr.Zero || PdhCollectQueryData(query) != PdhOk) return false;
+        if (PdhGetFormattedCounterValue(
+                counter,
+                PdhFormatDouble,
+                out _,
+                out var formatted) != PdhOk)
+            return false;
+
+        var normalized = Normalize(formatted.Status, formatted.Value);
+        if (normalized is null) return false;
+        utility = normalized.Value;
+        return true;
+    }
+
+    bool TryInitialize()
+    {
+        if (PdhOpenQueryW(null, IntPtr.Zero, out query) != PdhOk) return false;
+        if (PdhAddEnglishCounterW(query, CounterPath, IntPtr.Zero, out counter) != PdhOk ||
+            PdhCollectQueryData(query) != PdhOk)
+        {
+            Dispose();
+            return false;
+        }
+        return true;
+    }
+
+    internal static double? Normalize(uint status, double value)
+    {
+        if (status is not 0 and not 1 || !double.IsFinite(value)) return null;
+        return Math.Clamp(value, 0, 100);
+    }
+
+    public void Dispose()
+    {
+        if (query == IntPtr.Zero) return;
+        PdhCloseQuery(query);
+        query = IntPtr.Zero;
+        counter = IntPtr.Zero;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    struct PdhFormattedCounterValue
+    {
+        [FieldOffset(0)] public uint Status;
+        [FieldOffset(8)] public double Value;
+    }
+
+    [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
+    static extern uint PdhOpenQueryW(string? dataSource, IntPtr userData, out IntPtr query);
+
+    [DllImport("pdh.dll", CharSet = CharSet.Unicode)]
+    static extern uint PdhAddEnglishCounterW(
+        IntPtr query,
+        string fullCounterPath,
+        IntPtr userData,
+        out IntPtr counter);
+
+    [DllImport("pdh.dll")]
+    static extern uint PdhCollectQueryData(IntPtr query);
+
+    [DllImport("pdh.dll")]
+    static extern uint PdhGetFormattedCounterValue(
+        IntPtr counter,
+        uint format,
+        out uint counterType,
+        out PdhFormattedCounterValue value);
+
+    [DllImport("pdh.dll")]
+    static extern uint PdhCloseQuery(IntPtr query);
+}
+
 public sealed class SystemTelemetryService : IDisposable
 {
     readonly object gate = new();
     readonly string storagePath;
     readonly System.Threading.Timer timer;
     readonly TrafficAccumulator traffic;
+    readonly ProcessorUtilitySampler processorUtility = new();
     SystemTelemetrySnapshot current = SystemTelemetrySnapshot.Empty;
     CpuTimes? previousCpuTimes;
+    const long UnstableLatencyMilliseconds = 300;
+    const long UnstableLatencyDeltaMilliseconds = 80;
+    static readonly Uri LatencyProbeUri = new("https://www.baidu.com/favicon.ico");
+    static readonly HttpClient LatencyProbeClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
     long? latencyMilliseconds;
+    long? latencyDeltaMilliseconds;
+    long? previousLatencyMilliseconds;
     DateTimeOffset nextLatencyCheck = DateTimeOffset.MinValue;
     DateTimeOffset nextSave = DateTimeOffset.MinValue;
     int sampling;
@@ -169,7 +265,13 @@ public sealed class SystemTelemetryService : IDisposable
             if (now >= nextLatencyCheck)
             {
                 nextLatencyCheck = now.AddSeconds(5.5);
-                latencyMilliseconds = await MeasureLatencyAsync();
+                var measuredLatency = await MeasureLatencyAsync();
+                latencyDeltaMilliseconds = measuredLatency is { } currentLatency && previousLatencyMilliseconds is { } previousLatency
+                    ? Math.Abs(currentLatency - previousLatency)
+                    : null;
+                if (measuredLatency is { } sampledLatency)
+                    previousLatencyMilliseconds = sampledLatency;
+                latencyMilliseconds = measuredLatency;
             }
 
             var localNow = now.ToLocalTime();
@@ -186,7 +288,7 @@ public sealed class SystemTelemetryService : IDisposable
                 ReadCpuPercent(),
                 ReadMemoryPercent(),
                 latencyMilliseconds,
-                ClassifyNetwork(hasNetwork, latencyMilliseconds, delta.UploadSpeed + delta.DownloadSpeed),
+                ClassifyNetwork(hasNetwork, latencyMilliseconds, latencyDeltaMilliseconds),
                 traffic.Recent(day, 7),
                 now);
             Volatile.Write(ref current, snapshot);
@@ -230,27 +332,36 @@ public sealed class SystemTelemetryService : IDisposable
         return (uploaded, downloaded, hasNetwork);
     }
 
-    static NetworkHealth ClassifyNetwork(bool hasNetwork, long? latency, double trafficBytesPerSecond)
+    internal static NetworkHealth ClassifyNetwork(bool hasNetwork, long? latency, long? latencyDeltaMilliseconds)
     {
         if (!hasNetwork) return NetworkHealth.Offline;
-        if (latency is null) return trafficBytesPerSecond >= 128 * 1024 ? NetworkHealth.Busy : NetworkHealth.Poor;
-        return latency < 150 ? NetworkHealth.Connected : NetworkHealth.Poor;
+        if (latency is null || latency >= UnstableLatencyMilliseconds) return NetworkHealth.Unstable;
+        return latencyDeltaMilliseconds is { } delta && delta >= UnstableLatencyDeltaMilliseconds
+            ? NetworkHealth.Unstable
+            : NetworkHealth.Connected;
     }
 
     static async Task<long?> MeasureLatencyAsync()
     {
         try
         {
-            using var client = new TcpClient();
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Head, LatencyProbeUri);
             using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-            await client.ConnectAsync("223.5.5.5", 53, timeout.Token);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            using var response = await LatencyProbeClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             return stopwatch.ElapsedMilliseconds;
         }
         catch { return null; }
     }
 
     double ReadCpuPercent()
+    {
+        if (processorUtility.TryRead(out var utility)) return utility;
+        return ReadProcessorTimePercent();
+    }
+
+    double ReadProcessorTimePercent()
     {
         if (!GetSystemTimes(out var idle, out var kernel, out var user)) return 0;
         var currentTimes = new CpuTimes(ToUInt64(idle), ToUInt64(kernel), ToUInt64(user));
@@ -299,6 +410,7 @@ public sealed class SystemTelemetryService : IDisposable
         if (disposed) return;
         disposed = true;
         timer.Dispose();
+        processorUtility.Dispose();
         SaveTraffic();
     }
 

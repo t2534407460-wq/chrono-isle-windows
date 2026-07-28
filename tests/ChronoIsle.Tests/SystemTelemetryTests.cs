@@ -4,6 +4,46 @@ namespace ChronoIsle.Tests;
 
 public sealed class SystemTelemetryTests
 {
+    [Theory]
+    [InlineData(0u, 19.4, 19.4)]
+    [InlineData(1u, 120.0, 100.0)]
+    [InlineData(0u, -5.0, 0.0)]
+    public void ProcessorUtilitySampler_NormalizesValidWindowsValues(
+        uint status,
+        double value,
+        double expected)
+    {
+        var normalized = ProcessorUtilitySampler.Normalize(status, value);
+
+        Assert.Equal(expected, normalized);
+    }
+
+    [Theory]
+    [InlineData(2u, 20.0)]
+    [InlineData(0u, double.NaN)]
+    [InlineData(0u, double.PositiveInfinity)]
+    public void ProcessorUtilitySampler_RejectsInvalidWindowsValues(uint status, double value)
+    {
+        Assert.Null(ProcessorUtilitySampler.Normalize(status, value));
+    }
+
+    [Theory]
+    [InlineData(false, 40, 5, NetworkHealth.Offline)]
+    [InlineData(true, null, null, NetworkHealth.Unstable)]
+    [InlineData(true, 45, null, NetworkHealth.Connected)]
+    [InlineData(true, 300, 5, NetworkHealth.Unstable)]
+    [InlineData(true, 45, 80, NetworkHealth.Unstable)]
+    public void NetworkHealth_UsesReachabilityLatencyAndJitter(
+        bool hasNetwork,
+        int? latencyMilliseconds,
+        int? latencyDeltaMilliseconds,
+        NetworkHealth expected)
+    {
+        long? latency = latencyMilliseconds;
+        long? latencyDelta = latencyDeltaMilliseconds;
+        Assert.Equal(expected, SystemTelemetryService.ClassifyNetwork(
+            hasNetwork, latency, latencyDelta));
+    }
     [Fact]
     public void TrafficAccumulator_ComputesSpeedAndDailyTotals()
     {
