@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using ChronoIsle.App.Services;
+using ChronoIsle.App.Services.ImportExport;
 using ChronoIsle.App.Services.Commanding;
 using ChronoIsle.App.Services.Domain;
 using ChronoIsle.App.Services.Persistence;
@@ -45,10 +46,17 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<ChinaStatutoryHolidayCalendar>();
         collection.AddSingleton<AssistantIntentService>();
         collection.AddSingleton<IIslandStateCoordinator, IslandStateCoordinator>();
-        collection.AddSingleton<AssistantCommandIntentService>();
         collection.AddSingleton(provider => new AssistantCommandPipeline(provider.GetRequiredService<LifeDataService>().DatabasePath));
+        collection.AddSingleton<IConversationPlanner>(provider =>
+            new ConversationPlannerV2(provider.GetRequiredService<IChatCompletionClient>()));
+        collection.AddSingleton<IOperationArgumentParser>(provider =>
+            new OperationArgumentParserV2(provider.GetRequiredService<IChatCompletionClient>()));
+        collection.AddSingleton(provider => new AssistantPlanPipeline(
+            provider.GetRequiredService<LifeDataService>().DatabasePath,
+            provider.GetRequiredService<AssistantCommandPipeline>()));
         collection.AddSingleton<ConversationRouter>();
         collection.AddSingleton<LocalAgendaQueryService>();
+        collection.AddSingleton<MarkdownItemTransferService>();
         collection.AddSingleton(provider => new TodayDashboardService(provider.GetRequiredService<LifeDataService>()));
         collection.AddSingleton(provider =>
         {
@@ -73,9 +81,11 @@ public partial class App : System.Windows.Application
             provider.GetRequiredService<ConversationRouter>(),
             provider.GetRequiredService<LocalAgendaQueryService>(),
             provider.GetRequiredService<IChatCompletionClient>(),
-            provider.GetRequiredService<AssistantCommandIntentService>(),
-            provider.GetRequiredService<AssistantCommandPipeline>(),
-            provider.GetRequiredService<LifePreferencesService>()));
+            pipeline: provider.GetRequiredService<AssistantCommandPipeline>(),
+            preferences: provider.GetRequiredService<LifePreferencesService>(),
+            planner: provider.GetRequiredService<IConversationPlanner>(),
+            argumentParser: provider.GetRequiredService<IOperationArgumentParser>(),
+            assistantPlanPipeline: provider.GetRequiredService<AssistantPlanPipeline>()));
         collection.AddSingleton<WindowsNotificationService>();
         collection.AddSingleton<ReminderService>();
         collection.AddSingleton<LifeTrayService>();

@@ -40,6 +40,8 @@ internal static class CanonicalCommandHandlers
                 new CreateReminderCommandHandler().Execute(context, arguments),
             (AssistantCommandName.CreateEvent, CreateEventArgumentsV1 arguments) =>
                 new CreateEventCommandHandler().Execute(context, arguments),
+            (AssistantCommandName.CreateLongTermItem, CreateLongTermItemArgumentsV1 arguments) =>
+                new CreateLongTermItemCommandHandler().Execute(context, arguments),
             (AssistantCommandName.ListItems, ListItemsArgumentsV1 arguments) =>
                 new ListItemsCommandHandler().Execute(context, arguments),
             (AssistantCommandName.UpdateTodo, UpdateTodoArgumentsV1 arguments) =>
@@ -160,7 +162,8 @@ internal abstract class CreateItemCommandHandler
         ResolvedAssistantTime? due,
         ResolvedAssistantTime? remind,
         ResolvedAssistantTime? start,
-        ResolvedAssistantTime? end)
+        ResolvedAssistantTime? end,
+        bool mirrorLegacy = true)
     {
         if (string.IsNullOrWhiteSpace(title)) throw new InvalidOperationException("A title is required.");
         var id = Guid.NewGuid().ToString("N");
@@ -193,7 +196,7 @@ internal abstract class CreateItemCommandHandler
             command.Parameters.AddWithValue("$now", context.NowUtc.ToUniversalTime().ToString("O"));
             command.ExecuteNonQuery();
         }
-        MirrorLegacy(context, id, kind, title.Trim(), notes, due, remind, start, end);
+        if (mirrorLegacy) MirrorLegacy(context, id, kind, title.Trim(), notes, due, remind, start, end);
         return id;
     }
 
@@ -228,7 +231,7 @@ internal abstract class CreateItemCommandHandler
                 """;
             command.Parameters.AddWithValue("$remind", AssistantCommandTimeResolver.Legacy(remind)!);
         }
-        else
+        else if (kind == "Event")
         {
             command.CommandText = """
                 INSERT INTO calendar_events(id,title,notes,start_at,end_at,remind_at,notified_at,created_at,updated_at)
@@ -238,6 +241,7 @@ internal abstract class CreateItemCommandHandler
             command.Parameters.AddWithValue("$end", AssistantCommandTimeResolver.Legacy(end)!);
             command.Parameters.AddWithValue("$remind", (object?)AssistantCommandTimeResolver.Legacy(remind) ?? DBNull.Value);
         }
+        else return;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$title", title);
         command.Parameters.AddWithValue("$notes", notes is null ? DBNull.Value : notes);
@@ -279,6 +283,22 @@ internal sealed class CreateEventCommandHandler : CreateItemCommandHandler, ICom
             throw new InvalidOperationException("Editable event start and end must share one time zone.");
         var remind = arguments.Remind is null ? null : AssistantCommandTimeResolver.Resolve(context, arguments.Remind);
         var id = Insert(context, "Event", arguments.Title!, arguments.Notes, null, remind, start, end);
+        return new(true, "created", CanonicalCommandHandlers.ItemResult(id), [id]);
+    }
+}
+
+internal sealed class CreateLongTermItemCommandHandler : CreateItemCommandHandler, ICommandHandler<CreateLongTermItemArgumentsV1>
+{
+    public CommandHandlerResult Execute(AssistantCommandExecutionContext context, CreateLongTermItemArgumentsV1 arguments)
+    {
+        var due = arguments.Due is null ? null : AssistantCommandTimeResolver.Resolve(context, arguments.Due);
+        var remind = arguments.Remind is null ? null : AssistantCommandTimeResolver.Resolve(context, arguments.Remind);
+        var id = Insert(context, "Todo", arguments.Title!, arguments.Notes, due, remind, null, null, mirrorLegacy: false);
+        using var command = context.UnitOfWork.Connection.CreateCommand();
+        command.Transaction = context.UnitOfWork.Transaction;
+        command.CommandText = "UPDATE life_items SET item_type='LongTerm' WHERE id=$id";
+        command.Parameters.AddWithValue("$id", id);
+        CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
         return new(true, "created", CanonicalCommandHandlers.ItemResult(id), [id]);
     }
 }
@@ -341,9 +361,11 @@ public sealed class ListItemsCommandHandler : ICommandHandler<ListItemsArguments
         using var command = context.UnitOfWork.Connection.CreateCommand();
         command.Transaction = context.UnitOfWork.Transaction;
         command.CommandText = """
-            SELECT id,kind,title,status,row_version,due_utc_instant,remind_utc_instant,start_utc_instant,end_utc_instant
+            SELECT id,COALESCE(item_type,kind),title,status,row_version,due_utc_instant,remind_utc_instant,start_utc_instant,end_utc_instant
             FROM life_items
-            WHERE deleted_at IS NULL AND ($kind IS NULL OR kind=$kind)
+            WHERE deleted_at IS NULL AND ($kind IS NULL
+              OR ($kind='LongTerm' AND item_type='LongTerm')
+              OR ($kind<>'LongTerm' AND kind=$kind AND item_type IS NULL))
               AND ($completed=1 OR status<>'Completed')
             ORDER BY COALESCE(start_utc_instant,due_utc_instant,remind_utc_instant,created_at),title
             LIMIT 200
@@ -379,20 +401,38 @@ public sealed class CompleteTodoCommandHandler : ICommandHandler<CompleteTodoArg
     public CommandHandlerResult Execute(AssistantCommandExecutionContext context, CompleteTodoArgumentsV1 arguments)
     {
         var target = CanonicalCommandHandlers.SingleTarget(context);
+        var kind = ReadKind(context, target.ItemId);
         using (var command = context.UnitOfWork.Connection.CreateCommand())
         {
             command.Transaction = context.UnitOfWork.Transaction;
             command.CommandText = """
-                UPDATE life_items SET status='Completed',row_version=row_version+1,updated_at=$now
-                WHERE id=$id AND row_version=$version AND kind='Todo' AND deleted_at IS NULL AND is_readonly=0
+                UPDATE life_items SET status='Completed',completed_at_utc=$now,row_version=row_version+1,updated_at=$now
+                WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm')
+                  AND deleted_at IS NULL AND is_readonly=0
                 """;
             command.Parameters.AddWithValue("$id", target.ItemId);
             command.Parameters.AddWithValue("$version", target.RowVersion);
             command.Parameters.AddWithValue("$now", context.NowUtc.ToString("O"));
             CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
         }
-        ExecuteLegacy(context, "UPDATE todos SET completed=1,updated_at=$now WHERE id=$id", target.ItemId);
+        var legacySql = kind switch
+        {
+            "Todo" => "UPDATE todos SET completed=1,updated_at=$now WHERE id=$id",
+            "Reminder" => "DELETE FROM single_reminders WHERE id=$id",
+            "Event" => "DELETE FROM calendar_events WHERE id=$id",
+            _ => null
+        };
+        if (legacySql is not null) ExecuteLegacy(context, legacySql, target.ItemId);
         return new(true, "completed", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
+    }
+
+    internal static string ReadKind(AssistantCommandExecutionContext context, string id)
+    {
+        using var command = context.UnitOfWork.Connection.CreateCommand();
+        command.Transaction = context.UnitOfWork.Transaction;
+        command.CommandText = "SELECT COALESCE(item_type,kind) FROM life_items WHERE id=$id AND deleted_at IS NULL";
+        command.Parameters.AddWithValue("$id", id);
+        return command.ExecuteScalar() as string ?? throw new CanonicalConcurrencyException();
     }
 
     internal static void ExecuteLegacy(AssistantCommandExecutionContext context, string sql, string id)
@@ -411,19 +451,22 @@ public sealed class DeleteTodoCommandHandler : ICommandHandler<DeleteTodoArgumen
     public CommandHandlerResult Execute(AssistantCommandExecutionContext context, DeleteTodoArgumentsV1 arguments)
     {
         var target = CanonicalCommandHandlers.SingleTarget(context);
+        var kind = CompleteTodoCommandHandler.ReadKind(context, target.ItemId);
         using (var command = context.UnitOfWork.Connection.CreateCommand())
         {
             command.Transaction = context.UnitOfWork.Transaction;
             command.CommandText = """
                 UPDATE life_items SET status='Cancelled',deleted_at=$now,updated_at=$now,row_version=row_version+1
-                WHERE id=$id AND row_version=$version AND kind='Todo' AND deleted_at IS NULL AND is_readonly=0
+                WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm')
+                  AND deleted_at IS NULL AND is_readonly=0
                 """;
             command.Parameters.AddWithValue("$id", target.ItemId);
             command.Parameters.AddWithValue("$version", target.RowVersion);
             command.Parameters.AddWithValue("$now", context.NowUtc.ToString("O"));
             CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
         }
-        CompleteTodoCommandHandler.ExecuteLegacy(context, "DELETE FROM todos WHERE id=$id", target.ItemId);
+        var table = kind switch { "Todo" => "todos", "Reminder" => "single_reminders", "Event" => "calendar_events", _ => null };
+        if (table is not null) CompleteTodoCommandHandler.ExecuteLegacy(context, $"DELETE FROM {table} WHERE id=$id", target.ItemId);
         return new(true, "deleted", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
     }
 }
@@ -433,6 +476,7 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
     public CommandHandlerResult Execute(AssistantCommandExecutionContext context, UpdateTodoArgumentsV1 arguments)
     {
         var target = CanonicalCommandHandlers.SingleTarget(context);
+        var kind = CompleteTodoCommandHandler.ReadKind(context, target.ItemId);
         var changes = arguments.Changes!;
         var sets = new List<string> { "row_version=row_version+1", "updated_at=$now" };
         using var command = context.UnitOfWork.Connection.CreateCommand();
@@ -450,13 +494,14 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
             sets.Add("notes=$notes");
             command.Parameters.AddWithValue("$notes", changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Notes) == true ? DBNull.Value : changes.Notes);
         }
-        AddTemporalChange(context, command, sets, "due", changes.Due,
-            changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Due) == true);
+        if (kind != "Event")
+            AddTemporalChange(context, command, sets, "due", changes.Due,
+                changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Due) == true);
         AddTemporalChange(context, command, sets, "remind", changes.Remind,
             changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Remind) == true);
-        command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND kind='Todo' AND deleted_at IS NULL AND is_readonly=0";
+        command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm') AND deleted_at IS NULL AND is_readonly=0";
         CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
-        MirrorLegacy(context, target.ItemId, changes);
+        MirrorLegacy(context, target.ItemId, kind, changes);
         return new(true, "updated", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
     }
 
@@ -477,8 +522,10 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
         AssistantCommandTimeResolver.Add(command, prefix, value);
     }
 
-    static void MirrorLegacy(AssistantCommandExecutionContext context, string id, UpdateTodoChangesV1 changes)
+    static void MirrorLegacy(AssistantCommandExecutionContext context, string id, string kind, UpdateTodoChangesV1 changes)
     {
+        if (kind == "LongTerm") return;
+        var table = kind switch { "Todo" => "todos", "Reminder" => "single_reminders", "Event" => "calendar_events", _ => throw new InvalidOperationException("Unsupported item kind.") };
         var sets = new List<string> { "updated_at=$now" };
         using var command = context.UnitOfWork.Connection.CreateCommand();
         command.Transaction = context.UnitOfWork.Transaction;
@@ -487,11 +534,11 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
         if (!string.IsNullOrWhiteSpace(changes.Title)) { sets.Add("title=$title"); command.Parameters.AddWithValue("$title", changes.Title.Trim()); }
         if (changes.Notes is not null || changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Notes) == true)
         { sets.Add("notes=$notes"); command.Parameters.AddWithValue("$notes", changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Notes) == true ? DBNull.Value : changes.Notes); }
-        if (changes.Due is not null || changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Due) == true)
+        if (kind == "Todo" && (changes.Due is not null || changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Due) == true))
         { sets.Add("due_at=$due"); command.Parameters.AddWithValue("$due", changes.Due is null ? DBNull.Value : AssistantCommandTimeResolver.Legacy(AssistantCommandTimeResolver.Resolve(context, changes.Due))); }
         if (changes.Remind is not null || changes.ClearFields?.Contains(UpdateTodoClearFieldV1.Remind) == true)
         { sets.Add("remind_at=$remind"); command.Parameters.AddWithValue("$remind", changes.Remind is null ? DBNull.Value : AssistantCommandTimeResolver.Legacy(AssistantCommandTimeResolver.Resolve(context, changes.Remind))); }
-        command.CommandText = $"UPDATE todos SET {string.Join(',', sets)} WHERE id=$id";
+        command.CommandText = $"UPDATE {table} SET {string.Join(',', sets)} WHERE id=$id";
         command.ExecuteNonQuery();
     }
 }
@@ -509,21 +556,24 @@ public sealed class RescheduleItemCommandHandler : ICommandHandler<RescheduleIte
         command.Parameters.AddWithValue("$id", target.ItemId);
         command.Parameters.AddWithValue("$version", target.RowVersion);
         command.Parameters.AddWithValue("$now", context.NowUtc.ToString("O"));
-        if (row.Kind == "Todo") AddTime(command, sets, "due", next);
+        ResolvedAssistantTime? nextEnd = null;
+        var newReminder = arguments.NewReminder is null ? null : AssistantCommandTimeResolver.Resolve(context, arguments.NewReminder);
+        if (row.Kind is "Todo" or "LongTerm") AddTime(command, sets, "due", next);
         else if (row.Kind == "Reminder") AddTime(command, sets, "remind", next);
-        else
+        else if (row.Kind == "Event")
         {
             AddTime(command, sets, "start", next);
             var duration = row.EndUtc!.Value - row.StartUtc!.Value;
             var endLocal = next.LocalDateTime.Add(duration);
-            var end = AssistantCommandTimeResolver.Resolve(context,
+            nextEnd = AssistantCommandTimeResolver.Resolve(context,
                 new AssistantTimeExpressionV1(DateOnly.FromDateTime(endLocal), TimeOnly.FromDateTime(endLocal), null, next.IanaTimeZoneId, null));
-            AddTime(command, sets, "end", end);
+            AddTime(command, sets, "end", nextEnd);
         }
-        if (arguments.NewReminder is not null) AddTime(command, sets, "remind", AssistantCommandTimeResolver.Resolve(context, arguments.NewReminder));
-        command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND deleted_at IS NULL AND is_readonly=0";
+        else throw new InvalidOperationException("This item kind cannot be rescheduled.");
+        if (newReminder is not null) AddTime(command, sets, "remind", newReminder);
+        command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm') AND deleted_at IS NULL AND is_readonly=0";
         CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
-        MirrorLegacy(context, target.ItemId, row.Kind, next);
+        MirrorLegacy(context, target.ItemId, row.Kind, next, nextEnd, newReminder);
         return new(true, "rescheduled", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
     }
 
@@ -531,7 +581,7 @@ public sealed class RescheduleItemCommandHandler : ICommandHandler<RescheduleIte
     {
         using var command = context.UnitOfWork.Connection.CreateCommand();
         command.Transaction = context.UnitOfWork.Transaction;
-        command.CommandText = "SELECT kind,start_utc_instant,end_utc_instant FROM life_items WHERE id=$id AND deleted_at IS NULL";
+        command.CommandText = "SELECT COALESCE(item_type,kind),start_utc_instant,end_utc_instant FROM life_items WHERE id=$id AND deleted_at IS NULL";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         if (!reader.Read()) throw new CanonicalConcurrencyException();
@@ -546,19 +596,23 @@ public sealed class RescheduleItemCommandHandler : ICommandHandler<RescheduleIte
         AssistantCommandTimeResolver.Add(command, prefix, value);
     }
 
-    static void MirrorLegacy(AssistantCommandExecutionContext context, string id, string kind, ResolvedAssistantTime next)
+    static void MirrorLegacy(AssistantCommandExecutionContext context, string id, string kind,
+        ResolvedAssistantTime next, ResolvedAssistantTime? nextEnd, ResolvedAssistantTime? newReminder)
     {
-        var (table, column) = kind switch
-        {
-            "Todo" => ("todos", "due_at"),
-            "Reminder" => ("single_reminders", "remind_at"),
-            _ => ("calendar_events", "start_at")
-        };
+        if (kind == "LongTerm") return;
         using var command = context.UnitOfWork.Connection.CreateCommand();
         command.Transaction = context.UnitOfWork.Transaction;
-        command.CommandText = $"UPDATE {table} SET {column}=$time,updated_at=$now WHERE id=$id";
+        command.CommandText = kind switch
+        {
+            "Todo" => $"UPDATE todos SET due_at=$time{(newReminder is null ? "" : ",remind_at=$reminder")},updated_at=$now WHERE id=$id",
+            "Reminder" => "UPDATE single_reminders SET remind_at=$time,updated_at=$now WHERE id=$id",
+            "Event" => $"UPDATE calendar_events SET start_at=$time,end_at=$end{(newReminder is null ? "" : ",remind_at=$reminder")},updated_at=$now WHERE id=$id",
+            _ => throw new InvalidOperationException("Unsupported item kind.")
+        };
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$time", AssistantCommandTimeResolver.Legacy(next)!);
+        if (nextEnd is not null) command.Parameters.AddWithValue("$end", AssistantCommandTimeResolver.Legacy(nextEnd)!);
+        if (newReminder is not null) command.Parameters.AddWithValue("$reminder", AssistantCommandTimeResolver.Legacy(newReminder)!);
         command.Parameters.AddWithValue("$now", context.NowUtc.ToLocalTime().DateTime.ToString("O"));
         command.ExecuteNonQuery();
     }

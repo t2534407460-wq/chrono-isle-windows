@@ -27,26 +27,30 @@ public sealed class AssistantChatCommandBridgeTests : IDisposable
     }
 
     [Fact]
-    public void Chat_confirmation_bridge_confirms_the_pipeline_once()
+    public void Chat_confirmation_bridge_confirms_the_v2_plan_once()
     {
         var data = new LifeDataService(path);
         var pipeline = new AssistantCommandPipeline(path);
+        var planPipeline = new AssistantPlanPipeline(path, pipeline);
         var session = data.NewSession();
-        var created = pipeline.SubmitParsed("创建清理桌面", new AssistantCommandEnvelope(
+        var created = planPipeline.SubmitPlan("创建清理桌面", [new AssistantCommandEnvelope(
             AssistantCommandSchema.V1,
             AssistantCommandName.CreateTodo,
             new CreateTodoArgumentsV1("清理桌面", null, null, null, null, null),
-            [], []));
-        var pending = pipeline.SubmitParsed("完成清理桌面", new AssistantCommandEnvelope(
+            [], [])]);
+        var candidate = Assert.Single(planPipeline.FindCandidateBindings("完成清理桌面", "s1"));
+        var pending = planPipeline.SubmitPlan("完成清理桌面", [new AssistantCommandEnvelope(
             AssistantCommandSchema.V1,
             AssistantCommandName.CompleteTodo,
-            new CompleteTodoArgumentsV1(new AssistantTargetSelectorV1("清理桌面", AssistantItemKindV1.Todo, null)),
-            [], []));
+            new CompleteTodoArgumentsV1(new AssistantTargetSelectorV1(
+                candidate.Title, candidate.Kind, null, candidate.CandidateRef)),
+            [], [])], [candidate]);
         var action = data.SaveAction(session.Id, "完成清理桌面", JsonSerializer.Serialize(new
         {
-            Kind = "pipeline_confirmation_v1",
+            Kind = "assistant_plan_confirmation_v2",
             ConfirmationId = pending.ConfirmationId,
-            Command = "complete_todo"
+            PlanId = pending.PlanId,
+            Preview = pending.Preview
         }), "awaiting_confirmation");
         var chat = new OpenAiChatService();
         var service = new AssistantActionService(
@@ -55,19 +59,19 @@ public sealed class AssistantChatCommandBridgeTests : IDisposable
             new ConversationRouter(),
             new LocalAgendaQueryService(data),
             chat,
-            pipeline: pipeline);
+            pipeline: pipeline,
+            assistantPlanPipeline: planPipeline);
 
         var first = service.Confirm(action.Id);
         var second = service.Confirm(action.Id);
 
-        Assert.Equal(AssistantCommandPipelineState.Succeeded, created.State);
-        Assert.Equal(AssistantCommandPipelineState.AwaitingConfirmation, pending.State);
+        Assert.Equal(AssistantPlanPipelineState.Succeeded, created.State);
+        Assert.Equal(AssistantPlanPipelineState.AwaitingConfirmation, pending.State);
         Assert.True(first.Succeeded);
         Assert.False(second.Succeeded);
         Assert.True(Assert.Single(data.Todos()).IsCompleted);
         Assert.Equal("confirmed", data.Action(action.Id)!.Status);
     }
-
     [Fact]
     public async Task Command_parser_uses_an_injected_chat_client()
     {

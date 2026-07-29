@@ -242,7 +242,9 @@ public sealed partial class AssistantCommandPipeline
             SELECT id,row_version FROM life_items
             WHERE deleted_at IS NULL
               AND ($title IS NULL OR title=$title COLLATE NOCASE)
-              AND ($kind IS NULL OR kind=$kind)
+              AND ($kind IS NULL
+                   OR ($kind='LongTerm' AND item_type='LongTerm')
+                   OR ($kind<>'LongTerm' AND kind=$kind AND item_type IS NULL))
             ORDER BY updated_at DESC LIMIT 20
             """;
         command.Parameters.AddWithValue("$title", string.IsNullOrWhiteSpace(selector.Title) ? DBNull.Value : selector.Title.Trim());
@@ -281,7 +283,7 @@ public sealed partial class AssistantCommandPipeline
             command.Transaction = unitOfWork.Transaction;
             command.CommandText = """
                 SELECT COUNT(*) FROM life_items
-                WHERE kind='Event' AND deleted_at IS NULL
+                WHERE kind='Event' AND deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored')
                   AND start_utc_instant < $end AND end_utc_instant > $start
                 """;
             command.Parameters.AddWithValue("$start", start.ToString("O"));

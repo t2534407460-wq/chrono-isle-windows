@@ -4,7 +4,8 @@ public enum LifeItemKind
 {
     Todo,
     Reminder,
-    Event
+    Event,
+    LongTerm
 }
 
 public enum LifeItemStatus

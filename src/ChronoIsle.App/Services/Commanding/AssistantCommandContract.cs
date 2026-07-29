@@ -11,6 +11,7 @@ public enum AssistantCommandName
     CreateTodo,
     CreateReminder,
     CreateEvent,
+    CreateLongTermItem,
     ListItems,
     UpdateTodo,
     CompleteTodo,
@@ -33,7 +34,8 @@ public enum AssistantItemKindV1
 {
     Todo,
     Reminder,
-    Event
+    Event,
+    LongTerm
 }
 
 public enum AssistantRecurrenceFrequencyV1
@@ -104,9 +106,12 @@ public sealed record AssistantRecurrenceRuleV1(
 public sealed record AssistantTargetSelectorV1(
     string? Title,
     AssistantItemKindV1? Kind,
-    AssistantTimeExpressionV1? TimeHint)
+    AssistantTimeExpressionV1? TimeHint,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? CandidateRef = null)
 {
-    public bool HasAnyClue => !string.IsNullOrWhiteSpace(Title) || TimeHint?.HasAnyTimeClue == true;
+    public bool HasAnyClue => !string.IsNullOrWhiteSpace(CandidateRef) ||
+                              !string.IsNullOrWhiteSpace(Title) ||
+                              TimeHint?.HasAnyTimeClue == true;
 }
 
 public sealed record AssistantPeriodV1(
@@ -137,6 +142,13 @@ public sealed record CreateEventArgumentsV1(
     AssistantTimeExpressionV1? Start,
     AssistantTimeExpressionV1? End,
     AssistantTimeExpressionV1? Remind) : IAssistantCommandArgumentsV1;
+
+public sealed record CreateLongTermItemArgumentsV1(
+    string? Title,
+    string? Notes,
+    AssistantTimeExpressionV1? Due,
+    AssistantTimeExpressionV1? Remind,
+    AssistantPriorityV1? Priority) : IAssistantCommandArgumentsV1;
 
 public sealed record ListItemsArgumentsV1(
     AssistantPeriodV1? Range,

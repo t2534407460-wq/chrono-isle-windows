@@ -44,6 +44,7 @@ public sealed partial class LifeDataService
         {
             Initialize(unitOfWork.Connection, unitOfWork.Transaction);
             migrator.Migrate(unitOfWork.Connection, unitOfWork.Transaction);
+            EnsureColumn(unitOfWork.Connection, unitOfWork.Transaction, "life_items", "item_type", "TEXT");
         });
         new ProductivitySchemaInitializer(writeQueue).Initialize();
     }
@@ -214,7 +215,7 @@ public sealed partial class LifeDataService
     {
         ArgumentNullException.ThrowIfNull(items);
         var targets = items.Select(item => (item.Id, item.Kind))
-            .Where(item => item.Kind is "todo" or "event" or "recurring" or "reminder")
+            .Where(item => item.Kind is "todo" or "event" or "recurring" or "reminder" or "long_term")
             .Distinct()
             .ToList();
         if (targets.Count == 0) return 0;
@@ -248,13 +249,14 @@ public sealed partial class LifeDataService
                 id, reader.GetString(0), Text(reader, 1), Date(reader, 2), Text(reader, 3), reader.GetString(4));
             reader.Close();
 
-            if (archived.Kind != "recurring" && (scheduledAt is null || scheduledAt <= restoredAt)) return false;
+            if (archived.Kind is not ("recurring" or "long_term") && (scheduledAt is null || scheduledAt <= restoredAt)) return false;
             var saved = archived.Kind switch
             {
                 "todo" => RestoreTodo(unitOfWork, archived, scheduledAt!.Value, restoredAt),
                 "event" => RestoreEvent(unitOfWork, archived, scheduledAt!.Value, restoredAt),
                 "reminder" => RestoreSingleReminder(unitOfWork, archived, scheduledAt!.Value, restoredAt),
                 "recurring" => RestoreRecurringReminder(unitOfWork, archived, restoredAt),
+                "long_term" => RestoreLongTermItem(unitOfWork, archived.Id, restoredAt),
                 _ => false
             };
             if (!saved) return false;
@@ -381,6 +383,7 @@ public sealed partial class LifeDataService
         "event" => ArchiveEvent(unitOfWork, id, reason, archivedAt),
         "reminder" => ArchiveSingleReminder(unitOfWork, id, reason, archivedAt),
         "recurring" => ArchiveRecurringReminder(unitOfWork, id, reason, archivedAt),
+        "long_term" => ArchiveLongTermItem(unitOfWork, id, reason, archivedAt),
         _ => false
     };
 
@@ -678,6 +681,7 @@ public sealed partial class LifeDataService
         }
         values.AddRange(RecurringAgendaFor(day));
         values.AddRange(SingleReminderAgendaFor(day));
+        values.AddRange(LongTermAgendaFor(day));
         return values.OrderBy(x => x.StartsAt).ThenBy(x => x.Kind).ToList();
     }
 
@@ -740,6 +744,13 @@ public sealed partial class LifeDataService
                 : IslandIndicatorState.PendingTodo;
         }
 
+        if (kind == "long_term")
+        {
+            if (isCompleted) return IslandIndicatorState.Idle;
+            return scheduledAt > now && scheduledAt <= now.AddHours(1)
+                ? IslandIndicatorState.DueSoonTodo
+                : IslandIndicatorState.PendingTodo;
+        }
         if (kind == "reminder")
             return scheduledAt > now ? IslandIndicatorState.ReminderOnly : IslandIndicatorState.Idle;
         return kind is "event" or "recurring" ? IslandIndicatorState.ReminderOnly : IslandIndicatorState.Idle;
@@ -785,12 +796,18 @@ public sealed partial class LifeDataService
             .Where(item => item is not null)
             .Cast<AgendaItem>());
         values.AddRange(NextSingleReminderItems(localNow()));
+        if (NextLongTermAgendaItem(now) is { } longTerm) values.Add(longTerm);
         return values.OrderBy(x => x.StartsAt).FirstOrDefault();
     }
 
-    /// <summary>Returns the nearest long-running reminder occurrence for the Today dashboard only.</summary>
-    public AgendaItem? NextLongTermReminder(DateTime now) =>
-        NextRecurringAgendaItems(now).OrderBy(item => item.StartsAt).FirstOrDefault();
+    /// <summary>Returns the nearest explicit long-term reminder, falling back to a recurring reminder.</summary>
+    public AgendaItem? NextLongTermReminder(DateTime now)
+    {
+        var longTerm = NextLongTermAgendaItem(now, remindersOnly: true);
+        var recurring = NextRecurringAgendaItems(now).OrderBy(item => item.StartsAt).FirstOrDefault();
+        return new[] { longTerm, recurring }.Where(item => item is not null).Cast<AgendaItem>()
+            .OrderBy(item => item.StartsAt).FirstOrDefault();
+    }
     public IReadOnlyList<AgendaItem> ReminderItems()
     {
         var values = new List<AgendaItem>();
@@ -815,6 +832,7 @@ public sealed partial class LifeDataService
         }
         values.AddRange(NextRecurringReminderItems(localNow()));
         values.AddRange(SingleReminderItems());
+        values.AddRange(LongTermReminderItems());
         return values;
     }
 
@@ -974,6 +992,15 @@ public sealed partial class LifeDataService
         return reader.Read() ? ReadAction(reader) : null;
     }
 
+    public AssistantAction? ActiveConfirmation(string sessionId)
+    {
+        using var db = Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT id,session_id,source_text,intent_json,status,error_message,created_at,updated_at FROM assistant_actions WHERE session_id=$session AND status='awaiting_confirmation' ORDER BY updated_at DESC LIMIT 1";
+        command.Parameters.AddWithValue("$session", sessionId);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadAction(reader) : null;
+    }
     public AssistantAction? ActiveHolidayReminderBatch(string sessionId)
     {
         using var db = Open();

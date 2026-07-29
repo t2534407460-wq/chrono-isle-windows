@@ -1,3 +1,8 @@
+using System.IO;
+using System.Text;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using MessageBox = System.Windows.MessageBox;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -5,6 +10,7 @@ using System.Windows.Input;
 using ChronoIsle.App.Services;
 using ChronoIsle.App.Services.Productivity;
 using ChronoIsle.App.Services.Domain;
+using ChronoIsle.App.Services.ImportExport;
 
 namespace ChronoIsle.App.Views;
 
@@ -14,6 +20,7 @@ public partial class LifeManagementWindow : Window
     readonly ReminderService reminders;
     readonly TaskAttributesService taskAttributes;
     readonly FocusService focus;
+    readonly MarkdownItemTransferService markdownTransfer;
     readonly HashSet<string> selected = [];
     readonly Dictionary<string, Border> itemRows = [];
     readonly Dictionary<string, Border> itemRowsById = [];
@@ -22,16 +29,102 @@ public partial class LifeManagementWindow : Window
     bool awaitingConfirmation;
     bool showingArchive;
 
-    public LifeManagementWindow(LifeDataService data, ReminderService reminders, FocusService focus, TaskAttributesService taskAttributes)
+    public LifeManagementWindow(LifeDataService data, ReminderService reminders, FocusService focus, TaskAttributesService taskAttributes, MarkdownItemTransferService markdownTransfer)
     {
         InitializeComponent();
         this.data = data;
         this.reminders = reminders;
         this.focus = focus;
+        this.markdownTransfer = markdownTransfer;
         Loaded += (_, _) => RefreshItems();
         this.taskAttributes = taskAttributes;
     }
 
+    void DownloadTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "下载事项导入模板",
+            Filter = "Markdown 文件 (*.md)|*.md|所有文件 (*.*)|*.*",
+            FileName = "ChronoIsle-事项导入模板.md",
+            DefaultExt = ".md",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        SaveMarkdown(dialog.FileName, MarkdownItemTransferService.TemplateMarkdown, "导入模板已保存。");
+    }
+
+    void ExportMarkdown_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出事项",
+            Filter = "Markdown 文件 (*.md)|*.md|所有文件 (*.*)|*.*",
+            FileName = $"ChronoIsle-事项-{DateTime.Now:yyyyMMdd-HHmm}.md",
+            DefaultExt = ".md",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        SaveMarkdown(dialog.FileName, markdownTransfer.ExportMarkdown(), "事项已导出。");
+    }
+
+    void ImportMarkdown_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入事项",
+            Filter = "Markdown 文件 (*.md;*.markdown)|*.md;*.markdown|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            var preview = MarkdownItemTransferService.Parse(File.ReadAllText(dialog.FileName, Encoding.UTF8));
+            var confirmation = MessageBox.Show(
+                this,
+                $"将导入 {preview.Items.Count} 项：{preview.Summary}{Environment.NewLine}{Environment.NewLine}导入会创建新事项，不会自动覆盖或去重。是否继续？",
+                "确认导入",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (confirmation != MessageBoxResult.Yes) return;
+
+            var result = markdownTransfer.Import(preview);
+            reminders.RefreshSchedule();
+            RefreshItems();
+            Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+            Result.Text = $"已导入 {result.ImportedCount} 项。";
+        }
+        catch (MarkdownItemDocumentException exception)
+        {
+            ShowTransferError($"Markdown 格式无效：{exception.Message}");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ShowTransferError($"导入失败：{exception.Message}");
+        }
+    }
+
+    void SaveMarkdown(string path, string content, string successMessage)
+    {
+        try
+        {
+            File.WriteAllText(path, content, new UTF8Encoding(false));
+            Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+            Result.Text = successMessage;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            ShowTransferError($"保存失败：{exception.Message}");
+        }
+    }
+
+    void ShowTransferError(string message)
+    {
+        Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+        Result.Text = message;
+    }
     void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
@@ -97,7 +190,7 @@ public partial class LifeManagementWindow : Window
             Grid.SetColumn(archive, 3);
             panel.Children.Add(archive);
 
-            row.Child = agenda.Kind is "todo" or "reminder" && taskAttributes.Get(agenda.Id) is { } attributes ? BuildTaskAttributesEditor(panel, attributes) : panel;
+            row.Child = agenda.Kind is "todo" or "reminder" or "long_term" && taskAttributes.Get(agenda.Id) is { } attributes ? BuildTaskAttributesEditor(panel, attributes) : panel;
             itemRows[Key(agenda)] = row;
             itemRowsById[agenda.Id] = row;
             Items.Children.Add(row);
@@ -254,7 +347,7 @@ public partial class LifeManagementWindow : Window
 
     void RestoreArchivedItem(ArchivedTodoItem item, DateTime? selectedDate)
     {
-        if (item.Kind != "recurring" && selectedDate is null)
+        if (item.Kind is not ("recurring" or "long_term") && selectedDate is null)
         {
             Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
             Result.Text = "请选择恢复日期。";
@@ -531,12 +624,19 @@ public partial class LifeManagementWindow : Window
         "event" => "日程",
         "reminder" => "提醒",
         "recurring" => "周期提醒",
+        "long_term" => "长期事项",
         _ => "待办"
     };
 
-    static string ItemDetails(ManagedLifeItem item) => item.Kind == "recurring"
-        ? $"\u5468\u671F\u63D0\u9192 \u00B7 {item.RecurrenceLabel} \u00B7 \u4E0B\u4E00\u6B21 {item.ScheduledAt:MM-dd HH:mm}"
-        : $"{item.Kind switch { "event" => "\u65E5\u7A0B", "reminder" => "\u63D0\u9192", _ => "\u5F85\u529E" }} \u00B7 {item.ScheduledAt:yyyy-MM-dd HH:mm}";
+    static string ItemDetails(ManagedLifeItem item)
+    {
+        if (item.Kind == "recurring")
+            return $"\u5468\u671F\u63D0\u9192 \u00B7 {item.RecurrenceLabel} \u00B7 \u4E0B\u4E00\u6B21 {item.ScheduledAt:MM-dd HH:mm}";
+        var kind = item.Kind switch { "event" => "\u65E5\u7A0B", "reminder" => "\u63D0\u9192", "long_term" => "\u957F\u671F\u4E8B\u9879", _ => "\u5F85\u529E" };
+        var schedule = item.ScheduledAt is { } value ? value.ToString("yyyy-MM-dd HH:mm") : "\u672A\u8BBE\u65E5\u671F";
+        var completed = item.IsCompleted ? " \u00B7 \u5DF2\u5B8C\u6210" : "";
+        return $"{kind} \u00B7 {schedule}{completed}";
+    }
 
     static string Key(AgendaItem item) => Key(item.Id, item.Kind);
     static string Key(string id, string kind) => kind + ":" + id;

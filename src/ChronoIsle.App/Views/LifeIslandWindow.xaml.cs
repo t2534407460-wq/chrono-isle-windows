@@ -2132,7 +2132,7 @@ public partial class LifeIslandWindow : Window
         QuickAskInput.Clear();
         QuickAskAnswer.Markdown = string.Empty;
         UpdateQuickAskView();
-        await assistant.SubmitAsync(text);
+        await assistant.SubmitQuickAskAsync(text);
         UpdateQuickAskView();
     }
 

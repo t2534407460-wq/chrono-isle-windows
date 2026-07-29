@@ -181,6 +181,8 @@ public sealed partial class LifeDataService
             var reminder = RecurringReminders().FirstOrDefault(x => x.Id == id);
             return reminder is null ? null : OccurrenceOn(reminder, date) ?? NextOccurrence(reminder, localNow());
         }
+        if (string.Equals(kind, "long_term", StringComparison.OrdinalIgnoreCase))
+            return FindLongTermItem(id);
         return AgendaFor(date).FirstOrDefault(item =>
             item.Id == id && string.Equals(item.Kind, kind, StringComparison.OrdinalIgnoreCase));
     }
@@ -212,13 +214,14 @@ public sealed partial class LifeDataService
                 AssistantActionService.RecurrenceText(reminder.Recurrence, reminder.Weekdays)));
         }
         values.AddRange(ManagedSingleReminders());
+        values.AddRange(LongTermItems());
         return values.OrderBy(x => x.ScheduledAt is null).ThenBy(x => x.ScheduledAt).ThenBy(x => x.Title).ToList();
     }
 
     public int DeleteAgendaItems(IEnumerable<AgendaItem> items)
     {
         var targets = items.Select(item => (item.Kind, item.Id))
-            .Where(item => item.Kind is "todo" or "event" or "recurring" or "reminder")
+            .Where(item => item.Kind is "todo" or "event" or "recurring" or "reminder" or "long_term")
             .Distinct()
             .ToList();
         if (targets.Count == 0) return 0;
@@ -237,12 +240,14 @@ public sealed partial class LifeDataService
                     "event" => "DELETE FROM calendar_events WHERE id=$id",
                     "recurring" => "DELETE FROM recurring_reminders WHERE id=$id",
                     "reminder" => "DELETE FROM single_reminders WHERE id=$id",
+                    "long_term" => "UPDATE life_items SET status='Cancelled',deleted_at=$deletedAt,updated_at=$deletedAt,row_version=row_version+1 WHERE id=$id AND item_type='LongTerm' AND deleted_at IS NULL",
                     _ => throw new InvalidOperationException("This item kind cannot be deleted.")
                 };
                 command.Parameters.AddWithValue("$id", target.Id);
+                command.Parameters.AddWithValue("$deletedAt", deletedAt.ToString("O"));
                 var affected = command.ExecuteNonQuery();
                 count += affected;
-                if (affected == 1)
+                if (affected == 1 && target.Kind != "long_term")
                     canonicalWriter.SoftDelete(unitOfWork.Connection, unitOfWork.Transaction, target.Id, deletedAt);
             }
             return count;

@@ -84,5 +84,6 @@ public static class AssistantExecutionPolicy
 
     static bool IsCreate(AssistantCommandName command) => command is
         AssistantCommandName.CreateTodo or AssistantCommandName.CreateReminder or
-        AssistantCommandName.CreateEvent or AssistantCommandName.CreateRecurringTask;
+        AssistantCommandName.CreateEvent or AssistantCommandName.CreateLongTermItem or
+        AssistantCommandName.CreateRecurringTask;
 }

@@ -24,6 +24,7 @@ public partial class LifeViewModel : ObservableObject
     [ObservableProperty] ChatSession? selectedSession;
     [ObservableProperty] AssistantAction? pendingAction;
     [ObservableProperty] string pendingActionText = "";
+    [ObservableProperty] AssistantPendingPlan? pendingPlan;
 
     public ObservableCollection<ChatSession> Sessions { get; } = [];
     public ObservableCollection<ChatMessage> Messages { get; } = [];
@@ -58,6 +59,13 @@ public partial class LifeViewModel : ObservableObject
         if (CanSend()) await Send();
     }
 
+    public async Task SubmitQuickAskAsync(string input)
+    {
+        if (IsSending || string.IsNullOrWhiteSpace(input)) return;
+        BeginQuickAskConversation();
+        await SubmitAsync(input);
+    }
+
     void RefreshSessions()
     {
         Sessions.Clear();
@@ -71,16 +79,21 @@ public partial class LifeViewModel : ObservableObject
         Messages.Clear();
         foreach (var message in data.Messages(value.Id)) Messages.Add(message);
         PendingAction = null;
+        PendingPlan = null;
         PendingActionText = "";
     }
 
     [RelayCommand]
-    void NewChat()
+    void NewChat() => BeginQuickAskConversation();
+
+    public ChatSession BeginQuickAskConversation()
     {
         var session = data.NewSession();
         RefreshSessions();
-        SelectedSession = Sessions.First(x => x.Id == session.Id);
+        SelectedSession = Sessions.First(value => value.Id == session.Id);
+        return SelectedSession;
     }
+
 
     [RelayCommand]
     void DeleteChat(ChatSession? session)
@@ -154,8 +167,11 @@ public partial class LifeViewModel : ObservableObject
             else AddMessage(session, "assistant", result.Reply);
             if (result.RefreshReminders) reminders.RefreshSchedule();
             PendingAction = result.PendingAction?.Status == "awaiting_confirmation" ? result.PendingAction : null;
+            PendingPlan = PendingAction is null ? null : result.PendingPlan;
+            var awaitingDetails = result.PendingAction?.Status == "clarifying" || data.ActiveClarification(session.Id) is not null;
             PendingActionText = PendingAction is null ? "" : result.Reply;
-            Status = result.IsFailure ? "未创建" : PendingAction is null ? "准备就绪" : "等待确认";
+            Status = result.IsFailure ? "执行失败" : PendingAction is not null ? "等待确认" : awaitingDetails ?
+                "等待补充" : result.RefreshReminders ? "已执行" : "准备就绪";
         }
         catch (OperationCanceledException)
         {
@@ -181,7 +197,7 @@ public partial class LifeViewModel : ObservableObject
                     Messages[streamingIndex] = new("", session.Id, "assistant", message, DateTime.Now);
             }
             else AddMessage(session, "assistant", message);
-            Status = "未创建";
+            Status = "执行失败";
         }
         finally
         {
@@ -216,8 +232,9 @@ public partial class LifeViewModel : ObservableObject
                 reminders.RefreshSchedule();
         }
         PendingAction = null;
+        PendingPlan = null;
         PendingActionText = "";
-        Status = result.Succeeded ? "已创建" : "未创建";
+        Status = result.Succeeded ? "已执行" : "执行失败";
     }
 
     [RelayCommand]
@@ -225,8 +242,9 @@ public partial class LifeViewModel : ObservableObject
     {
         if (PendingAction is null) return;
         actions.Cancel(PendingAction.Id);
-        AddMessage("assistant", "已取消，本次没有创建任何事项。");
+        AddMessage("assistant", "已取消，本次没有执行任何写操作。");
         PendingAction = null;
+        PendingPlan = null;
         PendingActionText = "";
         Status = "已取消";
     }

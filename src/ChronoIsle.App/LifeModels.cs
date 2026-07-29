@@ -195,7 +195,21 @@ public enum ConversationRouteKind
 public sealed record LocalAgendaQuery(DateTime StartsAt, DateTime EndsAt, string Label);
 public sealed record ConversationRoute(ConversationRouteKind Kind, LocalAgendaQuery? Query = null);
 public sealed record LocalAgendaQueryResult(LocalAgendaQuery Query, IReadOnlyList<AgendaItem> Items, string ListText);
-public sealed record AssistantConversationResult(string Reply, AssistantAction? PendingAction, bool IsFailure, bool RefreshReminders = false);
+public sealed record AssistantPendingPlanStep(
+    int StepIndex,
+    string Operation,
+    string Description,
+    IReadOnlyList<string> Targets);
+
+public sealed record AssistantPendingPlan(
+    string PlanId,
+    string RiskReason,
+    IReadOnlyList<AssistantPendingPlanStep> Steps,
+    string State);
+
+public sealed record AssistantConversationResult(
+    string Reply, AssistantAction? PendingAction, bool IsFailure, bool RefreshReminders = false,
+    AssistantPendingPlan? PendingPlan = null);
 public sealed record ActionExecutionResult(bool Succeeded, string Message, AgendaItem? AgendaItem);
 /// <summary>
 /// Immutable snapshot of a one-off reminder selected for a batch reschedule.

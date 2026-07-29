@@ -95,6 +95,7 @@ public static class AssistantCommandEnvelopeJson
         AssistantCommandName.CreateTodo => DeserializeArguments<CreateTodoArgumentsV1>(element),
         AssistantCommandName.CreateReminder => DeserializeArguments<CreateReminderArgumentsV1>(element),
         AssistantCommandName.CreateEvent => DeserializeArguments<CreateEventArgumentsV1>(element),
+        AssistantCommandName.CreateLongTermItem => DeserializeArguments<CreateLongTermItemArgumentsV1>(element),
         AssistantCommandName.ListItems => DeserializeArguments<ListItemsArgumentsV1>(element),
         AssistantCommandName.UpdateTodo => DeserializeArguments<UpdateTodoArgumentsV1>(element),
         AssistantCommandName.CompleteTodo => DeserializeArguments<CompleteTodoArgumentsV1>(element),
@@ -125,6 +126,7 @@ public static class AssistantCommandEnvelopeJson
         "create_todo" => AssistantCommandName.CreateTodo,
         "create_reminder" => AssistantCommandName.CreateReminder,
         "create_event" => AssistantCommandName.CreateEvent,
+        "create_long_term_item" => AssistantCommandName.CreateLongTermItem,
         "list_items" => AssistantCommandName.ListItems,
         "update_todo" => AssistantCommandName.UpdateTodo,
         "complete_todo" => AssistantCommandName.CompleteTodo,
@@ -141,6 +143,7 @@ public static class AssistantCommandEnvelopeJson
         AssistantCommandName.CreateTodo => "create_todo",
         AssistantCommandName.CreateReminder => "create_reminder",
         AssistantCommandName.CreateEvent => "create_event",
+        AssistantCommandName.CreateLongTermItem => "create_long_term_item",
         AssistantCommandName.ListItems => "list_items",
         AssistantCommandName.UpdateTodo => "update_todo",
         AssistantCommandName.CompleteTodo => "complete_todo",
@@ -267,6 +270,12 @@ public static class AssistantCommandContractValidator
                 Time(value.End, "end");
                 Time(value.Remind, "remind");
                 break;
+            case (AssistantCommandName.CreateLongTermItem, CreateLongTermItemArgumentsV1 value):
+                Text(value.Title, "title", 200);
+                Text(value.Notes, "notes", 4000);
+                Time(value.Due, "due");
+                Time(value.Remind, "remind");
+                break;
             case (AssistantCommandName.ListItems, ListItemsArgumentsV1 value):
                 Period(value.Range, "range");
                 break;
@@ -283,8 +292,8 @@ public static class AssistantCommandContractValidator
             case (AssistantCommandName.CreateRecurringTask, CreateRecurringTaskArgumentsV1 value):
                 Text(value.Title, "title", 200);
                 Text(value.Notes, "notes", 4000);
-                if (value.Kind == AssistantItemKindV1.Event)
-                    throw Invalid("kind", "create_recurring_task supports todo or reminder, not event.");
+                if (value.Kind is not (null or AssistantItemKindV1.Todo or AssistantItemKindV1.Reminder))
+                    throw Invalid("kind", "create_recurring_task supports todo or reminder only.");
                 Time(value.WallStart, "wallStart");
                 Recurrence(value.Recurrence);
                 break;
@@ -337,6 +346,7 @@ public static class AssistantCommandContractValidator
     static void Target(AssistantTargetSelectorV1? value)
     {
         if (value is null) return;
+        Text(value.CandidateRef, "target.candidateRef", 64);
         Text(value.Title, "target.title", 200);
         Time(value.TimeHint, "target.timeHint");
     }

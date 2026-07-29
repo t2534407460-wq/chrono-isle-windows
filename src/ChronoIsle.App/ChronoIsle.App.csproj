@@ -9,6 +9,7 @@
     <AssemblyName>ChronoIsle</AssemblyName>
     <RootNamespace>ChronoIsle.App</RootNamespace>
     <ApplicationIcon>Assets\face.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
@@ -27,6 +28,7 @@
     <Compile Include="Services\Domain\*.cs" />
     <Compile Include="Services\Persistence\*.cs" />
     <Compile Include="Services\Commanding\*.cs" />
+    <Compile Include="Services\ImportExport\*.cs" />
     <Compile Include="Services\State\*.cs" />
     <Compile Include="Services\Productivity\*.cs" />
     <Compile Include="Services\Reporting\*.cs" />

@@ -27,7 +27,20 @@
       <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
       <Grid Grid.Row="0" Margin="18,0,10,0" MouseLeftButtonDown="TitleBar_MouseDown"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="事项管理" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="14"/><Button Grid.Column="1" Content="×" Click="Close_Click" Style="{StaticResource DialogTitleButton}" ToolTip="关闭"/></Grid>
       <Grid Grid.Row="1" Margin="24,0,24,22"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="所有事项" Style="{StaticResource Text.PageTitle}"/><TextBlock Text="待办、日程与周期提醒" Style="{StaticResource Text.Secondary}" Margin="0,4,0,0"/><StackPanel Orientation="Horizontal" Margin="0,12,0,0"><Button x:Name="ActiveTab" Content="进行中" Click="ActiveTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5" Margin="0,0,8,0"/><Button x:Name="ArchiveTab" Content="归档事项" Click="ArchiveTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5"/></StackPanel></StackPanel><Button x:Name="ArchiveSelected" Grid.Column="1" Height="36" VerticalAlignment="Center" Content="批量归档" Click="ArchiveSelected_Click" Style="{StaticResource Button.Secondary}"/></Grid>
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel>
+            <TextBlock Text="所有事项" Style="{StaticResource Text.PageTitle}"/>
+            <TextBlock Text="待办、提醒、日程、长期与周期事项" Style="{StaticResource Text.Secondary}" Margin="0,4,0,0"/>
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0"><Button x:Name="ActiveTab" Content="进行中" Click="ActiveTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5" Margin="0,0,8,0"/><Button x:Name="ArchiveTab" Content="归档事项" Click="ArchiveTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5"/></StackPanel>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Content="下载模板" Click="DownloadTemplate_Click" Style="{StaticResource Button.Secondary}" ToolTip="保存 Markdown 导入模板" Margin="0,0,8,0"/>
+            <Button Content="导入" Click="ImportMarkdown_Click" Style="{StaticResource Button.Secondary}" ToolTip="从 Markdown 导入事项" Margin="0,0,8,0"/>
+            <Button Content="导出" Click="ExportMarkdown_Click" Style="{StaticResource Button.Secondary}" ToolTip="将当前事项导出为 Markdown" Margin="0,0,8,0"/>
+            <Button x:Name="ArchiveSelected" Height="36" Content="批量归档" Click="ArchiveSelected_Click" Style="{StaticResource Button.Secondary}"/>
+          </StackPanel>
+        </Grid>
         <ScrollViewer x:Name="ItemsScroller" Grid.Row="1" Margin="0,16,0,14" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="Items"/></ScrollViewer>
         <TextBlock x:Name="Result" Grid.Row="2" MinHeight="20" Foreground="{DynamicResource Brush.Success}"/>
       </Grid>

@@ -74,6 +74,9 @@ public static class LocalAssistantCommandClarityClassifier
                 if (!Resolvable(value.Start)) yield return "start";
                 if (!Resolvable(value.End)) yield return "end";
                 break;
+            case CreateLongTermItemArgumentsV1 value:
+                if (Blank(value.Title)) yield return "title";
+                break;
             case ListItemsArgumentsV1 value:
                 foreach (var field in PeriodMissing(value.Range, "range")) yield return field;
                 break;
