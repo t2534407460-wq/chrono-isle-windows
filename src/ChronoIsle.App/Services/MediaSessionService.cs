@@ -90,11 +90,32 @@ public sealed class MediaSessionService : IDisposable
         Func<GlobalSystemMediaTransportControlsSession, Task<bool>> operation,
         DesktopMediaCommand desktopCommand)
     {
+        if (ShouldPreferDesktopMediaKey(Current?.SourceAppId))
+        {
+            desktop.Control(desktopCommand, Current?.SourceAppId);
+            await RefreshAsync();
+            return;
+        }
+
         var session = activeSession;
-        if (session is not null) await operation(session);
-        else desktop.Control(desktopCommand);
+        try
+        {
+            var handled = session is not null && await operation(session);
+            if (!handled) desktop.Control(desktopCommand, Current?.SourceAppId);
+        }
+        catch (Exception exception)
+        {
+            activeSession = null;
+            System.Diagnostics.Debug.WriteLine($"Media session control failed: {exception.Message}");
+            desktop.Control(desktopCommand, Current?.SourceAppId);
+        }
         await RefreshAsync();
     }
+
+    static bool ShouldPreferDesktopMediaKey(string? sourceAppId) =>
+        !string.IsNullOrWhiteSpace(sourceAppId) &&
+        (sourceAppId.Contains("cloudmusic", StringComparison.OrdinalIgnoreCase) ||
+         sourceAppId.Contains("qqmusic", StringComparison.OrdinalIgnoreCase));
 
     async Task RefreshAsync()
     {
@@ -110,7 +131,9 @@ public sealed class MediaSessionService : IDisposable
                 return;
             }
 
-            activeSession = session;
+            var systemSessionIsMusic = session is not null &&
+                                       MediaSourceClassifier.IsMusicPlayer(session.SourceAppUserModelId);
+            activeSession = systemSessionIsMusic ? session : null;
             if (session is null)
             {
                 Publish(null);

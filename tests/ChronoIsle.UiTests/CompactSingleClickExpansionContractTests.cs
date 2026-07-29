@@ -52,7 +52,7 @@ public sealed class CompactSingleClickExpansionContractTests
     }
 
     [Fact]
-    public void MusicHeader_UsesDefaultHeaderStatusLight()
+    public void MusicHeader_DoesNotShowTheDefaultHeaderStatusLight()
     {
         var workspace = FindWorkspace();
         var xaml = File.ReadAllText(Path.Combine(
@@ -62,9 +62,7 @@ public sealed class CompactSingleClickExpansionContractTests
             "Views",
             "LifeIslandWindow.xaml"));
 
-        Assert.Contains("x:Name=\"CollapsedMediaStatusLight\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Fill=\"{Binding Fill, ElementName=StatusLight}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("ToolTip=\"{Binding ToolTip, ElementName=StatusLight}\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"CollapsedMediaStatusLight\"", xaml, StringComparison.Ordinal);
     }
 
     static string FindWorkspace()

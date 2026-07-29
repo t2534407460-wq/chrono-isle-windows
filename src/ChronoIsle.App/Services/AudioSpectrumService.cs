@@ -8,7 +8,7 @@ namespace ChronoIsle.App.Services.Media;
 
 internal static class AudioSpectrumAnalyzer
 {
-    internal const int SampleCount = 2048;
+    internal const int SampleCount = 1024;
     static readonly (double Low, double High)[] Bands =
     [
         (50, 140),
@@ -29,7 +29,7 @@ internal static class AudioSpectrumAnalyzer
             spectrum[index].X = (float)(samples[index] * FastFourierTransform.HammingWindow(index, SampleCount));
             spectrum[index].Y = 0;
         }
-        FastFourierTransform.FFT(true, 11, spectrum);
+        FastFourierTransform.FFT(true, 10, spectrum);
 
         var result = new double[Bands.Length];
         for (var bandIndex = 0; bandIndex < Bands.Length; bandIndex++)
@@ -142,6 +142,7 @@ internal static class ArtworkPaletteExtractor
 public sealed class AudioSpectrumService : IDisposable
 {
     static readonly string[] MusicProcessNames = ["cloudmusic", "QQMusic", "Mineradio"];
+    const int SpectrumPublishIntervalMilliseconds = 16;
     readonly object captureGate = new();
     readonly object spectrumGate = new();
     readonly float[] samples = new float[AudioSpectrumAnalyzer.SampleCount];
@@ -287,12 +288,8 @@ public sealed class AudioSpectrumService : IDisposable
         if (!hasSignal && silenceSettled) return;
         if (hasSignal) silenceSettled = false;
         for (var index = 0; index < smoothed.Length; index++)
-        {
-            var target = spectrum[index];
-            var factor = target >= smoothed[index] ? 0.76 : 0.34;
-            smoothed[index] += (target - smoothed[index]) * factor;
-        }
-        if (now - lastPublishedAt < 32) return;
+            smoothed[index] = SmoothSpectrumLevel(smoothed[index], spectrum[index]);
+        if (now - lastPublishedAt < SpectrumPublishIntervalMilliseconds) return;
         if (!hasSignal && smoothed.All(value => value <= 0.002))
         {
             Array.Clear(smoothed);
@@ -300,6 +297,12 @@ public sealed class AudioSpectrumService : IDisposable
         }
         lastPublishedAt = now;
         SpectrumChanged?.Invoke((double[])smoothed.Clone());
+    }
+
+    static double SmoothSpectrumLevel(double current, double target)
+    {
+        var factor = target >= current ? .98 : .72;
+        return current + (target - current) * factor;
     }
 
     internal static float ReadSample(byte[] buffer, int offset, WaveFormat format)

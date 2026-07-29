@@ -37,6 +37,7 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<LifePreferencesService>();
         collection.AddSingleton<OpenAiChatService>();
         collection.AddSingleton<MediaSessionService>();
+        collection.AddSingleton<LyricsService>();
         collection.AddSingleton<AudioSpectrumService>();
         collection.AddSingleton<FullscreenAvoidanceService>();
         collection.AddSingleton<SystemTelemetryService>();

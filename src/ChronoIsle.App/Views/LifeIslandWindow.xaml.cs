@@ -52,6 +52,7 @@ public partial class LifeIslandWindow : Window
     readonly AudioSpectrumService audioSpectrum;
     readonly SystemTelemetryService telemetry;
     readonly SystemToastInboxService toastInbox;
+    readonly IslandNotificationWindow notificationWindow;
     readonly LifeViewModel assistant;
     readonly DispatcherTimer focusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly RectangleGeometry taskbarClipGeometry = new();
@@ -63,7 +64,6 @@ public partial class LifeIslandWindow : Window
     readonly DispatcherTimer clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer collapseTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     readonly DispatcherTimer topDockHoverExitTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
-    readonly DispatcherTimer toastRetractTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     readonly DispatcherTimer headerSingleClickTimer = new();
     readonly DispatcherTimer taskbarTopmostTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     DateTime displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
@@ -78,9 +78,7 @@ public partial class LifeIslandWindow : Window
     int topDockAnimationVersion;
     int expandedContentAnimationVersion;
     int expandedContentResizeVersion;
-    int toastAnimationVersion;
     int collapsedMediaTransitionVersion;
-    double toastPreviousHeaderHeight = 43;
     int taskbarHeightAnimationVersion;
     bool taskbarHeightAnimationActive;
     bool updatingTaskbarHeaderAnchor;
@@ -93,6 +91,7 @@ public partial class LifeIslandWindow : Window
     byte[]? displayedArtworkBytes;
     ImageSource? displayedArtworkImage;
     bool collapsedMediaControlsVisible;
+    bool collapsedMediaControlsPinned;
     bool isClosed;
     bool musicModeActive;
     IslandPlacement placement;
@@ -181,6 +180,7 @@ public partial class LifeIslandWindow : Window
         LifeViewModel assistant)
     {
         InitializeComponent();
+        notificationWindow = new IslandNotificationWindow();
         this.data = data;
         this.reminders = reminders;
         this.holidays = holidays;
@@ -206,7 +206,6 @@ public partial class LifeIslandWindow : Window
         };
         telemetry.SnapshotChanged += snapshot => Dispatcher.BeginInvoke(() => UpdateTelemetryView(snapshot));
         toastInbox.ToastReceived += message => Dispatcher.BeginInvoke(() => ShowSystemToast(message));
-        toastRetractTimer.Tick += (_, _) => HideSystemToast();
         assistant.Messages.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         assistant.PropertyChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         Header.ContextMenuOpening += Header_ContextMenuOpening;
@@ -228,6 +227,8 @@ public partial class LifeIslandWindow : Window
             new Action(CollapseWhenForegroundMovesToAnotherProcess));
         IslandLayout.LayoutUpdated += (_, _) => MaintainTaskbarHeaderAnchor();
         MainBorder.SizeChanged += (_, _) => UpdateTaskbarClip();
+        LocationChanged += (_, _) => PositionNotificationWindow();
+        SizeChanged += (_, _) => PositionNotificationWindow();
         taskbarTopmostTimer.Tick += (_, _) => EnsureTaskbarTopmost();
         SourceInitialized += (_, _) =>
         {
@@ -243,8 +244,8 @@ public partial class LifeIslandWindow : Window
             collapseTimer.Stop();
             headerSingleClickTimer.Stop();
             taskbarTopmostTimer.Stop();
-            toastRetractTimer.Stop();
             topDockHoverExitTimer.Stop();
+            notificationWindow.Close();
             theme.ThemeChanged -= Theme_Changed;
             audioSpectrum.SpectrumChanged -= AudioSpectrum_SpectrumChanged;
             windowHandle = IntPtr.Zero;
@@ -755,12 +756,6 @@ public partial class LifeIslandWindow : Window
         var collapsedMedia = musicModeActive ? currentMusic : null;
         UpdateCollapsedMediaView(collapsedMedia, currentPreferences);
         UpdateTelemetryView(telemetry.Current);
-        if (SystemToastHeader.Visibility == Visibility.Visible)
-        {
-            DefaultHeaderLeft.Visibility = Visibility.Collapsed;
-            ClockGroup.Visibility = Visibility.Collapsed;
-            CollapsedMedia.Visibility = Visibility.Collapsed;
-        }
         if (collapsedMedia is not null) SetTopDockFolded(false);
         else RefreshTopDockAutoFold();
         ResizeCollapsedToContent();
@@ -1987,89 +1982,20 @@ public partial class LifeIslandWindow : Window
     void ShowSystemToast(SystemToastMessage message)
     {
         if (!preferences.Load().ToastInboxEnabled) return;
-        var version = ++toastAnimationVersion;
-        var taskbarToast = placement == IslandPlacement.Taskbar;
-        var appName = string.IsNullOrWhiteSpace(message.AppName) ? "系统通知" : message.AppName.Trim();
-        var title = string.IsNullOrWhiteSpace(message.Title) ? "新消息" : message.Title.Trim();
-        var body = message.Body?.Trim() ?? string.Empty;
-        var badge = StringInfo.GetNextTextElement(appName).ToUpperInvariant();
-        if (SystemToastHeader.Visibility != Visibility.Visible)
-            toastPreviousHeaderHeight = CollapsedHeaderHeight();
-        toastRetractTimer.Stop();
-        SystemToastAppBadge.Text = badge;
-        SystemToastCompactAppBadge.Text = badge;
-        SystemToastAppName.Text = appName;
-        SystemToastTitle.Text = title;
-        SystemToastBody.Text = body;
-        SystemToastBody.Visibility = body.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        SystemToastCompactText.Text = body.Length == 0
-            ? $"{appName} · {title}"
-            : $"{appName} · {title} — {body}";
-        SystemToastDetail.Visibility = taskbarToast ? Visibility.Collapsed : Visibility.Visible;
-        SystemToastCompact.Visibility = taskbarToast ? Visibility.Visible : Visibility.Collapsed;
-        SystemToastHeader.Padding = taskbarToast
-            ? new Thickness(8, 2, 8, 2)
-            : new Thickness(10, 7, 10, 7);
-        SystemToastHeader.Visibility = Visibility.Visible;
-        SystemToastHeader.Opacity = 1;
-        Header.Height = taskbarToast
-            ? toastPreviousHeaderHeight
-            : body.Length == 0 ? 58 : 74;
-        DefaultHeaderLeft.Visibility = Visibility.Collapsed;
-        ClockGroup.Visibility = Visibility.Collapsed;
-        CollapsedMedia.Visibility = Visibility.Collapsed;
-        var translate = SystemToastHeader.RenderTransform as TranslateTransform ?? new TranslateTransform();
-        SystemToastHeader.RenderTransform = translate;
-        translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
-        {
-            From = -8,
-            To = 0,
-            Duration = SystemParameters.ClientAreaAnimation ? TimeSpan.FromMilliseconds(260) : TimeSpan.FromMilliseconds(1),
-            EasingFunction = new BackEase { Amplitude = .18, EasingMode = EasingMode.EaseOut },
-            FillBehavior = FillBehavior.Stop
-        });
-        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
-        {
-            if (version != toastAnimationVersion) return;
-            ResizeCollapsedToContent();
-            MaintainTaskbarHeaderAnchor();
-        }));
-        SetTopDockFolded(false);
-        toastRetractTimer.Start();
+        notificationWindow.ShowMessage(message);
+        PositionNotificationWindow();
     }
 
-    void HideSystemToast()
+    void PositionNotificationWindow()
     {
-        toastRetractTimer.Stop();
-        if (SystemToastHeader.Visibility != Visibility.Visible) return;
-        var version = ++toastAnimationVersion;
-        var animation = new DoubleAnimation
-        {
-            From = 1,
-            To = 0,
-            Duration = SystemParameters.ClientAreaAnimation ? TimeSpan.FromMilliseconds(130) : TimeSpan.FromMilliseconds(1),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
-            FillBehavior = FillBehavior.Stop
-        };
-        animation.Completed += (_, _) =>
-        {
-            if (version != toastAnimationVersion) return;
-            SystemToastHeader.BeginAnimation(OpacityProperty, null);
-            SystemToastHeader.Opacity = 1;
-            SystemToastHeader.Visibility = Visibility.Collapsed;
-            Header.Height = CollapsedHeaderHeight();
-            SystemToastDetail.Visibility = Visibility.Visible;
-            SystemToastCompact.Visibility = Visibility.Collapsed;
-            SystemToastHeader.Padding = new Thickness(10, 7, 10, 7);
-            Refresh();
-            if (placement == IslandPlacement.Top && !pointerHover && !expanded)
-                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
-                {
-                    if (version != toastAnimationVersion) return;
-                    SetTopDockFolded(true);
-                }));
-        };
-        SystemToastHeader.BeginAnimation(OpacityProperty, animation);
+        if (!IsLoaded || !notificationWindow.IsVisible) return;
+        var workArea = TryGetMonitorGeometry(ScreenForHeader(), out var geometry)
+            ? geometry.WorkArea
+            : SystemParameters.WorkArea;
+        notificationWindow.PositionNextTo(
+            HeaderScreenRect(),
+            workArea,
+            placement == IslandPlacement.Taskbar);
     }
 
     double CollapsedHeaderHeight()
@@ -2169,6 +2095,7 @@ public partial class LifeIslandWindow : Window
         CollapsedMedia.Visibility = takeover ? Visibility.Visible : Visibility.Collapsed;
         if (snapshot is null)
         {
+            collapsedMediaControlsPinned = false;
             SetCollapsedMediaControlsVisible(false);
             return;
         }
@@ -2217,7 +2144,7 @@ public partial class LifeIslandWindow : Window
 
     void UpdateAudioSpectrum(IReadOnlyList<double> spectrum)
     {
-        if (isClosed || spectrum.Count < 7) return;
+        if (isClosed || spectrum.Count < 5) return;
         var bars = CollapsedSpectrumBars();
         var heights = SpectrumDisplayHeights(spectrum, bars.Length);
         for (var index = 0; index < bars.Length; index++)
@@ -2231,18 +2158,21 @@ public partial class LifeIslandWindow : Window
         var peak = spectrum.Count == 0 ? 0 : spectrum.Max();
         if (peak < 0.0025)
         {
-            Array.Fill(heights, 2);
+            Array.Fill(heights, 4);
             return heights;
         }
 
         var activity = Math.Clamp(Math.Log10(1 + peak * 30) / Math.Log10(31), 0, 1);
-        var centerHeight = Math.Min(32, 2 + Math.Pow(activity, 0.55) * 18 * 2.548);
-        var center = (barCount - 1) / 2d;
+        var globalAmplitude = 0.28 + 0.72 * Math.Pow(activity, .55);
         for (var index = 0; index < barCount; index++)
         {
-            var distance = center == 0 ? 0 : Math.Abs(index - center) / center;
-            var envelope = 1 - 0.74 * Math.Pow(distance, 0.8);
-            heights[index] = 2 + (centerHeight - 2) * envelope;
+            var sourcePosition = barCount == 1 ? 0 : index * (spectrum.Count - 1d) / (barCount - 1d);
+            var lower = (int)Math.Floor(sourcePosition);
+            var upper = Math.Min(spectrum.Count - 1, lower + 1);
+            var level = spectrum[lower] + (spectrum[upper] - spectrum[lower]) * (sourcePosition - lower);
+            var relativeEnergy = Math.Clamp(level / peak, 0, 1);
+            var barAmplitude = 0.4 + 0.6 * Math.Pow(relativeEnergy, .62);
+            heights[index] = 4 + globalAmplitude * barAmplitude * 16;
         }
         return heights;
     }
@@ -2253,11 +2183,7 @@ public partial class LifeIslandWindow : Window
         CollapsedSpectrum1,
         CollapsedSpectrum2,
         CollapsedSpectrum3,
-        CollapsedSpectrum4,
-        CollapsedSpectrum5,
-        CollapsedSpectrum6,
-        CollapsedSpectrum7,
-        CollapsedSpectrum8
+        CollapsedSpectrum4
     ];
 
     static ImageSource? CreateArtworkImage(byte[]? artworkBytes)
@@ -2394,16 +2320,36 @@ public partial class LifeIslandWindow : Window
     void CollapsedMediaTrack_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) =>
         AnimateCollapsedMediaControls(true);
 
-    void CollapsedMediaTrack_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) =>
-        AnimateCollapsedMediaControls(false);
+    void CollapsedMediaTrack_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!collapsedMediaControlsPinned) AnimateCollapsedMediaControls(false);
+    }
 
-    async void MediaPrevious_Click(object sender, RoutedEventArgs e) => await media.PreviousAsync();
+    void CollapsedMediaTrackButton_Click(object sender, RoutedEventArgs e)
+    {
+        collapsedMediaControlsPinned = true;
+        SetCollapsedMediaControlsVisible(true);
+        e.Handled = true;
+    }
+
+    async void MediaPrevious_Click(object sender, RoutedEventArgs e)
+    {
+        collapsedMediaControlsPinned = true;
+        SetCollapsedMediaControlsVisible(true);
+        await media.PreviousAsync();
+    }
     async void MediaPlayPause_Click(object sender, RoutedEventArgs e)
     {
-        if (media.Current is { } current) UpdateMediaPlayPauseIcons(!current.IsPlaying);
+        collapsedMediaControlsPinned = true;
+        SetCollapsedMediaControlsVisible(true);
         await media.TogglePlayPauseAsync();
     }
-    async void MediaNext_Click(object sender, RoutedEventArgs e) => await media.NextAsync();
+    async void MediaNext_Click(object sender, RoutedEventArgs e)
+    {
+        collapsedMediaControlsPinned = true;
+        SetCollapsedMediaControlsVisible(true);
+        await media.NextAsync();
+    }
 
     public void SetFullscreenAvoidance(FullscreenWindowInfo? context)
     {
@@ -2823,6 +2769,7 @@ public partial class LifeIslandWindow : Window
 
     void Header_MouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsCollapsedMediaControlSource(e.OriginalSource as DependencyObject)) return;
         pressedCollapsedHeaderTarget = CollapsedHeaderTargetFor(e.OriginalSource as DependencyObject);
         if (pressedCollapsedHeaderTarget == CollapsedHeaderTarget.None &&
             IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
@@ -2898,6 +2845,7 @@ public partial class LifeIslandWindow : Window
 
     void Header_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (IsCollapsedMediaControlSource(e.OriginalSource as DependencyObject)) return;
         if (suppressDoubleClickMouseUp)
         {
             suppressDoubleClickMouseUp = false;
@@ -2966,6 +2914,25 @@ public partial class LifeIslandWindow : Window
         })
         {
             if (current is Button or TextBox or System.Windows.Controls.ComboBox or System.Windows.Controls.Primitives.ScrollBar) return true;
+        }
+        return false;
+    }
+
+    static bool IsCollapsedMediaControlSource(DependencyObject? source)
+    {
+        for (var current = source; current is not null; current = current switch
+        {
+            FrameworkElement element when element.Parent is not null => element.Parent,
+            FrameworkContentElement element => element.Parent,
+            _ => VisualTreeHelper.GetParent(current)
+        })
+        {
+            if (current is FrameworkElement
+                {
+                    Name: "CollapsedMediaTrackButton" or "CollapsedMediaPrevious" or
+                    "CollapsedMediaPlayPause" or "CollapsedMediaNext"
+                })
+                return true;
         }
         return false;
     }
@@ -3278,8 +3245,6 @@ public partial class LifeIslandWindow : Window
     double CollapsedWidthForContent()
     {
         if (CollapsedMedia.Visibility == Visibility.Visible) return CollapsedWidth;
-        if (SystemToastHeader.Visibility == Visibility.Visible)
-            return placement == IslandPlacement.Taskbar ? TaskbarToastWidth() : CollapsedWidth;
         DefaultHeaderLeft.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
         ClockGroup.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
         var compactWidth =
@@ -3288,16 +3253,6 @@ public partial class LifeIslandWindow : Window
             DefaultHeaderLeft.DesiredSize.Width +
             ClockGroup.DesiredSize.Width;
         return Math.Max(CollapsedIslandDisplayPolicy.MinimumWidth, compactWidth);
-    }
-
-    double TaskbarToastWidth()
-    {
-        SystemToastHeader.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
-        var desiredWidth =
-            Outer.Margin.Left + Outer.Margin.Right +
-            MainBorder.BorderThickness.Left + MainBorder.BorderThickness.Right +
-            SystemToastHeader.DesiredSize.Width;
-        return CollapsedIslandDisplayPolicy.ClampWidth(Math.Max(CollapsedWidth, desiredWidth));
     }
 
     void Touch() => collapseTimer.Stop();
@@ -3319,6 +3274,7 @@ public partial class LifeIslandWindow : Window
 
     void Island_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        collapsedMediaControlsPinned = false;
         AnimateCollapsedMediaControls(false);
         if (!expanded && placement == IslandPlacement.Top)
         {

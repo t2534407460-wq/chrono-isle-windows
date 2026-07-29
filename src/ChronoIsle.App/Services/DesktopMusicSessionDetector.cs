@@ -192,11 +192,14 @@ internal sealed class MissingMediaTimelineClock
 /// </summary>
 internal sealed class DesktopMusicSessionDetector
 {
-    const uint InputKeyboard = 1;
     const uint KeyUp = 0x0002;
     const ushort MediaNextTrack = 0xB0;
     const ushort MediaPreviousTrack = 0xB1;
     const ushort MediaPlayPause = 0xB3;
+    const ushort ControlKey = 0x11;
+    const ushort AltKey = 0x12;
+    const ushort LeftKey = 0x25;
+    const ushort RightKey = 0x27;
 
     static readonly Lazy<OcrEngine?> NetEaseOcrEngine = new(OcrEngine.TryCreateFromUserProfileLanguages);
 
@@ -207,6 +210,7 @@ internal sealed class DesktopMusicSessionDetector
     ];
 
     string? cachedTrackKey;
+    string? cachedPlayerProcessName;
     byte[]? cachedArtwork;
     string? cachedCurrentLyric;
     DateTimeOffset? cachedCurrentLyricSampledAtUtc;
@@ -224,7 +228,12 @@ internal sealed class DesktopMusicSessionDetector
         var candidate = windows
             .OrderByDescending(window => WindowScore(window))
             .FirstOrDefault();
-        if (candidate is null) return null;
+        if (candidate is null)
+        {
+            cachedPlayerProcessName = null;
+            return null;
+        }
+        cachedPlayerProcessName = candidate.Profile.ProcessName;
 
         var trackKey = $"{candidate.Profile.DisplayName}\n{candidate.Title}\n{candidate.Artist}";
         var trackChanged = !string.Equals(trackKey, cachedTrackKey, StringComparison.Ordinal);
@@ -272,18 +281,34 @@ internal sealed class DesktopMusicSessionDetector
             cachedCurrentLyricSampledAtUtc);
     }
 
-    public void Control(DesktopMediaCommand command)
+    public void Control(DesktopMediaCommand command, string? sourceAppId = null)
     {
-        var virtualKey = command switch
-        {
-            DesktopMediaCommand.Previous => MediaPreviousTrack,
-            DesktopMediaCommand.Next => MediaNextTrack,
-            _ => MediaPlayPause
-        };
-        SendMediaKey(virtualKey);
+        if (ShouldUseNetEaseShortcut(sourceAppId, command) ||
+            ShouldUseNetEaseShortcut(cachedPlayerProcessName, command))
+            SendNetEaseShortcut(command);
+        else
+            SendMediaKey(command switch
+            {
+                DesktopMediaCommand.Previous => MediaPreviousTrack,
+                DesktopMediaCommand.Next => MediaNextTrack,
+                _ => MediaPlayPause
+            });
         if (command == DesktopMediaCommand.TogglePlayPause) cachedIsPlaying = !cachedIsPlaying;
         lastCaptureAt = DateTimeOffset.MinValue;
     }
+
+    static bool ShouldUseNetEaseShortcut(string? sourceAppId, DesktopMediaCommand command) =>
+        command != DesktopMediaCommand.TogglePlayPause &&
+        !string.IsNullOrWhiteSpace(sourceAppId) &&
+        (sourceAppId.Contains("cloudmusic", StringComparison.OrdinalIgnoreCase) ||
+         sourceAppId.Contains(Profiles[0].DisplayName, StringComparison.OrdinalIgnoreCase));
+
+    static ushort NetEaseShortcutKey(DesktopMediaCommand command) => command switch
+    {
+        DesktopMediaCommand.Previous => LeftKey,
+        DesktopMediaCommand.Next => RightKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(command))
+    };
 
     static IReadOnlyList<PlayerWindow> FindPlayerWindows(
         string? sourceAppId = null,
@@ -556,26 +581,20 @@ internal sealed class DesktopMusicSessionDetector
 
     static void SendMediaKey(ushort virtualKey)
     {
-        var inputs = new[]
-        {
-            KeyboardInput(virtualKey, 0),
-            KeyboardInput(virtualKey, KeyUp)
-        };
-        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+        keybd_event((byte)virtualKey, 0, 0, UIntPtr.Zero);
+        keybd_event((byte)virtualKey, 0, KeyUp, UIntPtr.Zero);
     }
 
-    static Input KeyboardInput(ushort virtualKey, uint flags) => new()
+    static void SendNetEaseShortcut(DesktopMediaCommand command)
     {
-        Type = InputKeyboard,
-        Union = new InputUnion
-        {
-            Keyboard = new KeyboardInputData
-            {
-                VirtualKey = virtualKey,
-                Flags = flags
-            }
-        }
-    };
+        var key = (byte)NetEaseShortcutKey(command);
+        keybd_event((byte)ControlKey, 0, 0, UIntPtr.Zero);
+        keybd_event((byte)AltKey, 0, 0, UIntPtr.Zero);
+        keybd_event(key, 0, 0, UIntPtr.Zero);
+        keybd_event(key, 0, KeyUp, UIntPtr.Zero);
+        keybd_event((byte)AltKey, 0, KeyUp, UIntPtr.Zero);
+        keybd_event((byte)ControlKey, 0, KeyUp, UIntPtr.Zero);
+    }
 
     delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
 
@@ -603,8 +622,8 @@ internal sealed class DesktopMusicSessionDetector
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    static extern uint SendInput(uint count, Input[] inputs, int size);
+    [DllImport("user32.dll")]
+    static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
 
     [StructLayout(LayoutKind.Sequential)]
     struct NativeRectangle
@@ -613,29 +632,6 @@ internal sealed class DesktopMusicSessionDetector
         public int Top;
         public int Right;
         public int Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct Input
-    {
-        public uint Type;
-        public InputUnion Union;
-    }
-
-    [StructLayout(LayoutKind.Explicit)]
-    struct InputUnion
-    {
-        [FieldOffset(0)] public KeyboardInputData Keyboard;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct KeyboardInputData
-    {
-        public ushort VirtualKey;
-        public ushort ScanCode;
-        public uint Flags;
-        public uint Time;
-        public IntPtr ExtraInfo;
     }
 
     sealed record PlayerProfile(

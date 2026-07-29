@@ -54,21 +54,40 @@ public sealed class SystemStatusUiContractTests
     }
 
     [Fact]
-    public void ToastInbox_ShowsHeaderForFiveSeconds()
+    public void ToastInbox_ShowsAnIndependentWindowForFiveSeconds()
     {
         var (xaml, source) = IslandFiles();
         var workspace = FindWorkspace();
+        var notificationXamlPath = Path.Combine(
+            workspace, "src", "ChronoIsle.App", "Views", "IslandNotificationWindow.xaml");
+        var notificationSourcePath = Path.Combine(
+            workspace, "src", "ChronoIsle.App", "Views", "IslandNotificationWindow.xaml.cs");
+        Assert.True(File.Exists(notificationXamlPath), "The independent notification window XAML is missing.");
+        Assert.True(File.Exists(notificationSourcePath), "The independent notification window source is missing.");
+        var notificationXaml = File.ReadAllText(notificationXamlPath);
+        var notificationSource = File.ReadAllText(notificationSourcePath);
         var inboxSource = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "Services", "SystemToastInboxService.cs"));
 
-        Assert.Contains("x:Name=\"SystemToastHeader\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"SystemToastText\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Name=\"SystemToastHeader\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SystemToastHeader", source, StringComparison.Ordinal);
+        Assert.Contains("x:Class=\"ChronoIsle.App.Views.IslandNotificationWindow\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("ShowActivated=\"False\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("ShowInTaskbar=\"False\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("Topmost=\"True\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("Width=\"340\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"NotificationAppName\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"NotificationTitle\"", notificationXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"NotificationBody\"", notificationXaml, StringComparison.Ordinal);
         Assert.Contains(
-            "readonly DispatcherTimer toastRetractTimer = new() { Interval = TimeSpan.FromSeconds(5) };",
-            source,
+            "readonly DispatcherTimer retractTimer = new() { Interval = TimeSpan.FromSeconds(5) };",
+            notificationSource,
             StringComparison.Ordinal);
+        Assert.Contains("public void ShowMessage(SystemToastMessage message)", notificationSource, StringComparison.Ordinal);
+        Assert.Contains("retractTimer.Stop();", notificationSource, StringComparison.Ordinal);
+        Assert.Contains("retractTimer.Start();", notificationSource, StringComparison.Ordinal);
         Assert.Contains("toastInbox.ToastReceived += message", source, StringComparison.Ordinal);
-        Assert.Contains("void HideSystemToast()", source, StringComparison.Ordinal);
+        Assert.Contains("notificationWindow.ShowMessage(message);", source, StringComparison.Ordinal);
         Assert.Contains("listener.NotificationChanged += Listener_NotificationChanged;", inboxSource, StringComparison.Ordinal);
         Assert.Contains("readonly SemaphoreSlim startGate = new(1, 1);", inboxSource, StringComparison.Ordinal);
         Assert.Contains("readonly object listenerGate = new();", inboxSource, StringComparison.Ordinal);
@@ -83,41 +102,33 @@ public sealed class SystemStatusUiContractTests
     }
 
     [Fact]
-    public void ToastInbox_RefoldsTopDockAfterTheBannerExpires()
+    public void ToastInbox_DoesNotChangeMusicOrTopDockState()
     {
-        var (_, source) = IslandFiles();
-        var hideStart = source.IndexOf("void HideSystemToast()", StringComparison.Ordinal);
-        var hideEnd = source.IndexOf("void ConfigureGlowBorder()", hideStart, StringComparison.Ordinal);
-        var hideHandler = source[hideStart..hideEnd];
-
-        Assert.Contains("Header.Height = CollapsedHeaderHeight();", hideHandler, StringComparison.Ordinal);
-        Assert.Contains("double CollapsedHeaderHeight()", source, StringComparison.Ordinal);
-        Assert.Contains("placement != IslandPlacement.Taskbar", source, StringComparison.Ordinal);
-        Assert.Contains("placement == IslandPlacement.Top && !pointerHover && !expanded", hideHandler, StringComparison.Ordinal);
-        Assert.Contains("SetTopDockFolded(true);", hideHandler, StringComparison.Ordinal);
-        Assert.True(
-            hideHandler.IndexOf("SystemToastHeader.Visibility = Visibility.Collapsed;", StringComparison.Ordinal) <
-            hideHandler.IndexOf("SetTopDockFolded(true);", StringComparison.Ordinal));
+        var (xaml, source) = IslandFiles();
+        Assert.DoesNotContain("SystemToastHeader", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SystemToastHeader", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("toastPreviousHeaderHeight", source, StringComparison.Ordinal);
+        Assert.Contains("UpdateCollapsedMediaView(collapsedMedia, currentPreferences);", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void TaskbarToast_ExpandsHorizontallyWithoutChangingHeaderHeight()
+    public void NotificationWindow_FollowsTheIslandAndFlipsAboveTheTaskbar()
     {
         var (_, source) = IslandFiles();
-        var showStart = source.IndexOf("void ShowSystemToast(", StringComparison.Ordinal);
-        var showEnd = source.IndexOf("void HideSystemToast()", showStart, StringComparison.Ordinal);
-        var showHandler = source[showStart..showEnd];
+        var workspace = FindWorkspace();
+        var notificationSourcePath = Path.Combine(
+            workspace, "src", "ChronoIsle.App", "Views", "IslandNotificationWindow.xaml.cs");
+        Assert.True(File.Exists(notificationSourcePath), "The independent notification window source is missing.");
+        var notificationSource = File.ReadAllText(notificationSourcePath);
 
-        Assert.Contains("var taskbarToast = placement == IslandPlacement.Taskbar;", showHandler, StringComparison.Ordinal);
-        Assert.Contains("Header.Height = taskbarToast", showHandler, StringComparison.Ordinal);
-        Assert.Contains("? toastPreviousHeaderHeight", showHandler, StringComparison.Ordinal);
-        Assert.Contains("SystemToastText.Orientation = taskbarToast", showHandler, StringComparison.Ordinal);
-        Assert.Contains("double TaskbarToastWidth()", source, StringComparison.Ordinal);
-        Assert.Contains("if (SystemToastHeader.Visibility == Visibility.Visible)", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "return placement == IslandPlacement.Taskbar ? TaskbarToastWidth() : CollapsedWidth;",
-            source,
-            StringComparison.Ordinal);
+        Assert.Contains("LocationChanged += (_, _) => PositionNotificationWindow();", source, StringComparison.Ordinal);
+        Assert.Contains("SizeChanged += (_, _) => PositionNotificationWindow();", source, StringComparison.Ordinal);
+        Assert.Contains("notificationWindow.PositionNextTo(", source, StringComparison.Ordinal);
+        Assert.Contains("placement == IslandPlacement.Taskbar", source, StringComparison.Ordinal);
+        Assert.Contains("public void PositionNextTo(Rect anchor, Rect workArea, bool placeAbove)", notificationSource, StringComparison.Ordinal);
+        Assert.Contains("anchor.Top - height - Gap", notificationSource, StringComparison.Ordinal);
+        Assert.Contains("anchor.Bottom + Gap", notificationSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("TaskbarToastWidth", source, StringComparison.Ordinal);
     }
 
     [Fact]

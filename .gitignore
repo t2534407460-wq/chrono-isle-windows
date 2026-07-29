@@ -33,6 +33,7 @@ desktop.ini
 # ─────────────────── Local tooling and generated packages ───────────────────
 .codex/
 .codegraph/
+.superpowers/
 .mcp.json
 installer-output/
 tmp/
