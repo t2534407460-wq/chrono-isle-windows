@@ -396,6 +396,7 @@
                 <Button x:Name="CalendarDashboardTab" Content="月历" Click="CalendarTab_Click" Style="{StaticResource IslandTab}" Background="{DynamicResource Brush.Hover}" BorderBrush="{DynamicResource Brush.TextTertiary}" Foreground="{DynamicResource Brush.TextPrimary}" Margin="7,0,0,0"/>
                 <Button x:Name="StatusDashboardTab" Content="状态" Click="StatusTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
                 <Button x:Name="QuickAskDashboardTab" Content="快问" Click="QuickAskTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
+                <Button x:Name="ToolsDashboardTab" Content="工具" Click="ToolsTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
               </StackPanel>
               <Button x:Name="IslandSettingsButton" Grid.Column="1" Content="⚙ 设置"
                       Click="Settings_Click" Style="{StaticResource IslandTab}"
@@ -509,6 +510,38 @@
                   <Button x:Name="QuickAskStop" Content="停止" Click="QuickAskStop_Click" Style="{StaticResource IslandIcon}" Visibility="Collapsed" Margin="0,0,8,0"/>
                   <Button x:Name="QuickAskSend" Content="发送" Click="QuickAskSend_Click" Style="{StaticResource IslandPrimary}"/>
                 </StackPanel>
+              </StackPanel>
+            </Border>
+            <Border x:Name="ToolsPanel" Background="{DynamicResource Brush.Card}"
+                    BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1"
+                    CornerRadius="14" Margin="12,0,12,12" Padding="16"
+                    Visibility="Collapsed">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                  <Button x:Name="NamingToolTab" Content="取名"
+                          Style="{StaticResource IslandTab}"/>
+                </StackPanel>
+                <Border Background="{DynamicResource Brush.Surface}"
+                        BorderBrush="{DynamicResource Brush.StrokeSoft}"
+                        BorderThickness="1" CornerRadius="10" Padding="14">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                      <TextBlock Text="取名助手" Foreground="{DynamicResource Brush.TextPrimary}"
+                                 FontWeight="SemiBold" FontSize="14"/>
+                      <TextBlock Text="为变量、方法、类型和数据库对象生成稳定命名。"
+                                 Foreground="{DynamicResource Brush.TextSecondary}"
+                                 FontSize="11" Margin="0,5,14,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="打开" Click="NamingTool_Click"
+                            Style="{StaticResource IslandPrimary}"
+                            AutomationProperties.AutomationId="IslandNamingButton"
+                            VerticalAlignment="Center"/>
+                  </Grid>
+                </Border>
               </StackPanel>
             </Border>
           </StackPanel>

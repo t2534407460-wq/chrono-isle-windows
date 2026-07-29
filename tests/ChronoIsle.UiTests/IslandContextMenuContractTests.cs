@@ -34,48 +34,28 @@ public sealed class IslandContextMenuContractTests
     }
 
     [Fact]
-    public void ContextMenu_ContainsCurrentDashboardAndSettingsActions()
+    public void ContextMenu_ContainsOnlyManagementSettingsAndStateToggles()
     {
         var code = IslandCode();
+        var contextStart = code.IndexOf("var contextActions", StringComparison.Ordinal);
+        Assert.True(contextStart >= 0, "The context menu must declare an explicit contextActions list.");
+        var loopStart = code.IndexOf("foreach (var action in contextActions)", contextStart, StringComparison.Ordinal);
+        Assert.True(loopStart > contextStart, "The context menu must iterate the explicit contextActions list.");
+        var contextActions = code[contextStart..loopStart];
 
         foreach (var action in new[]
                  {
-                     "ViewToday", "ViewCalendar", "ViewStatus", "ViewMedia", "QuickAsk",
                      "ManageItems", "Settings", "PauseReminders", "ToggleDoNotDisturb",
-                     "ToggleTopDockAutoFold"
+                     "ToggleMusicMode", "ToggleTopDockAutoFold"
                  })
-            Assert.Contains($"IslandQuickAction.{action}", code, StringComparison.Ordinal);
+            Assert.Contains($"IslandQuickAction.{action}", contextActions, StringComparison.Ordinal);
 
-        foreach (var label in new[]
+        foreach (var action in new[]
                  {
-                     "今天", "月历", "状态", "音乐", "快问", "事项管理", "设置",
-                     "暂停提醒", "勿扰模式", "顶部吸附自动收缩"
+                     "AddTodo", "AddReminder", "StartFocus", "ViewToday",
+                     "ViewCalendar", "ViewStatus", "QuickAsk"
                  })
-            Assert.Contains(label, code, StringComparison.Ordinal);
-
-        Assert.Contains(
-            "case IslandQuickAction.ViewToday: Expand(); ShowTodayDashboard(); break;",
-            code,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "case IslandQuickAction.ViewCalendar: Expand(); ShowCalendarDashboard(); break;",
-            code,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "case IslandQuickAction.ViewStatus: Expand(); ShowTelemetryDashboard(); break;",
-            code,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "case IslandQuickAction.ViewMedia: Expand(); ShowMediaDashboard(); break;",
-            code,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "case IslandQuickAction.Settings: OpenSettings(); break;",
-            code,
-            StringComparison.Ordinal);
-        Assert.Contains("case IslandQuickAction.QuickAsk:", code, StringComparison.Ordinal);
-        Assert.Contains("ShowQuickAskDashboard();", code, StringComparison.Ordinal);
-        Assert.Contains("Dispatcher.BeginInvoke(QuickAskInput.Focus);", code, StringComparison.Ordinal);
+            Assert.DoesNotContain($"IslandQuickAction.{action}", contextActions, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -85,9 +65,11 @@ public sealed class IslandContextMenuContractTests
 
         Assert.Contains("Tag = action", code, StringComparison.Ordinal);
         Assert.Contains(
-            "IsCheckable = action is IslandQuickAction.ToggleDoNotDisturb or IslandQuickAction.ToggleTopDockAutoFold",
+            "IsCheckable = action is IslandQuickAction.ToggleDoNotDisturb",
             code,
             StringComparison.Ordinal);
+        Assert.Contains("or IslandQuickAction.ToggleMusicMode", code, StringComparison.Ordinal);
+        Assert.Contains("or IslandQuickAction.ToggleTopDockAutoFold", code, StringComparison.Ordinal);
         Assert.Contains("menu.Items.OfType<MenuItem>()", code, StringComparison.Ordinal);
         Assert.Contains("item.Tag is not IslandQuickAction action", code, StringComparison.Ordinal);
         Assert.Contains(

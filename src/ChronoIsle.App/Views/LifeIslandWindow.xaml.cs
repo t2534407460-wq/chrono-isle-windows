@@ -1,6 +1,5 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Controls.Primitives;
@@ -146,15 +145,9 @@ public partial class LifeIslandWindow : Window
     enum IslandQuickAction
     {
         AddTodo,
-        AddReminder,
         StartFocus,
-        ViewToday,
-        ViewCalendar,
-        ViewStatus,
-        QuickAsk,
         ManageItems,
         Settings,
-        Naming,
         PauseReminders,
         ToggleDoNotDisturb,
         ToggleMusicMode,
@@ -1121,11 +1114,9 @@ public partial class LifeIslandWindow : Window
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
-        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.QuickAsk, IslandQuickAction.ManageItems, IslandQuickAction.Naming })
+        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.ManageItems })
         {
             var button = new Button { Content = QuickActionLabel(action), Style = (Style)FindResource("IslandQuick") };
-            if (action == IslandQuickAction.Naming)
-                AutomationProperties.SetAutomationId(button, "IslandNamingButton");
             button.Click += (_, _) => RunQuickAction(action);
             quickActions.Children.Add(button);
         }
@@ -1280,7 +1271,16 @@ public partial class LifeIslandWindow : Window
         {
             Style = (Style)FindResource("IslandContextMenu")
         };
-        foreach (var action in Enum.GetValues<IslandQuickAction>().Where(action => action != IslandQuickAction.Naming))
+        var contextActions = new[]
+        {
+            IslandQuickAction.ManageItems,
+            IslandQuickAction.Settings,
+            IslandQuickAction.PauseReminders,
+            IslandQuickAction.ToggleDoNotDisturb,
+            IslandQuickAction.ToggleMusicMode,
+            IslandQuickAction.ToggleTopDockAutoFold
+        };
+        foreach (var action in contextActions)
         {
             if (menu.Items.Count > 0 && StartsQuickActionGroup(action))
             {
@@ -1361,9 +1361,7 @@ public partial class LifeIslandWindow : Window
     }
 
     static bool StartsQuickActionGroup(IslandQuickAction action)
-        => action is IslandQuickAction.ViewToday
-            or IslandQuickAction.ManageItems
-            or IslandQuickAction.PauseReminders;
+        => action is IslandQuickAction.PauseReminders;
 
     static Grid CreateQuickActionHeader(IslandQuickAction action)
     {
@@ -1394,15 +1392,9 @@ public partial class LifeIslandWindow : Window
     static string QuickActionLabel(IslandQuickAction action) => action switch
     {
         IslandQuickAction.AddTodo => "＋ 新建事项",
-        IslandQuickAction.AddReminder => "◌ 添加提醒",
         IslandQuickAction.StartFocus => "◎ 专注模式",
-        IslandQuickAction.ViewToday => "▣ 今天",
-        IslandQuickAction.ViewCalendar => "▦ 月历",
-        IslandQuickAction.ViewStatus => "⌁ 状态",
-        IslandQuickAction.QuickAsk => "✦ 快问",
         IslandQuickAction.ManageItems => "☰ 事项管理",
         IslandQuickAction.Settings => "⚙ 设置",
-        IslandQuickAction.Naming => "✎ 取名",
         IslandQuickAction.PauseReminders => "Ⅱ 暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "◐ 勿扰模式",
         IslandQuickAction.ToggleMusicMode => "♫ 显示音乐模式",
@@ -1416,9 +1408,6 @@ public partial class LifeIslandWindow : Window
         {
             case IslandQuickAction.AddTodo:
                 addingReminder = false; UpdateQuickAddType(); ShowCalendarDashboard();
-                Dispatcher.BeginInvoke(QuickAddInput.Focus); break;
-            case IslandQuickAction.AddReminder:
-                addingReminder = true; UpdateQuickAddType(); ShowCalendarDashboard();
                 Dispatcher.BeginInvoke(QuickAddInput.Focus); break;
             case IslandQuickAction.StartFocus:
                 try
@@ -1436,17 +1425,8 @@ public partial class LifeIslandWindow : Window
                     Expand();
                 }
                 break;
-            case IslandQuickAction.ViewToday: Expand(); ShowTodayDashboard(); break;
-            case IslandQuickAction.ViewCalendar: Expand(); ShowCalendarDashboard(); break;
-            case IslandQuickAction.ViewStatus: Expand(); ShowTelemetryDashboard(); break;
-            case IslandQuickAction.QuickAsk:
-                Expand();
-                ShowQuickAskDashboard();
-                Dispatcher.BeginInvoke(QuickAskInput.Focus);
-                break;
             case IslandQuickAction.ManageItems: OpenManagement(); break;
             case IslandQuickAction.Settings: OpenSettings(); break;
-            case IslandQuickAction.Naming: OpenNaming(); break;
             case IslandQuickAction.PauseReminders: reminders.SetDoNotDisturb(true); BuildTodayDashboard(); break;
             case IslandQuickAction.ToggleDoNotDisturb: reminders.SetDoNotDisturb(!reminders.IsDoNotDisturbEnabled); BuildTodayDashboard(); break;
             case IslandQuickAction.ToggleMusicMode: ToggleMusicMode(); break;
@@ -1813,6 +1793,7 @@ public partial class LifeIslandWindow : Window
         CalendarPanel.Visibility = Visibility.Collapsed;
         TelemetryPanel.Visibility = Visibility.Collapsed;
         QuickAskPanel.Visibility = Visibility.Collapsed;
+        ToolsPanel.Visibility = Visibility.Collapsed;
         SelectDashboardTab(TodayDashboardTab);
         BuildTodayDashboard();
         Touch();
@@ -1822,6 +1803,8 @@ public partial class LifeIslandWindow : Window
     void CalendarTab_Click(object sender, RoutedEventArgs e) => ShowCalendarDashboard();
     void StatusTab_Click(object sender, RoutedEventArgs e) => ShowTelemetryDashboard();
     void QuickAskTab_Click(object sender, RoutedEventArgs e) => ShowQuickAskDashboard();
+    void ToolsTab_Click(object sender, RoutedEventArgs e) => ShowToolsDashboard();
+    void NamingTool_Click(object sender, RoutedEventArgs e) => OpenNaming();
 
     void ShowCalendarDashboard()
     {
@@ -1832,6 +1815,7 @@ public partial class LifeIslandWindow : Window
         CalendarPanel.Visibility = Visibility.Visible;
         TelemetryPanel.Visibility = Visibility.Collapsed;
         QuickAskPanel.Visibility = Visibility.Collapsed;
+        ToolsPanel.Visibility = Visibility.Collapsed;
         SelectDashboardTab(CalendarDashboardTab);
         Touch();
     }
@@ -1845,6 +1829,7 @@ public partial class LifeIslandWindow : Window
         CalendarPanel.Visibility = Visibility.Collapsed;
         TelemetryPanel.Visibility = Visibility.Visible;
         QuickAskPanel.Visibility = Visibility.Collapsed;
+        ToolsPanel.Visibility = Visibility.Collapsed;
         SelectDashboardTab(StatusDashboardTab);
         UpdateTelemetryView(telemetry.Current);
         Touch();
@@ -1859,14 +1844,29 @@ public partial class LifeIslandWindow : Window
         CalendarPanel.Visibility = Visibility.Collapsed;
         TelemetryPanel.Visibility = Visibility.Collapsed;
         QuickAskPanel.Visibility = Visibility.Visible;
+        ToolsPanel.Visibility = Visibility.Collapsed;
         SelectDashboardTab(QuickAskDashboardTab);
         UpdateQuickAskView();
         Touch();
     }
 
+    void ShowToolsDashboard()
+    {
+        if (todayPanel is null) return;
+        todayPanel.Visibility = Visibility.Collapsed;
+        if (weeklyReportPanel is not null) weeklyReportPanel.Visibility = Visibility.Collapsed;
+        if (weeklyHistoryPanel is not null) weeklyHistoryPanel.Visibility = Visibility.Collapsed;
+        CalendarPanel.Visibility = Visibility.Collapsed;
+        TelemetryPanel.Visibility = Visibility.Collapsed;
+        QuickAskPanel.Visibility = Visibility.Collapsed;
+        ToolsPanel.Visibility = Visibility.Visible;
+        SelectDashboardTab(ToolsDashboardTab);
+        Touch();
+    }
+
     void SelectDashboardTab(Button selected)
     {
-        foreach (var tab in new[] { TodayDashboardTab, CalendarDashboardTab, StatusDashboardTab, QuickAskDashboardTab })
+        foreach (var tab in new[] { TodayDashboardTab, CalendarDashboardTab, StatusDashboardTab, QuickAskDashboardTab, ToolsDashboardTab })
         {
             var active = ReferenceEquals(tab, selected);
             tab.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, active ? "Brush.AccentSoft" : "Brush.Control");
