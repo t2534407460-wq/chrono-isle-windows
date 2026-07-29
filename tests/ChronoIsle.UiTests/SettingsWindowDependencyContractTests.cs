@@ -5,13 +5,16 @@ namespace ChronoIsle.UiTests;
 public sealed class SettingsWindowDependencyContractTests
 {
     [Fact]
-    public void SettingsWindow_RegistersItsLyricsServiceDependency()
+    public void SettingsWindow_DoesNotResolveTheLegacyLyricsService()
     {
         var workspace = FindWorkspace();
         var app = File.ReadAllText(Path.Combine(workspace, "src", "ChronoIsle.App", "App.xaml.cs"));
         var settings = File.ReadAllText(Path.Combine(workspace, "src", "ChronoIsle.App", "Views", "LifeSettingsWindow.xaml.cs"));
 
-        Assert.Contains("LyricsService lyrics", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("LyricsService lyrics", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("readonly LyricsService lyrics", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("this.lyrics", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("lyrics.Refresh();", settings, StringComparison.Ordinal);
         Assert.Contains("collection.AddSingleton<LyricsService>();", app, StringComparison.Ordinal);
     }
 

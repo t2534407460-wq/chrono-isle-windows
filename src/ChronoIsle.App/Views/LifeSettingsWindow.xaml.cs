@@ -19,7 +19,6 @@ public partial class LifeSettingsWindow : Window
     readonly ReminderService reminders;
     readonly OpenAiChatService ai;
     readonly AutoStartService autoStart;
-    readonly LyricsService lyrics;
     readonly ThemeService theme;
     readonly SqliteOnlineBackupService backups;
     readonly IcsExportService icsExport;
@@ -33,7 +32,7 @@ public partial class LifeSettingsWindow : Window
 
     public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders,
         OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline,
-        LyricsService lyrics, ThemeService theme)
+        ThemeService theme)
     {
         InitializeComponent();
         this.settings = settings;
@@ -41,7 +40,6 @@ public partial class LifeSettingsWindow : Window
         this.reminders = reminders;
         this.ai = ai;
         this.autoStart = autoStart;
-        this.lyrics = lyrics;
         this.theme = theme;
         var provider = settings.Load();
         var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
@@ -73,9 +71,7 @@ public partial class LifeSettingsWindow : Window
         IslandShowNetworkStatus.IsChecked = savedPreferences.IslandShowNetworkStatus;
         IslandShowClock.IsChecked = savedPreferences.IslandShowClock;
         IslandShowExpandIndicator.IsChecked = savedPreferences.IslandShowExpandIndicator;
-        LyricsEnabled.IsChecked = savedPreferences.LyricsEnabled;
         MoveIslandDuringFullscreen.IsChecked = savedPreferences.MoveIslandDuringFullscreen;
-        LyricsOffset.Value = savedPreferences.LyricsOffsetMs;
         Persona.SelectedValue = Enum.TryParse<AssistantPersona>(savedPreferences.AssistantPersona, out _) ? savedPreferences.AssistantPersona : "Direct";
         AutoStart.IsEnabled = autoStart.IsSupported;
         AutoStart.IsChecked = autoStart.IsEnabled;
@@ -152,14 +148,11 @@ public partial class LifeSettingsWindow : Window
             IslandShowNetworkStatus = IslandShowNetworkStatus.IsChecked == true,
             IslandShowClock = IslandShowClock.IsChecked == true,
             IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true,
-            LyricsEnabled = LyricsEnabled.IsChecked == true,
-            LyricsOffsetMs = (int)LyricsOffset.Value,
             MoveIslandDuringFullscreen = MoveIslandDuringFullscreen.IsChecked == true
         };
         preferences.Save(updated);
         committedPreferences = updated;
         themePreviewDirty = false;
-        lyrics.Refresh();
         reminders.RefreshSchedule();
         SaveButton.IsEnabled = false;
         CancelButton.IsEnabled = false;

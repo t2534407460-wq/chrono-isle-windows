@@ -88,7 +88,7 @@ public sealed class MusicLineLyricsContractTests
     }
 
     [Fact]
-    public void MusicTakeover_DoesNotStartTheLegacyLyricsModule()
+    public void Settings_DoesNotExposeLegacyLyricsControls()
     {
         var workspace = FindWorkspace();
         var island = File.ReadAllText(Path.Combine(
@@ -97,11 +97,6 @@ public sealed class MusicLineLyricsContractTests
             "ChronoIsle.App",
             "Views",
             "LifeIslandWindow.xaml.cs"));
-        var app = File.ReadAllText(Path.Combine(
-            workspace,
-            "src",
-            "ChronoIsle.App",
-            "App.xaml.cs"));
         var settings = File.ReadAllText(Path.Combine(
             workspace,
             "src",
@@ -109,10 +104,11 @@ public sealed class MusicLineLyricsContractTests
             "Views",
             "LifeSettingsWindow.xaml"));
 
-        Assert.Contains("collection.AddSingleton<LyricsService>();", app, StringComparison.Ordinal);
         Assert.DoesNotContain("SourceLyricTimeline", island, StringComparison.Ordinal);
-        Assert.Contains("LyricsEnabled", settings, StringComparison.Ordinal);
-        Assert.Contains("LyricsOffset", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("LyricsEnabled", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("LyricsOffset", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("LRCLIB", settings, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("x:Name=\"MediaAutoTakeover\"", settings, StringComparison.Ordinal);
     }
 
     [Fact]
