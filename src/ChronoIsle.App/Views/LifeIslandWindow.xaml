@@ -264,7 +264,7 @@
           <Grid x:Name="DefaultHeaderLeft" VerticalAlignment="Center" Margin="14,0,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Grid x:Name="MascotArea" Width="48" Height="30">
-              <Button x:Name="MascotButton" AutomationProperties.AutomationId="IslandExpandButton" Width="48" Height="30" Padding="0" Background="Transparent" BorderThickness="0" Focusable="False" ToolTip="打开快问">
+              <Button x:Name="MascotButton" AutomationProperties.AutomationId="IslandExpandButton" Width="48" Height="30" Padding="0" Background="Transparent" BorderThickness="0" Focusable="False">
                 <Button.Template><ControlTemplate TargetType="Button"><Image Source="pack://application:,,,/ChronoIsle;component/Assets/island-mascot.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="False"/></ControlTemplate></Button.Template>
               </Button>
               <Ellipse x:Name="StatusLight" Width="8" Height="8" IsHitTestVisible="False"
@@ -272,8 +272,7 @@
             </Grid>
             <Button x:Name="AgendaSummaryButton" Grid.Column="1"
                     AutomationProperties.AutomationId="IslandAgendaButton"
-                    Style="{StaticResource CollapsedHeaderButton}"
-                    ToolTip="打开月历">
+                    Style="{StaticResource CollapsedHeaderButton}">
               <StackPanel x:Name="SummaryWidgets" Orientation="Horizontal" Margin="9,1,10,0" VerticalAlignment="Center">
                 <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -289,7 +288,7 @@
           <StackPanel x:Name="ClockGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,13,0">
             <Button x:Name="NetworkStatusLight" AutomationProperties.AutomationId="IslandNetworkStatusButton"
                     Style="{StaticResource CollapsedHeaderButton}" Margin="0,0,8,0"
-                    VerticalAlignment="Center" ToolTip="打开状态">
+                    VerticalAlignment="Center">
               <Viewbox Width="14" Height="14" Stretch="Uniform">
                 <Path x:Name="NetworkStatusGlyph"
                       Data="{StaticResource Icon.NetworkGlobe}"
@@ -299,7 +298,7 @@
               </Viewbox>
             </Button>
             <Button x:Name="ClockButton" AutomationProperties.AutomationId="IslandClockButton"
-                    Style="{StaticResource CollapsedHeaderButton}" ToolTip="打开今天">
+                    Style="{StaticResource CollapsedHeaderButton}">
               <TextBlock x:Name="Clock" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="15"
                          FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
             </Button>
@@ -328,7 +327,7 @@
                       Style="{StaticResource CollapsedHeaderButton}" Background="Transparent"
                       Click="CollapsedMediaTrackButton_Click"
 
-                      ToolTip="悬浮显示播放控制" AutomationProperties.Name="实时音轨，悬浮显示播放控制">
+                      AutomationProperties.Name="实时音轨，悬浮显示播放控制">
                 <Button.RenderTransform><TranslateTransform x:Name="CollapsedMediaTrackTranslate"/></Button.RenderTransform>
                 <Border Width="70" Height="34" CornerRadius="15" Background="Transparent"
                         BorderThickness="0" SnapsToDevicePixels="False">
@@ -344,13 +343,13 @@
               </Button>
               <StackPanel x:Name="CollapsedMediaControls" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
               <StackPanel.RenderTransform><TranslateTransform x:Name="CollapsedMediaControlsTranslate"/></StackPanel.RenderTransform>
-              <Button x:Name="CollapsedMediaPrevious" Click="MediaPrevious_Click" Style="{StaticResource IslandIcon}" Width="28" Height="28" Padding="0" ToolTip="上一首">
+              <Button x:Name="CollapsedMediaPrevious" Click="MediaPrevious_Click" Style="{StaticResource IslandIcon}" Width="28" Height="28" Padding="0">
                 <Button.RenderTransform><TranslateTransform x:Name="CollapsedMediaPreviousTranslate"/></Button.RenderTransform>
                 <Viewbox Width="12" Height="12">
                   <Path Data="{StaticResource MediaPreviousGeometry}" Fill="{DynamicResource Brush.TextPrimary}" Stretch="Uniform"/>
                 </Viewbox>
               </Button>
-              <Button x:Name="CollapsedMediaPlayPause" Click="MediaPlayPause_Click" Style="{StaticResource IslandIcon}" Width="30" Height="30" Padding="0" Margin="3,0" ToolTip="播放或暂停">
+              <Button x:Name="CollapsedMediaPlayPause" Click="MediaPlayPause_Click" Style="{StaticResource IslandIcon}" Width="30" Height="30" Padding="0" Margin="3,0">
                 <Button.RenderTransform><TranslateTransform x:Name="CollapsedMediaPlayPauseTranslate"/></Button.RenderTransform>
                 <Viewbox Width="12" Height="12">
                   <Grid Width="16" Height="16">
@@ -359,7 +358,7 @@
                   </Grid>
                 </Viewbox>
               </Button>
-              <Button x:Name="CollapsedMediaNext" Click="MediaNext_Click" Style="{StaticResource IslandIcon}" Width="28" Height="28" Padding="0" ToolTip="下一首">
+              <Button x:Name="CollapsedMediaNext" Click="MediaNext_Click" Style="{StaticResource IslandIcon}" Width="28" Height="28" Padding="0">
                 <Button.RenderTransform><TranslateTransform x:Name="CollapsedMediaNextTranslate"/></Button.RenderTransform>
                 <Viewbox Width="12" Height="12">
                   <Path Data="{StaticResource MediaNextGeometry}" Fill="{DynamicResource Brush.TextPrimary}" Stretch="Uniform"/>
@@ -370,7 +369,6 @@
           </Grid>
           <Border x:Name="TopDockStatusLight" Height="6"
                   Background="{DynamicResource Brush.Island}"
-                  ToolTip="{Binding ToolTip, ElementName=StatusLight}"
                   CornerRadius="0,0,4,4"
                   HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
                   Visibility="Collapsed" IsHitTestVisible="False"
@@ -387,7 +385,7 @@
             <Border Height="1" Background="{DynamicResource Brush.Control}"/>
             <Border x:Name="ReminderBanner" Background="{DynamicResource Brush.AccentSoft}" BorderBrush="{DynamicResource Brush.Accent}" BorderThickness="1" CornerRadius="12" Margin="12,12,12,0" Padding="12" Visibility="Collapsed">
               <DockPanel>
-                <Button Content="×" Click="DismissReminderBanner_Click" Style="{StaticResource IslandIcon}" Padding="7,3" Margin="9,0,0,0" DockPanel.Dock="Right" ToolTip="关闭本次提醒"/>
+                <Button Content="×" Click="DismissReminderBanner_Click" Style="{StaticResource IslandIcon}" Padding="7,3" Margin="9,0,0,0" DockPanel.Dock="Right"/>
                 <TextBlock x:Name="ReminderText" Foreground="{DynamicResource Brush.TextPrimary}" TextWrapping="Wrap" VerticalAlignment="Center"/>
               </DockPanel>
             </Border>

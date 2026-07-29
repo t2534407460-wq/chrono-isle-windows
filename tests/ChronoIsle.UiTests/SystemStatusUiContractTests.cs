@@ -109,6 +109,25 @@ public sealed class SystemStatusUiContractTests
         Assert.DoesNotContain("SystemToastHeader", source, StringComparison.Ordinal);
         Assert.DoesNotContain("toastPreviousHeaderHeight", source, StringComparison.Ordinal);
         Assert.Contains("UpdateCollapsedMediaView(collapsedMedia, currentPreferences);", source, StringComparison.Ordinal);
+        var showToastStart = source.IndexOf("void ShowSystemToast", StringComparison.Ordinal);
+        var positionStart = source.IndexOf("void PositionNotificationWindow", showToastStart, StringComparison.Ordinal);
+        var showToast = source[showToastStart..positionStart];
+        Assert.DoesNotContain("media", showToast, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("musicModeActive", showToast, StringComparison.Ordinal);
+        Assert.Contains("notificationWindow.ShowMessage(message);", showToast, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Island_DoesNotCreateVisualMouseTooltips()
+    {
+        var (xaml, source) = IslandFiles();
+
+        Assert.DoesNotContain("ToolTip", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolTip", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "AutomationProperties.Name=\"实时音轨，悬浮显示播放控制\"",
+            xaml,
+            StringComparison.Ordinal);
     }
 
     [Fact]

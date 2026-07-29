@@ -705,7 +705,6 @@ public partial class LifeIslandWindow : Window
         {
             var indicator = data.GetIslandIndicatorState(DateTime.Now);
             StatusLight.Fill = IndicatorBrush(indicator);
-            StatusLight.ToolTip = IndicatorTooltip(indicator);
             var now = DateTimeOffset.UtcNow;
             var transient = islandState.Current;
             if (transient?.ExpiresAt is not null && transient.ExpiresAt <= now)
@@ -717,7 +716,6 @@ public partial class LifeIslandWindow : Window
             if (conflicts.Count > 0)
             {
                 StatusLight.Fill = new SolidColorBrush(Color.FromRgb(255, 69, 58));
-                StatusLight.ToolTip = "红色：今日存在日程冲突。";
                 ShowSummaryOverride($"日程冲突 · 今日 {conflicts.Count} 组重叠");
             }
             else if (transient is not null)
@@ -725,22 +723,17 @@ public partial class LifeIslandWindow : Window
                 StatusLight.Fill = transient.StateKey == "ai:processing"
                     ? new SolidColorBrush(Color.FromRgb(94, 92, 230))
                     : new SolidColorBrush(Color.FromRgb(48, 209, 88));
-                StatusLight.ToolTip = transient.StateKey == "ai:processing"
-                    ? "紫色：AI 正在处理请求。"
-                    : "绿色：当前状态正常。";
                 ShowSummaryOverride(transient.DisplayText);
             }
             else if (ReminderBanner.Visibility == Visibility.Visible)
             {
                 StatusLight.Fill = new SolidColorBrush(Color.FromRgb(255, 159, 10));
-                StatusLight.ToolTip = "橙色：有待处理提醒。";
                 ShowSummaryOverride(reminderBannerItem is null ? ReminderText.Text : $"提醒 · {reminderBannerItem.Title}");
             }
             else if (currentPreferences.IslandShowMusicMode &&
                      media.Current is { IsPlaying: true, IsMusic: true } mediaSnapshot)
             {
                 StatusLight.Fill = new SolidColorBrush(Color.FromRgb(50, 173, 230));
-                StatusLight.ToolTip = mediaSnapshot.IsPlaying ? "蓝色：正在播放音乐。" : "蓝色：媒体已暂停。";
                 ShowSummaryOverride($"♫ {mediaSnapshot.Title}{(string.IsNullOrWhiteSpace(mediaSnapshot.Artist) ? "" : $" · {mediaSnapshot.Artist}")}");
             }
             else
@@ -843,15 +836,6 @@ public partial class LifeIslandWindow : Window
         _ => new SolidColorBrush(Color.FromRgb(48, 209, 88))
     };
 
-    internal static string IndicatorTooltip(IslandIndicatorState state) => state switch
-    {
-        IslandIndicatorState.OverdueTodo => "红色：有待办已超过设置的超时宽限。",
-        IslandIndicatorState.DueSoonTodo => "橙色：有未完成待办，将在未来 1 小时内到期。",
-        IslandIndicatorState.PendingTodo => "黄色：有未完成待办，且不在未来 1 小时内到期，也未逾期。",
-        IslandIndicatorState.ReminderOnly => "蓝色：有尚未到点的提醒或今日日程，且没有待办。",
-        _ => "绿色：没有待办，当前空闲。"
-    };
-
     void RefreshFocusSummary()
     {
         var hadFocus = activeFocus is not null;
@@ -880,7 +864,6 @@ public partial class LifeIslandWindow : Window
         StatusLight.Fill = remaining > 0
             ? new SolidColorBrush(Color.FromRgb(174, 174, 178))
             : new SolidColorBrush(Color.FromRgb(255, 159, 10));
-        StatusLight.ToolTip = remaining > 0 ? "灰色：正在专注。" : "橙色：专注时间已到。";
         ShowSummaryOverride(current.IsPaused
             ? $"专注已暂停 · {focusTitle}"
             : remaining > 0
@@ -1153,10 +1136,9 @@ public partial class LifeIslandWindow : Window
         {
             MinHeight = 38,
             Style = (Style)FindResource("IslandTextInput"),
-            VerticalContentAlignment = VerticalAlignment.Center,
-            ToolTip = "例如：明早九点提醒我开会"
+            VerticalContentAlignment = VerticalAlignment.Center
         };
-        var quickSubmit = new Button { Content = "发送", Style = (Style)FindResource("IslandPrimary"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 7, 12, 7), ToolTip = "发送给 AI 助手" };
+        var quickSubmit = new Button { Content = "发送", Style = (Style)FindResource("IslandPrimary"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 7, 12, 7) };
         quickInput.TextChanged += (_, _) => Touch();
         quickSubmit.Click += (_, _) => SubmitQuickNaturalLanguage(quickInput);
         quickInput.KeyDown += (_, eventArgs) =>
@@ -1192,7 +1174,7 @@ public partial class LifeIslandWindow : Window
             new ComboBoxItem { Content = "分钟", Tag = 1 },
             new ComboBoxItem { Content = "小时", Tag = 60 }
         };
-        var durationUnit = new System.Windows.Controls.ComboBox { Width = 72, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = durationUnitOptions, SelectedIndex = recommendationDurationUnitMinutes == 60 ? 1 : 0, Margin = new Thickness(0, 0, 10, 0), ToolTip = "时间单位" };
+        var durationUnit = new System.Windows.Controls.ComboBox { Width = 72, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = durationUnitOptions, SelectedIndex = recommendationDurationUnitMinutes == 60 ? 1 : 0, Margin = new Thickness(0, 0, 10, 0) };
         durationUnit.SelectionChanged += (_, _) =>
         {
             if (durationUnit.SelectedItem is ComboBoxItem { Tag: int unitMinutes }) recommendationDurationUnitMinutes = unitMinutes;
@@ -1581,8 +1563,7 @@ public partial class LifeIslandWindow : Window
                 Width = 112,
                 Height = 25,
                 Padding = new Thickness(5, 2, 5, 2),
-                Style = (Style)FindResource("IslandTextInput"),
-                ToolTip = "请输入明确时间，例如 2026-07-17 09:00"
+                Style = (Style)FindResource("IslandTextInput")
             };
             controls.Children.Add(when);
             controls.Children.Add(DashboardAction("安排", () =>
@@ -1789,7 +1770,7 @@ public partial class LifeIslandWindow : Window
             foreach (var item in items.Take(2))
             {
                 var itemText = SetThemeResource(
-                    new TextBlock { Text = $"{DashboardTime(item)}  {item.Title}", FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "查看事项详情" },
+                    new TextBlock { Text = $"{DashboardTime(item)}  {item.Title}", FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Cursor = System.Windows.Input.Cursors.Hand },
                     TextBlock.ForegroundProperty,
                     "Brush.TextPrimary");
                 var target = ItemNavigationTarget.From(item.Id, item.Kind);
@@ -1918,9 +1899,6 @@ public partial class LifeIslandWindow : Window
             : "Brush.TextTertiary";
         var statusBrush = FindResource(brushKey) as System.Windows.Media.Brush ?? Brushes.Gray;
         NetworkStatusGlyph.Stroke = statusBrush;
-        NetworkStatusLight.ToolTip = snapshot.LatencyMilliseconds is { } latency
-            ? $"{label} · {latency} ms"
-            : label;
         TelemetryStatusLight.Fill = statusBrush;
         TelemetryNetworkStatus.Text = label;
         TelemetryLatency.Text = enabled && snapshot.LatencyMilliseconds is { } value ? $"{value} ms" : "-- ms";
@@ -2105,7 +2083,6 @@ public partial class LifeIslandWindow : Window
         CollapsedMediaArtist.Text = string.IsNullOrWhiteSpace(snapshot.Artist)
             ? snapshot.SourceAppId
             : snapshot.Artist;
-        CollapsedMediaArtist.ToolTip = CollapsedMediaArtist.Text;
         UpdateMediaPlayPauseIcons(snapshot.IsPlaying);
         SetCollapsedMediaControlsVisible(collapsedMediaControlsVisible);
     }
@@ -2322,7 +2299,14 @@ public partial class LifeIslandWindow : Window
 
     void CollapsedMediaTrack_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (Header.IsMouseCaptured) return;
         if (!collapsedMediaControlsPinned) AnimateCollapsedMediaControls(false);
+    }
+
+    void RestoreCollapsedMediaHoverAfterHeaderCapture()
+    {
+        if (!collapsedMediaControlsPinned && !CollapsedMediaTrack.IsMouseOver)
+            AnimateCollapsedMediaControls(false);
     }
 
     void CollapsedMediaTrackButton_Click(object sender, RoutedEventArgs e)
@@ -2454,10 +2438,9 @@ public partial class LifeIslandWindow : Window
                     FontSize = 9,
                     FontWeight = FontWeights.SemiBold
                 });
-                button.ToolTip = officialDay.Name;
             }
             if (indicator != IslandIndicatorState.Idle)
-                metadata.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = IndicatorBrush(indicator), ToolTip = IndicatorTooltip(indicator), Stroke = selected ? button.Foreground : null, StrokeThickness = selected ? 1 : 0, Margin = new Thickness(officialDay.Kind == OfficialCalendarDayKind.None ? 0 : 3, 3, 0, 0) });
+                metadata.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = IndicatorBrush(indicator), Stroke = selected ? button.Foreground : null, StrokeThickness = selected ? 1 : 0, Margin = new Thickness(officialDay.Kind == OfficialCalendarDayKind.None ? 0 : 3, 3, 0, 0) });
             if (metadata.Children.Count > 0)
                 content.Children.Add(metadata);
             button.Content = content;
@@ -2508,7 +2491,7 @@ public partial class LifeIslandWindow : Window
             var indicator = data.GetAgendaItemIndicatorState(item, DateTime.Now);
             var time = item.Kind == "event" && item.EndsAt is not null ? $"{item.StartsAt:HH:mm}–{item.EndsAt:HH:mm}" : item.StartsAt.TimeOfDay == TimeSpan.Zero ? "待办" : item.StartsAt.ToString("HH:mm");
             var timeRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
-            timeRow.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = IndicatorBrush(indicator), ToolTip = IndicatorTooltip(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+            timeRow.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = IndicatorBrush(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
             timeRow.Children.Add(new TextBlock { Text = time, Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), FontSize = 11 });
             copy.Children.Add(timeRow);
             copy.Children.Add(SetThemeResource(
@@ -2516,7 +2499,7 @@ public partial class LifeIslandWindow : Window
                 TextBlock.ForegroundProperty,
                 item.IsCompleted ? "Brush.TextTertiary" : "Brush.TextPrimary"));
             panel.Children.Add(copy);
-            var remove = new Button { Margin = new Thickness(10, 0, 0, 0), Style = (Style)FindResource("IslandDeleteButton"), Tag = item, ToolTip = item.Kind == "recurring" ? "删除整个周期计划" : "删除" };
+            var remove = new Button { Margin = new Thickness(10, 0, 0, 0), Style = (Style)FindResource("IslandDeleteButton"), Tag = item };
             var deleteIcon = new System.Windows.Shapes.Path { Data = Geometry.Parse("M 2 2 L 10 10 M 10 2 L 2 10"), StrokeThickness = 1.5, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
             deleteIcon.SetBinding(System.Windows.Shapes.Shape.StrokeProperty, new System.Windows.Data.Binding(nameof(Button.Foreground)) { Source = remove });
             remove.Content = new Viewbox { Width = 12, Height = 12, Child = deleteIcon };
@@ -2882,6 +2865,7 @@ public partial class LifeIslandWindow : Window
         dragging = false;
         pressedCollapsedHeaderTarget = CollapsedHeaderTarget.None;
         Header.ReleaseMouseCapture();
+        RestoreCollapsedMediaHoverAfterHeaderCapture();
         if (dragged) UpdatePlacementAfterDrag();
         ClearTaskbarDragConstraints();
     }

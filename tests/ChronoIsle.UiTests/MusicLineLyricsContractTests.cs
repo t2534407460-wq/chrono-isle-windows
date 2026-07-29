@@ -177,6 +177,12 @@ public sealed class MusicLineLyricsContractTests
         Assert.Contains("bool collapsedMediaControlsPinned;", island, StringComparison.Ordinal);
         Assert.Contains("void CollapsedMediaTrackButton_Click", island, StringComparison.Ordinal);
         Assert.Contains("if (!collapsedMediaControlsPinned) AnimateCollapsedMediaControls(false);", island, StringComparison.Ordinal);
+        Assert.Contains("if (Header.IsMouseCaptured) return;", island, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (!collapsedMediaControlsPinned && !CollapsedMediaTrack.IsMouseOver)",
+            island,
+            StringComparison.Ordinal);
+        Assert.Contains("RestoreCollapsedMediaHoverAfterHeaderCapture();", island, StringComparison.Ordinal);
         Assert.Contains("if (IsCollapsedMediaControlSource(e.OriginalSource as DependencyObject)) return;", island, StringComparison.Ordinal);
         Assert.Contains("static bool IsCollapsedMediaControlSource", island, StringComparison.Ordinal);
     }
