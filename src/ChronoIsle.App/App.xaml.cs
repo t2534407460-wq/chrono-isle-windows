@@ -36,7 +36,7 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<LifePreferencesService>();
         collection.AddSingleton<OpenAiChatService>();
         collection.AddSingleton<MediaSessionService>();
-        collection.AddSingleton<LyricsService>();
+        collection.AddSingleton<AudioSpectrumService>();
         collection.AddSingleton<FullscreenAvoidanceService>();
         collection.AddSingleton<SystemTelemetryService>();
         collection.AddSingleton<SystemToastInboxService>();
@@ -125,14 +125,13 @@ public partial class App : System.Windows.Application
         island.Show();
         if (!uiTestMode)
         {
-            var lyrics = services.GetRequiredService<LyricsService>();
             var media = services.GetRequiredService<MediaSessionService>();
-            lyrics.Refresh();
             _ = media.StartAsync().ContinueWith(task =>
             {
                 if (task.Exception is not null)
                     System.Diagnostics.Debug.WriteLine($"Media session start failed: {task.Exception.GetBaseException().Message}");
             }, TaskScheduler.Default);
+            services.GetRequiredService<AudioSpectrumService>().Start();
 
             var fullscreen = services.GetRequiredService<FullscreenAvoidanceService>();
             fullscreen.ContextChanged += context =>

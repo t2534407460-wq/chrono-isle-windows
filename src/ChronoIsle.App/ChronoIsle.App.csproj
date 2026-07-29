@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.7" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <PackageReference Include="NAudio" Version="2.3.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="App.xaml.cs;GlobalAliases.cs;LifeModels.cs;MarkdownTextBlock.cs" />
@@ -30,7 +31,7 @@
     <Compile Include="Services\Productivity\*.cs" />
     <Compile Include="Services\Reporting\*.cs" />
     <Compile Include="Services\Sync\*.cs" />
-    <Compile Include="Services\LifeDataService.cs;Services\ProviderSettingsService.cs;Services\OpenAiChatService.cs;Services\AutoStartService.cs;Services\LegacyDataMigration.cs;Services\MediaSessionService.cs;Services\LyricsService.cs;Services\FullscreenAvoidanceService.cs;Services\SystemTelemetryService.cs;Services\SystemToastInboxService.cs;Services\ThemeService.cs" />
+    <Compile Include="Services\LifeDataService.cs;Services\ProviderSettingsService.cs;Services\OpenAiChatService.cs;Services\AutoStartService.cs;Services\LegacyDataMigration.cs;Services\MediaSessionService.cs;Services\AudioSpectrumService.cs;Services\LyricsService.cs;Services\FullscreenAvoidanceService.cs;Services\SystemTelemetryService.cs;Services\SystemToastInboxService.cs;Services\ThemeService.cs" />
     <Compile Include="Services\LifePreferencesService.cs;Services\DesktopMusicSessionDetector.cs;Services\AssistantIntentService.cs;Services\AssistantActionService.cs;Services\ReminderService.cs;Services\WindowsNotificationService.cs;Services\RecurringReminderData.cs;Services\SingleReminderData.cs;Services\ConversationRouter.cs;Services\LocalAgendaQueryService.cs;Services\LifeTrayService.cs;Services\ChinaStatutoryHolidayCalendar.cs" />
     <Compile Remove="Services\LifeDataService.cs;Services\RecurringReminderData.cs;Services\SingleReminderData.cs" />
     <Compile Remove="Services\ReminderService.cs" />
