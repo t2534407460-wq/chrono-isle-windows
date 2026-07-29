@@ -170,7 +170,7 @@ public partial class LifeManagementWindow : Window
             var text = new StackPanel { Margin = new Thickness(12, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
             var title = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
             var indicator = itemIndicators[item.Id];
-            title.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = LifeIslandWindow.IndicatorBrush(indicator), ToolTip = LifeIslandWindow.IndicatorTooltip(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
+            title.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = LifeIslandWindow.IndicatorBrush(indicator), ToolTip = LifeIslandWindow.IndicatorDescription(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
             title.Children.Add(new TextBlock { Text = item.Title, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             text.Children.Add(title);
             text.Children.Add(new TextBlock { Text = ItemDetails(item), Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });

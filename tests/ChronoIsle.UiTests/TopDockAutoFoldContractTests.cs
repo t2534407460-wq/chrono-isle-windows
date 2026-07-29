@@ -82,9 +82,13 @@ public sealed class TopDockAutoFoldContractTests
             source,
             StringComparison.Ordinal);
         Assert.Contains("preferences.Save(collapsedPreferences);", source, StringComparison.Ordinal);
-        Assert.Contains("if (enabled) return;", source, StringComparison.Ordinal);
+        Assert.Contains("if (!enabled)", source, StringComparison.Ordinal);
         Assert.Contains("topDockHoverExitTimer.Stop();", source, StringComparison.Ordinal);
         Assert.Contains("SetTopDockFolded(false);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(RefreshTopDockAutoFold));",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains(
             "folded = folded && collapsedPreferences.IslandTopDockAutoFold &&",
             source,

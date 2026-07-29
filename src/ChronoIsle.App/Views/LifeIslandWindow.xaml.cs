@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Controls.Primitives;
@@ -827,6 +828,15 @@ public partial class LifeIslandWindow : Window
         IslandIndicatorState.PendingTodo => new SolidColorBrush(Color.FromRgb(255, 214, 10)),
         IslandIndicatorState.ReminderOnly => new SolidColorBrush(Color.FromRgb(10, 132, 255)),
         _ => new SolidColorBrush(Color.FromRgb(48, 209, 88))
+    };
+
+    internal static string IndicatorDescription(IslandIndicatorState state) => state switch
+    {
+        IslandIndicatorState.OverdueTodo => "红色：有待办已超过设置的超时宽限。",
+        IslandIndicatorState.DueSoonTodo => "橙色：有未完成待办，将在未来 1 小时内到期。",
+        IslandIndicatorState.PendingTodo => "黄色：有未完成待办，且不在未来 1 小时内到期，也未逾期。",
+        IslandIndicatorState.ReminderOnly => "蓝色：有尚未到点的提醒或今日日程，且没有待办。",
+        _ => "绿色：没有待办，当前空闲。"
     };
 
     void RefreshFocusSummary()
