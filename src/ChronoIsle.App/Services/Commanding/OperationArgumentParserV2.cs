@@ -67,30 +67,39 @@ public sealed class OperationArgumentParserV2(IChatCompletionClient chat) : IOpe
         Return this envelope and no extra properties:
         {"schemaVersion":1,"command":"{{operation}}","arguments":{{schema}},"missingFields":[],"ambiguityReasons":[]}
         Copy time wording into originalText. Never invent a time, target, database ID, confirmation ID,
+        Relative time values must use the complete time object. Put the user's exact wording in both
+        relativeExpression and originalText. Do not return a time as a JSON string.
         For target operations, choose only a candidateRef from ACTIVE_CONTEXT.candidates. Never copy or
         invent an item ID. If there is no unique candidate, leave candidateRef null.
         permission, confidence, completion state, or execution result. Put missing required fields in
         missingFields and vague values in ambiguityReasons. Use null for unknown optional fields.
         """;
 
+    const string TimeSchema =
+        """{"localDate":null,"localTime":null,"relativeExpression":null,"timeZoneHint":null,"originalText":null}""";
+    const string RecurrenceSchema =
+        """{"frequency":null,"interval":null,"weekdays":[],"monthDay":null,"end":{"kind":null,"count":null,"untilDate":null}}""";
+    const string TargetSchema =
+        """{"candidateRef":null,"title":null,"kind":null,"timeHint":{"localDate":null,"localTime":null,"relativeExpression":null,"timeZoneHint":null,"originalText":null}}""";
+
     static string SchemaFor(ConversationOperationV2 operation) => operation switch
     {
         ConversationOperationV2.CreateTodo =>
-            """{"title":null,"notes":null,"due":null,"remind":null,"recurrence":null,"priority":null}""",
+            """{"title":null,"notes":null,"due":""" + TimeSchema + ""","remind":""" + TimeSchema + ""","recurrence":""" + RecurrenceSchema + ""","priority":null}""",
         ConversationOperationV2.CreateReminder =>
-            """{"title":null,"notes":null,"remind":null,"due":null,"recurrence":null,"priority":null}""",
+            """{"title":null,"notes":null,"remind":""" + TimeSchema + ""","due":""" + TimeSchema + ""","recurrence":""" + RecurrenceSchema + ""","priority":null}""",
         ConversationOperationV2.CreateEvent =>
-            """{"title":null,"notes":null,"start":null,"end":null,"remind":null}""",
+            """{"title":null,"notes":null,"start":""" + TimeSchema + ""","end":""" + TimeSchema + ""","remind":""" + TimeSchema + """}""",
         ConversationOperationV2.CreateLongTermItem =>
-            """{"title":null,"notes":null,"due":null,"remind":null,"priority":null}""",
+            """{"title":null,"notes":null,"due":""" + TimeSchema + ""","remind":""" + TimeSchema + ""","priority":null}""",
         ConversationOperationV2.CreateRecurringTask =>
-            """{"title":null,"notes":null,"kind":null,"wallStart":null,"recurrence":null,"priority":null}""",
+            """{"title":null,"notes":null,"kind":null,"wallStart":""" + TimeSchema + ""","recurrence":""" + RecurrenceSchema + ""","priority":null}""",
         ConversationOperationV2.UpdateTodo =>
-            """{"target":{"candidateRef":null,"title":null,"kind":null,"timeHint":null},"changes":{"title":null,"notes":null,"due":null,"remind":null,"priority":null,"clearFields":[]}}""",
+            """{"target":""" + TargetSchema + ""","changes":{"title":null,"notes":null,"due":""" + TimeSchema + ""","remind":""" + TimeSchema + ""","priority":null,"clearFields":[]}}""",
         ConversationOperationV2.CompleteTodo or ConversationOperationV2.DeleteTodo =>
-            """{"target":{"candidateRef":null,"title":null,"kind":null,"timeHint":null}}""",
+            """{"target":""" + TargetSchema + """}""",
         ConversationOperationV2.RescheduleItem =>
-            """{"target":{"candidateRef":null,"title":null,"kind":null,"timeHint":null},"newTime":null,"newReminder":null}""",
+            """{"target":""" + TargetSchema + ""","newTime":""" + TimeSchema + ""","newReminder":""" + TimeSchema + """}""",
         ConversationOperationV2.DecomposeGoal =>
             """{"goal":null,"constraints":[],"maxItems":null,"proposedTasks":[]}""",
         _ => throw new ArgumentOutOfRangeException(nameof(operation), "该操作不使用命令参数解析器。")
@@ -207,6 +216,19 @@ public sealed class OperationArgumentParserV2(IChatCompletionClient chat) : IOpe
 
     static JsonNode? Time(JsonNode? value)
     {
+        if (value is JsonValue scalar &&
+            scalar.TryGetValue<string>(out var text) &&
+            !string.IsNullOrWhiteSpace(text))
+        {
+            var normalized = text.Trim();
+            return Pick(new JsonObject
+            {
+                ["relativeExpression"] = normalized,
+                ["originalText"] = normalized
+            },
+            ("localDate", Node), ("localTime", Node), ("relativeExpression", Node),
+            ("timeZoneHint", Node), ("originalText", Node));
+        }
         if (value is not JsonObject source) return Node(value);
         return Pick(source,
             ("localDate", Node), ("localTime", Node), ("relativeExpression", Node),

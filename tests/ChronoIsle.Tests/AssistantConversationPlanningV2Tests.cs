@@ -132,10 +132,75 @@ public sealed class AssistantConversationPlanningV2Tests
         Assert.Equal(new TimeOnly(0, 30), arguments.Remind!.LocalTime);
     }
 
+    [Fact]
+    public void OperationParser_NormalizesScalarRelativeReminder()
+    {
+        const string response = """
+            {
+              "arguments": {
+                "title": "测试",
+                "remind": "十分钟后"
+              },
+              "missingFields": [],
+              "ambiguityReasons": []
+            }
+            """;
+
+        Assert.True(OperationArgumentParserV2.TryNormalizeAndParse(
+            response,
+            ConversationOperationV2.CreateReminder,
+            out var envelope,
+            out var error), error);
+        var arguments = Assert.IsType<CreateReminderArgumentsV1>(envelope!.Arguments);
+        Assert.Equal("十分钟后", arguments.Remind!.RelativeExpression);
+        Assert.Equal("十分钟后", arguments.Remind.OriginalText);
+    }
+
+    [Fact]
+    public async Task OperationParser_PromptRequiresCompleteRelativeTimeObject()
+    {
+        var chat = new QueueChatClient("""
+            {
+              "arguments": {
+                "title": "测试",
+                "remind": {
+                  "relativeExpression": "十分钟后",
+                  "originalText": "十分钟后"
+                }
+              },
+              "missingFields": [],
+              "ambiguityReasons": []
+            }
+            """);
+        var parser = new OperationArgumentParserV2(chat);
+        var segment = new ConversationSegmentV2(
+            "s1",
+            ConversationSegmentKindV2.Command,
+            ConversationOperationV2.CreateReminder,
+            "十分钟后提醒我测试",
+            []);
+
+        var result = await parser.ParseAsync(
+            ProviderSettings.Default with { ApiKey = "test" },
+            segment,
+            AssistantTurnContextV2.Empty);
+
+        Assert.True(result.IsValid, result.ErrorMessage);
+        var prompt = chat.LastMessages.First(message => message.Role == "system").Content;
+        Assert.Contains(
+            """
+            "remind":{"localDate":null,"localTime":null,"relativeExpression":null,"timeZoneHint":null,"originalText":null}
+            """,
+            prompt,
+            StringComparison.Ordinal);
+        Assert.Contains("Do not return a time as a JSON string.", prompt, StringComparison.Ordinal);
+    }
+
     sealed class QueueChatClient(params string[] responses) : IChatCompletionClient
     {
         readonly Queue<string> queue = new(responses);
         public int CallCount { get; private set; }
+        public IReadOnlyList<ModelMessage> LastMessages { get; private set; } = [];
 
         public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) =>
             throw new NotSupportedException();
@@ -143,6 +208,7 @@ public sealed class AssistantConversationPlanningV2Tests
         public Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false)
         {
             CallCount++;
+            LastMessages = messages.ToArray();
             return Task.FromResult(queue.Dequeue());
         }
 
