@@ -5,7 +5,7 @@ namespace ChronoIsle.UiTests;
 public sealed class MusicLineLyricsContractTests
 {
     [Fact]
-    public void MusicLyrics_HighlightWholeLineWithoutWordLevelRendering()
+    public void MusicTakeover_UsesTrackViewUntilTheMusicLineIsHovered()
     {
         var workspace = FindWorkspace();
         var island = File.ReadAllText(Path.Combine(
@@ -14,15 +14,56 @@ public sealed class MusicLineLyricsContractTests
             "ChronoIsle.App",
             "Views",
             "LifeIslandWindow.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml"));
 
-        Assert.Contains("LyricCurrent.Text = line.Text;", island, StringComparison.Ordinal);
-        Assert.Contains("CollapsedMediaArtist.Text = line.Text;", island, StringComparison.Ordinal);
-        Assert.DoesNotContain("SetKaraokeText", island, StringComparison.Ordinal);
-        Assert.DoesNotContain("LineProgress(", island, StringComparison.Ordinal);
+        Assert.Contains("void CollapsedMediaTrack_MouseEnter", island, StringComparison.Ordinal);
+        Assert.Contains("void CollapsedMediaTrack_MouseLeave", island, StringComparison.Ordinal);
+        Assert.Contains("UpdateMediaPlayPauseIcons(!current.IsPlaying);", island, StringComparison.Ordinal);
+        Assert.Contains("CollapsedMediaControls.Opacity = 0;", island, StringComparison.Ordinal);
+        Assert.Contains("CollapsedMediaControlsTranslate.Y = 12;", island, StringComparison.Ordinal);
+        Assert.Contains("if (visible == collapsedMediaControlsVisible) return;", island, StringComparison.Ordinal);
+        Assert.Contains("CollapsedMediaControlsTranslate.Y = 0;", island, StringComparison.Ordinal);
+        Assert.Contains("Transition(12, 0, 160)", island, StringComparison.Ordinal);
+        Assert.Contains("Transition(0, 1, 160)", island, StringComparison.Ordinal);
+        Assert.Contains("AnimateCollapsedMediaControls(true);", island, StringComparison.Ordinal);
+        Assert.Contains("AnimateCollapsedMediaControls(false);", island, StringComparison.Ordinal);
+        Assert.Contains("var controlsLift = Transition(0, -12, 140);", island, StringComparison.Ordinal);
+        Assert.Contains("controlsLift.Completed", island, StringComparison.Ordinal);
+        Assert.Contains("bool musicModeActive;", island, StringComparison.Ordinal);
+        Assert.Contains("if (currentMusic?.IsPlaying == true) musicModeActive = true;", island, StringComparison.Ordinal);
+        Assert.Contains("var collapsedMedia = musicModeActive ? currentMusic : null;", island, StringComparison.Ordinal);
+        Assert.Contains("currentPreferences.IslandShowMusicMode &&", island, StringComparison.Ordinal);
+        Assert.Contains("media.Current is { IsMusic: true };", island, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"CollapsedMediaTrack\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"Transparent\" MouseEnter=\"CollapsedMediaTrack_MouseEnter\" MouseLeave=\"CollapsedMediaTrack_MouseLeave\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"CollapsedMediaControls\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"CollapsedMediaTrackButton\" Grid.Column=\"2\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"实时音轨，悬浮显示播放控制\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(9, Enumerable.Range(0, 9).Count(index => xaml.Contains($"x:Name=\"CollapsedSpectrum{index}\"", StringComparison.Ordinal)));
+        Assert.Contains("Style=\"{StaticResource CollapsedHeaderButton}\" Background=\"Transparent\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Width=\"70\" Height=\"34\" CornerRadius=\"15\" Background=\"Transparent\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(9, Enumerable.Range(0, 9).Count(index => xaml.Contains($"x:Name=\"CollapsedSpectrum{index}\" Width=\"2\" Height=\"2\"", StringComparison.Ordinal)));
+        Assert.Contains("Orientation=\"Horizontal\" HorizontalAlignment=\"Center\" VerticalAlignment=\"Center\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Height=\"34\" Margin=\"0\" UseLayoutRounding=\"False\"", xaml, StringComparison.Ordinal);
+        Assert.Equal(9, Enumerable.Range(0, 9).Count(index => xaml.Contains($"x:Name=\"CollapsedSpectrum{index}\" Width=\"2\" Height=\"2\" CornerRadius=\"1\" Margin=\"1,0\" Background=\"#FFFFFFFF\" VerticalAlignment=\"Center\"", StringComparison.Ordinal)));
+        Assert.Contains("Grid.Column=\"2\" Orientation=\"Horizontal\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("CollapsedMediaTrackButton.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;", island, StringComparison.Ordinal);
+        Assert.DoesNotContain("CollapsedMediaTrack.Visibility = visible ? Visibility.Collapsed : Visibility.Visible;", island, StringComparison.Ordinal);
+        Assert.Contains("SpectrumDisplayHeights(spectrum, bars.Length)", island, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplySpectrumPalette", island, StringComparison.Ordinal);
+        Assert.Contains("audioSpectrum.RefreshCaptureDevice();", island, StringComparison.Ordinal);
+        Assert.DoesNotContain("BeginAnimation(HeightProperty", island, StringComparison.Ordinal);
+        Assert.DoesNotContain("MediaDashboardTab", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("LyricCurrent", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void MusicProgress_PrefersSampledSystemTimelineBeforeOcrFallback()
+    public void MusicTakeover_CanBeToggledFromTheContextMenu()
     {
         var workspace = FindWorkspace();
         var island = File.ReadAllText(Path.Combine(
@@ -31,18 +72,67 @@ public sealed class MusicLineLyricsContractTests
             "ChronoIsle.App",
             "Views",
             "LifeIslandWindow.xaml.cs"));
+        var models = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "LifeModels.cs"));
 
-        var systemTimeline = island.IndexOf(
-            "if (snapshot.Duration > TimeSpan.Zero)",
-            StringComparison.Ordinal);
-        var ocrFallback = island.IndexOf(
-            "var sourcePosition = sourceLyricTimeline.Update(",
-            StringComparison.Ordinal);
-
-        Assert.True(systemTimeline >= 0);
-        Assert.True(ocrFallback > systemTimeline);
-        Assert.Contains("snapshot.ProgressSampledAtUtc", island, StringComparison.Ordinal);
+        Assert.Contains("bool IslandShowMusicMode = true", models, StringComparison.Ordinal);
+        Assert.Contains("case IslandQuickAction.ToggleMusicMode: ToggleMusicMode(); break;", island, StringComparison.Ordinal);
+        Assert.Contains("collapsedPreferences = current with { IslandShowMusicMode = !current.IslandShowMusicMode };", island, StringComparison.Ordinal);
+        Assert.Contains("if (!collapsedPreferences.IslandShowMusicMode) musicModeActive = false;", island, StringComparison.Ordinal);
+        Assert.Contains("Refresh();", island, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MusicTakeover_DoesNotStartTheLegacyLyricsModule()
+    {
+        var workspace = FindWorkspace();
+        var island = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml.cs"));
+        var app = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "App.xaml.cs"));
+        var settings = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeSettingsWindow.xaml"));
+
+        Assert.DoesNotContain("LyricsService", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("SourceLyricTimeline", island, StringComparison.Ordinal);
+        Assert.DoesNotContain("LyricsEnabled", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("LyricsOffset", settings, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MusicControls_HandleAClosedSystemSessionWithoutEscapingToTheUiDispatcher()
+    {
+        var workspace = FindWorkspace();
+        var media = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Services",
+            "MediaSessionService.cs"));
+
+        Assert.Contains("async Task ControlAsync(", media, StringComparison.Ordinal);
+        Assert.Contains("catch (Exception exception)", media, StringComparison.Ordinal);
+        Assert.Contains("var handled = session is not null && await operation(session);", media, StringComparison.Ordinal);
+        Assert.Contains("if (!handled) desktop.Control(desktopCommand);", media, StringComparison.Ordinal);
+        Assert.Contains("activeSession = systemSessionIsMusic ? session : null;", media, StringComparison.Ordinal);
+        Assert.Contains("desktop.Control(desktopCommand);", media, StringComparison.Ordinal);
+        Assert.Contains("await RefreshAsync();", media, StringComparison.Ordinal);
+    }
+
     static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
