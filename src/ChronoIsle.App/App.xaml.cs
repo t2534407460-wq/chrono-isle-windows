@@ -133,6 +133,8 @@ public partial class App : System.Windows.Application
         tray.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
         tray.ExitRequested += (_, _) => Dispatcher.BeginInvoke(Shutdown);
         tray.Initialize();
+        if (!uiTestMode)
+            island.Loaded += async (_, _) => await StartToastInboxAsync();
         island.Show();
         if (!uiTestMode)
         {
@@ -155,16 +157,21 @@ public partial class App : System.Windows.Application
                     if (currentPreferences.TelemetryEnabled)
                         services.GetRequiredService<SystemTelemetryService>().Start();
                     if (currentPreferences.ToastInboxEnabled)
-                        _ = services.GetRequiredService<SystemToastInboxService>().StartAsync();
+                        _ = StartToastInboxAsync();
                 });
             fullscreen.Start();
 
             if (services.GetRequiredService<LifePreferencesService>().Load().TelemetryEnabled)
                 services.GetRequiredService<SystemTelemetryService>().Start();
-            if (services.GetRequiredService<LifePreferencesService>().Load().ToastInboxEnabled)
-                _ = services.GetRequiredService<SystemToastInboxService>().StartAsync();
         }
         services.GetRequiredService<ReminderService>().Start();
+    }
+
+    async Task StartToastInboxAsync()
+    {
+        var serviceProvider = services!;
+        if (!serviceProvider.GetRequiredService<LifePreferencesService>().Load().ToastInboxEnabled) return;
+        await serviceProvider.GetRequiredService<SystemToastInboxService>().StartAsync();
     }
 
     void OpenMain()

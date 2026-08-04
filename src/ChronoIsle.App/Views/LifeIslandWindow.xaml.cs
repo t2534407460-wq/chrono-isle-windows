@@ -199,7 +199,18 @@ public partial class LifeIslandWindow : Window
             Dispatcher.BeginInvoke(Refresh);
         };
         telemetry.SnapshotChanged += snapshot => Dispatcher.BeginInvoke(() => UpdateTelemetryView(snapshot));
-        toastInbox.ToastReceived += message => Dispatcher.BeginInvoke(() => ShowSystemToast(message));
+        toastInbox.ToastReceived += message =>
+        {
+            var source = ToastInboxDiagnostics.Source(message);
+            ToastInboxDiagnostics.Write("ui-queued", message.Id, source);
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Send,
+                new Action(() =>
+                {
+                    ToastInboxDiagnostics.Write("ui-dispatch", message.Id, source);
+                    ShowSystemToast(message);
+                }));
+        };
         assistant.Messages.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         assistant.PropertyChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         Header.ContextMenuOpening += Header_ContextMenuOpening;
@@ -819,7 +830,18 @@ public partial class LifeIslandWindow : Window
             $"↑ {FormatRate(telemetry.Current.UploadBytesPerSecond)}  ↓ {FormatRate(telemetry.Current.DownloadBytesPerSecond)}";
         CpuUsageSummary.Text = $"CPU {telemetry.Current.CpuPercent:0}%";
         MemoryUsageSummary.Text = $"内存 {telemetry.Current.MemoryPercent:0}%";
+        CpuUsageSummary.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            TelemetrySummaryBrushKey(telemetry.Current.CpuPercent));
+        MemoryUsageSummary.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            TelemetrySummaryBrushKey(telemetry.Current.MemoryPercent));
     }
+
+    internal static string TelemetrySummaryBrushKey(double percent) =>
+        percent > 90 ? "Brush.Danger" :
+        percent > 70 ? "Brush.Warning" :
+        "Brush.TextSecondary";
 
     internal static System.Windows.Media.Brush IndicatorBrush(IslandIndicatorState state) => state switch
     {
@@ -1124,7 +1146,7 @@ public partial class LifeIslandWindow : Window
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
-        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.ManageItems })
+        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus })
         {
             var button = new Button { Content = QuickActionLabel(action), Style = (Style)FindResource("IslandQuick") };
             button.Click += (_, _) => RunQuickAction(action);
@@ -1969,9 +1991,15 @@ public partial class LifeIslandWindow : Window
 
     void ShowSystemToast(SystemToastMessage message)
     {
-        if (!preferences.Load().ToastInboxEnabled) return;
+        var source = ToastInboxDiagnostics.Source(message);
+        if (!preferences.Load().ToastInboxEnabled)
+        {
+            ToastInboxDiagnostics.Write("ui-suppressed", message.Id, source);
+            return;
+        }
         notificationWindow.ShowMessage(message);
         PositionNotificationWindow();
+        ToastInboxDiagnostics.Write("ui-shown", message.Id, source);
     }
 
     void PositionNotificationWindow()
@@ -3643,6 +3671,8 @@ public partial class LifeIslandWindow : Window
     }
 
     void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    void ManageItems_Click(object sender, RoutedEventArgs e) => OpenManagement();
 
     void OpenNaming()
     {

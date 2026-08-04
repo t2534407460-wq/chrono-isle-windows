@@ -19,6 +19,62 @@ public sealed record SystemToastMessage(
     string AppUserModelId,
     DateTimeOffset CreatedAt);
 
+internal static class ToastInboxThreading
+{
+    internal static Task RunAsync(Action action)
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+                completion.SetResult(true);
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        });
+        thread.SetApartmentState(ApartmentState.MTA);
+        thread.Start();
+        return completion.Task;
+    }
+}
+
+internal static class ToastInboxDiagnostics
+{
+    static readonly object gate = new();
+    static readonly string path = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "ChronoIsle",
+        "life-toast-inbox-diagnostics.log");
+
+    internal static void Write(string stage, uint notificationId, string details)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            lock (gate)
+                File.AppendAllText(path, Format(DateTimeOffset.Now, stage, notificationId, details));
+        }
+        catch { }
+    }
+
+    internal static string Source(SystemToastMessage message) =>
+        $"app={Clean(message.AppName)}; appId={Clean(message.AppUserModelId)}";
+
+    internal static string Failure(Exception exception) =>
+        $"exception={exception.GetType().Name}; hresult=0x{exception.HResult:X8}";
+
+    static string Format(DateTimeOffset timestamp, string stage, uint notificationId, string details) =>
+        $"{timestamp:O} | {stage} | id={notificationId} | {Clean(details)}{Environment.NewLine}";
+
+    static string Clean(string? value) => string.IsNullOrWhiteSpace(value)
+        ? "(none)"
+        : value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+}
+
 internal static class ToastTextComposer
 {
     public static (string Title, string Body) Compose(IEnumerable<string?> values)
@@ -50,6 +106,8 @@ internal static class ToastTextComposer
 
 public sealed class SystemToastInboxService : IDisposable
 {
+    const int NotificationReadRetryCount = 3;
+    static readonly TimeSpan NotificationReadRetryDelay = TimeSpan.FromMilliseconds(75);
     readonly System.Threading.Timer timer;
     readonly HashSet<uint> knownIds = [];
     readonly object knownIdsGate = new();
@@ -77,6 +135,7 @@ public sealed class SystemToastInboxService : IDisposable
             ObjectDisposedException.ThrowIf(disposed, this);
             listener ??= UserNotificationListener.Current;
             var status = await listener.RequestAccessAsync();
+            ToastInboxDiagnostics.Write("access-request", 0, $"status={status}");
             SetAccess(status == UserNotificationListenerAccessStatus.Allowed
                 ? ToastInboxAccess.Allowed
                 : ToastInboxAccess.Denied);
@@ -84,15 +143,21 @@ public sealed class SystemToastInboxService : IDisposable
             if (!listening)
             {
                 await PollAsync();
-                lock (listenerGate)
+                var currentListener = listener!;
+                await ToastInboxThreading.RunAsync(() =>
                 {
-                    if (disposed) return;
-                    if (!listening)
+                    lock (listenerGate)
                     {
-                        listener.NotificationChanged += Listener_NotificationChanged;
+                        if (disposed || listening) return;
+                        ToastInboxDiagnostics.Write(
+                            "listener-subscribe-attempt",
+                            0,
+                            $"notification-changed=true; apartment={Thread.CurrentThread.GetApartmentState()}");
+                        currentListener.NotificationChanged += Listener_NotificationChanged;
                         listening = true;
+                        ToastInboxDiagnostics.Write("listener-subscribed", 0, "notification-changed=true");
                     }
-                }
+                });
                 await PollAsync();
             }
             lock (listenerGate)
@@ -104,6 +169,7 @@ public sealed class SystemToastInboxService : IDisposable
         catch (Exception exception)
         {
             System.Diagnostics.Debug.WriteLine($"Toast inbox unavailable: {exception.Message}");
+            ToastInboxDiagnostics.Write("start-failed", 0, ToastInboxDiagnostics.Failure(exception));
             SetAccess(ToastInboxAccess.Unavailable);
         }
         finally
@@ -132,12 +198,14 @@ public sealed class SystemToastInboxService : IDisposable
                 lock (knownIdsGate)
                     foreach (var message in messages) knownIds.Add(message.Id);
                 initialized = true;
+                ToastInboxDiagnostics.Write("poll-baseline", 0, $"messages={messages.Length}");
                 return;
             }
 
             foreach (var message in messages)
             {
                 if (!TryRemember(message.Id)) continue;
+                ToastInboxDiagnostics.Write("poll-published", message.Id, ToastInboxDiagnostics.Source(message));
                 ToastReceived?.Invoke(message);
             }
 
@@ -153,6 +221,7 @@ public sealed class SystemToastInboxService : IDisposable
         catch (Exception exception)
         {
             System.Diagnostics.Debug.WriteLine($"Toast inbox poll failed: {exception.Message}");
+            ToastInboxDiagnostics.Write("poll-failed", 0, ToastInboxDiagnostics.Failure(exception));
         }
         finally
         {
@@ -164,18 +233,44 @@ public sealed class SystemToastInboxService : IDisposable
         UserNotificationListener sender,
         UserNotificationChangedEventArgs args)
     {
-        if (disposed || args.ChangeKind != UserNotificationChangedKind.Added) return;
+        if (disposed) return;
+        ToastInboxDiagnostics.Write("listener-event", args.UserNotificationId, $"kind={args.ChangeKind}");
+        if (args.ChangeKind != UserNotificationChangedKind.Added) return;
+        _ = PublishChangedNotificationAsync(sender, args.UserNotificationId);
+    }
+
+    async Task PublishChangedNotificationAsync(UserNotificationListener sender, uint notificationId)
+    {
         try
         {
-            var notification = sender.GetNotification(args.UserNotificationId);
-            if (notification is null) return;
-            var message = ToMessage(notification);
-            if (message is null || !TryRemember(message.Id)) return;
-            ToastReceived?.Invoke(message);
+            for (var attempt = 0; attempt < NotificationReadRetryCount; attempt++)
+            {
+                var notification = sender.GetNotification(notificationId);
+                var message = notification is null ? null : ToMessage(notification);
+                if (message is not null)
+                {
+                    if (!TryRemember(message.Id))
+                    {
+                        ToastInboxDiagnostics.Write("event-known", message.Id, ToastInboxDiagnostics.Source(message));
+                        return;
+                    }
+                    ToastInboxDiagnostics.Write("event-published", message.Id, ToastInboxDiagnostics.Source(message));
+                    ToastReceived?.Invoke(message);
+                    return;
+                }
+
+                ToastInboxDiagnostics.Write(
+                    notification is null ? "event-not-found" : "event-unreadable",
+                    notificationId,
+                    $"attempt={attempt + 1}");
+                if (attempt < NotificationReadRetryCount - 1)
+                    await Task.Delay(NotificationReadRetryDelay);
+            }
         }
         catch (Exception exception)
         {
             System.Diagnostics.Debug.WriteLine($"Toast inbox event failed: {exception.Message}");
+            ToastInboxDiagnostics.Write("event-failed", notificationId, ToastInboxDiagnostics.Failure(exception));
         }
     }
 
@@ -211,6 +306,7 @@ public sealed class SystemToastInboxService : IDisposable
     {
         if (Access == value) return;
         Access = value;
+        ToastInboxDiagnostics.Write("access-changed", 0, $"value={value}");
         AccessChanged?.Invoke(value);
     }
 

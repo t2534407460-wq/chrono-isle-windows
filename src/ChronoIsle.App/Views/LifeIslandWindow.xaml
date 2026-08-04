@@ -276,7 +276,7 @@
               <StackPanel x:Name="SummaryWidgets" Orientation="Horizontal" Margin="9,1,10,0" VerticalAlignment="Center">
                 <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="NetworkSpeedSummary" Width="162" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="NetworkSpeedSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="CpuUsageSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -398,10 +398,15 @@
                 <Button x:Name="QuickAskDashboardTab" Content="快问" Click="QuickAskTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
                 <Button x:Name="ToolsDashboardTab" Content="工具" Click="ToolsTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
               </StackPanel>
-              <Button x:Name="IslandSettingsButton" Grid.Column="1" Content="⚙ 设置"
-                      Click="Settings_Click" Style="{StaticResource IslandTab}"
-                      AutomationProperties.AutomationId="IslandSettingsButton"
-                      HorizontalAlignment="Right"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="IslandManagementButton" Content="☰ 事项管理"
+                        Click="ManageItems_Click" Style="{StaticResource IslandTab}"
+                        AutomationProperties.AutomationId="IslandManagementButton"
+                        Margin="0,0,7,0"/>
+                <Button x:Name="IslandSettingsButton" Content="⚙ 设置"
+                        Click="Settings_Click" Style="{StaticResource IslandTab}"
+                        AutomationProperties.AutomationId="IslandSettingsButton"/>
+              </StackPanel>
             </Grid>
             <Border x:Name="CalendarPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="14">
               <StackPanel>

@@ -77,7 +77,7 @@ public sealed class NamingWindowContractTests
     }
 
     [Fact]
-    public void Today_dashboard_does_not_repeat_quick_ask_or_naming()
+    public void Today_dashboard_does_not_repeat_toolbar_or_tools_actions()
     {
         var workspace = FindWorkspace();
         var code = File.ReadAllText(Path.Combine(
@@ -88,9 +88,10 @@ public sealed class NamingWindowContractTests
             "LifeIslandWindow.xaml.cs"));
 
         Assert.Contains(
-            "new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.ManageItems }",
+            "new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus }",
             code,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("IslandQuickAction.ManageItems }", code, StringComparison.Ordinal);
         Assert.DoesNotContain("IslandQuickAction.QuickAsk", code, StringComparison.Ordinal);
         Assert.DoesNotContain("IslandQuickAction.Naming", code, StringComparison.Ordinal);
     }

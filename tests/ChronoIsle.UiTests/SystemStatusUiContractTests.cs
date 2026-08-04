@@ -68,6 +68,8 @@ public sealed class SystemStatusUiContractTests
         var notificationSource = File.ReadAllText(notificationSourcePath);
         var inboxSource = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "Services", "SystemToastInboxService.cs"));
+        var appSource = File.ReadAllText(Path.Combine(
+            workspace, "src", "ChronoIsle.App", "App.xaml.cs"));
 
         Assert.DoesNotContain("x:Name=\"SystemToastHeader\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("SystemToastHeader", source, StringComparison.Ordinal);
@@ -87,8 +89,14 @@ public sealed class SystemStatusUiContractTests
         Assert.Contains("retractTimer.Stop();", notificationSource, StringComparison.Ordinal);
         Assert.Contains("retractTimer.Start();", notificationSource, StringComparison.Ordinal);
         Assert.Contains("toastInbox.ToastReceived += message", source, StringComparison.Ordinal);
+        Assert.Contains("DispatcherPriority.Send", source, StringComparison.Ordinal);
+        Assert.Contains("new Action(() =>", source, StringComparison.Ordinal);
+        Assert.Contains("ShowSystemToast(message);", source, StringComparison.Ordinal);
         Assert.Contains("notificationWindow.ShowMessage(message);", source, StringComparison.Ordinal);
-        Assert.Contains("listener.NotificationChanged += Listener_NotificationChanged;", inboxSource, StringComparison.Ordinal);
+        Assert.Contains("island.Loaded += async (_, _) => await StartToastInboxAsync();", appSource, StringComparison.Ordinal);
+        Assert.Contains("async Task StartToastInboxAsync()", appSource, StringComparison.Ordinal);
+        Assert.Contains("await serviceProvider.GetRequiredService<SystemToastInboxService>().StartAsync();", appSource, StringComparison.Ordinal);
+        Assert.Contains(".NotificationChanged += Listener_NotificationChanged;", inboxSource, StringComparison.Ordinal);
         Assert.Contains("readonly SemaphoreSlim startGate = new(1, 1);", inboxSource, StringComparison.Ordinal);
         Assert.Contains("readonly object listenerGate = new();", inboxSource, StringComparison.Ordinal);
         Assert.Contains("await startGate.WaitAsync();", inboxSource, StringComparison.Ordinal);
@@ -96,7 +104,10 @@ public sealed class SystemStatusUiContractTests
         Assert.Contains("lock (listenerGate)", inboxSource, StringComparison.Ordinal);
         Assert.Contains("if (disposed) return;", inboxSource, StringComparison.Ordinal);
         Assert.Contains("args.ChangeKind != UserNotificationChangedKind.Added", inboxSource, StringComparison.Ordinal);
-        Assert.Contains("sender.GetNotification(args.UserNotificationId)", inboxSource, StringComparison.Ordinal);
+        Assert.Contains("sender.GetNotification(notificationId)", inboxSource, StringComparison.Ordinal);
+        Assert.Contains("_ = PublishChangedNotificationAsync(sender, args.UserNotificationId);", inboxSource, StringComparison.Ordinal);
+        Assert.Contains("const int NotificationReadRetryCount = 3;", inboxSource, StringComparison.Ordinal);
+        Assert.Contains("await Task.Delay(NotificationReadRetryDelay);", inboxSource, StringComparison.Ordinal);
         Assert.Contains("listener.NotificationChanged -= Listener_NotificationChanged;", inboxSource, StringComparison.Ordinal);
         Assert.Contains("notification.Notification.Visual.Bindings", inboxSource, StringComparison.Ordinal);
     }

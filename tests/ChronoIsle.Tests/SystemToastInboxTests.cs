@@ -1,9 +1,64 @@
 using ChronoIsle.App.Services;
+using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace ChronoIsle.Tests;
 
 public sealed class SystemToastInboxTests
 {
+    [Fact]
+    public void ToastInboxDiagnostics_FormatsSingleLineOperationalMetadata()
+    {
+        var type = typeof(SystemToastInboxService).Assembly.GetType(
+            "ChronoIsle.App.Services.ToastInboxDiagnostics");
+
+        Assert.NotNull(type);
+        var format = type.GetMethod("Format", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(format);
+        var entry = (string?)format.Invoke(
+            null,
+            [new DateTimeOffset(2026, 8, 4, 8, 0, 0, TimeSpan.Zero), "event", 42u, "kind=Updated; app=ChatGPT"]);
+
+        Assert.Equal(
+            $"2026-08-04T08:00:00.0000000+00:00 | event | id=42 | kind=Updated; app=ChatGPT{Environment.NewLine}",
+            entry);
+        Assert.DoesNotContain("message body", entry, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToastInboxDiagnostics_DescribesComFailureWithoutItsMessage()
+    {
+        var type = typeof(SystemToastInboxService).Assembly.GetType(
+            "ChronoIsle.App.Services.ToastInboxDiagnostics");
+
+        Assert.NotNull(type);
+        var failure = type.GetMethod("Failure", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(failure);
+        var detail = (string?)failure.Invoke(
+            null,
+            [new COMException("private notification text", unchecked((int)0x80004005))]);
+
+        Assert.Equal("exception=COMException; hresult=0x80004005", detail);
+        Assert.DoesNotContain("private notification text", detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ToastInboxThreading_RunsSubscriptionWorkOnMtaThread()
+    {
+        var type = typeof(SystemToastInboxService).Assembly.GetType(
+            "ChronoIsle.App.Services.ToastInboxThreading");
+
+        Assert.NotNull(type);
+        var run = type.GetMethod("RunAsync", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(run);
+        var apartment = ApartmentState.Unknown;
+        var task = (Task?)run.Invoke(null, [new Action(() => apartment = Thread.CurrentThread.GetApartmentState())]);
+
+        Assert.NotNull(task);
+        await task;
+        Assert.Equal(ApartmentState.MTA, apartment);
+    }
+
     [Fact]
     public void ToastTextComposer_UsesFirstLineAsTitle()
     {
