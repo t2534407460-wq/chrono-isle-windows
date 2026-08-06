@@ -28,7 +28,7 @@ public sealed class CollapsedIslandCustomizationContractTests
     {
         var (xaml, source) = IslandFiles();
 
-        Assert.Contains("x:Name=\"SummaryWidgets\" Orientation=\"Horizontal\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<DockPanel x:Name=\"SummaryWidgets\" LastChildFill=\"True\"", xaml, StringComparison.Ordinal);
         foreach (var widget in new[] { "Summary", "NetworkSpeedSummary", "CpuUsageSummary", "MemoryUsageSummary" })
             Assert.Contains($"x:Name=\"{widget}\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"NetworkSpeedSummary\" Width=\"162\"", xaml, StringComparison.Ordinal);
@@ -43,6 +43,20 @@ public sealed class CollapsedIslandCustomizationContractTests
         Assert.Contains("ApplyCollapsedPreferences(currentPreferences);", source, StringComparison.Ordinal);
         Assert.Contains("Refresh();", source, StringComparison.Ordinal);
         Assert.DoesNotContain("UpdateCollapsedMediaView(snapshot, preferences.Load())", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CollapsedIsland_KeepsCpuAndMemoryInsideTheSummaryArea()
+    {
+        var (xaml, _) = IslandFiles();
+
+        Assert.Contains("<DockPanel x:Name=\"SummaryWidgets\" LastChildFill=\"True\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"MemoryUsageSummary\" DockPanel.Dock=\"Right\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"CpuUsageSummary\" DockPanel.Dock=\"Right\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"NetworkSpeedSummary\" DockPanel.Dock=\"Right\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<ContentPresenter HorizontalAlignment=\"{TemplateBinding HorizontalContentAlignment}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"AgendaSummaryButton\" Grid.Column=\"1\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("HorizontalContentAlignment=\"Stretch\"", xaml, StringComparison.Ordinal);
     }
 
     static (string Xaml, string Source) IslandFiles()

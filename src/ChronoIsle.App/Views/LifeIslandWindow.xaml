@@ -78,12 +78,14 @@
       <Setter Property="MinWidth" Value="0"/>
       <Setter Property="MinHeight" Value="0"/>
       <Setter Property="Focusable" Value="False"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Border Background="{TemplateBinding Background}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
           </ControlTemplate>
         </Setter.Value>
@@ -272,17 +274,17 @@
             </Grid>
             <Button x:Name="AgendaSummaryButton" Grid.Column="1"
                     AutomationProperties.AutomationId="IslandAgendaButton"
-                    Style="{StaticResource CollapsedHeaderButton}">
-              <StackPanel x:Name="SummaryWidgets" Orientation="Horizontal" Margin="9,1,10,0" VerticalAlignment="Center">
+                    Style="{StaticResource CollapsedHeaderButton}" HorizontalContentAlignment="Stretch">
+              <DockPanel x:Name="SummaryWidgets" LastChildFill="True" Margin="9,1,10,0" VerticalAlignment="Center">
+                <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="NetworkSpeedSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
-                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="CpuUsageSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
-                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="MemoryUsageSummary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
-                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-              </StackPanel>
+              </DockPanel>
             </Button>
           </Grid>
           <StackPanel x:Name="ClockGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,13,0">
