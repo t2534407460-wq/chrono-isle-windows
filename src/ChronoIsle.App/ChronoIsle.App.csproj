@@ -9,6 +9,7 @@
     <AssemblyName>ChronoIsle</AssemblyName>
     <RootNamespace>ChronoIsle.App</RootNamespace>
     <ApplicationIcon>Assets\face.ico</ApplicationIcon>
+    <ApplicationManifest>..\..\installer\package-identity\ChronoIsle.exe.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
