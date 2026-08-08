@@ -280,7 +280,7 @@
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Width="130" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>

@@ -128,6 +128,8 @@ public partial class LifeIslandWindow : Window
     double fullscreenOriginalTop;
     string? fullscreenOriginalTaskbarMonitor;
     double fullscreenOriginalTaskbarRatio;
+    bool fullscreenOriginalTopDockFolded;
+    double fullscreenOriginalTopDockUnfoldedTop;
 
     enum IslandPlacement { Free, Top, Taskbar }
     enum CollapsedHeaderTarget { None, QuickAsk, Calendar, Telemetry, Today }
@@ -2390,6 +2392,8 @@ public partial class LifeIslandWindow : Window
             fullscreenOriginalTop = Top;
             fullscreenOriginalTaskbarMonitor = taskbarMonitorDeviceName;
             fullscreenOriginalTaskbarRatio = taskbarHorizontalRatio;
+            fullscreenOriginalTopDockFolded = topDockFolded;
+            fullscreenOriginalTopDockUnfoldedTop = topDockUnfoldedTop;
         }
 
         var destination = System.Windows.Forms.Screen.AllScreens
@@ -2429,9 +2433,23 @@ public partial class LifeIslandWindow : Window
             ApplyPlacementVisuals();
             Left = fullscreenOriginalLeft;
             Top = fullscreenOriginalTop;
+            RestoreTopDockFoldAfterFullscreen();
         }
         if (fullscreenFallbackHidden && !IsVisible) Show();
         fullscreenFallbackHidden = false;
+    }
+
+    void RestoreTopDockFoldAfterFullscreen()
+    {
+        if (placement != IslandPlacement.Top || !fullscreenOriginalTopDockFolded) return;
+
+        Top = double.IsFinite(fullscreenOriginalTopDockUnfoldedTop)
+            ? fullscreenOriginalTopDockUnfoldedTop
+            : fullscreenOriginalTop;
+        pointerHover = false;
+        topDockFolded = false;
+        topDockUnfoldedTop = double.NaN;
+        SetTopDockFolded(true);
     }
 
     void BuildCalendar()
