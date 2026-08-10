@@ -638,9 +638,8 @@
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,0,4,4">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
-                          <Path Data="{StaticResource Icon.PlatformLeague}" Fill="{DynamicResource Brush.Accent}"/>
-                        </Viewbox>
+                        <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-league.ico"
+                               Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                           <TextBlock Text="英雄联盟" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
                           <TextBlock x:Name="NetworkSpeedTestLeagueLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
@@ -651,9 +650,8 @@
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="4,0,0,4">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
-                          <Path Data="{StaticResource Icon.PlatformDouyin}" Fill="{DynamicResource Brush.Accent}"/>
-                        </Viewbox>
+                        <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-douyin.ico"
+                               Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                           <TextBlock Text="抖音" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
                           <TextBlock x:Name="NetworkSpeedTestDouyinLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
@@ -664,9 +662,8 @@
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,4,4,4">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
-                          <Path Data="{StaticResource Icon.PlatformJd}" Fill="{DynamicResource Brush.Accent}"/>
-                        </Viewbox>
+                        <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-jd.ico"
+                               Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                           <TextBlock Text="京东" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
                           <TextBlock x:Name="NetworkSpeedTestJdLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
@@ -677,9 +674,8 @@
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="4,4,0,4">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
-                          <Path Data="{StaticResource Icon.PlatformCtrip}" Fill="{DynamicResource Brush.Accent}"/>
-                        </Viewbox>
+                        <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-ctrip.ico"
+                               Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                           <TextBlock Text="携程" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
                           <TextBlock x:Name="NetworkSpeedTestCtripLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
@@ -690,9 +686,8 @@
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,4,4,0">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Viewbox Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center">
-                          <Path Data="{StaticResource Icon.PlatformToutiao}" Fill="{DynamicResource Brush.Accent}"/>
-                        </Viewbox>
+                        <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-toutiao.ico"
+                               Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
                           <TextBlock Text="今日头条" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
                           <TextBlock x:Name="NetworkSpeedTestToutiaoLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>

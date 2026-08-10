@@ -12,6 +12,8 @@ public sealed class NetworkSpeedTestUiContractTests
             workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml"));
         var controls = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "Resources", "Controls.xaml"));
+        var project = File.ReadAllText(Path.Combine(
+            workspace, "src", "ChronoIsle.App", "ChronoIsle.App.csproj"));
         var tab = Element(island, "x:Name=\"NetworkSpeedTestToolTab\"");
         var namingPanel = Element(island, "x:Name=\"NamingToolPanel\"");
         var panel = NetworkSpeedTestPanel(island);
@@ -51,21 +53,21 @@ public sealed class NetworkSpeedTestUiContractTests
         })
             Assert.Contains($"x:Name=\"{name}\"", panel, StringComparison.Ordinal);
 
-        AssertPlatformCard(panel, "Icon.PlatformLeague", "英雄联盟", "NetworkSpeedTestLeagueLatency");
-        AssertPlatformCard(panel, "Icon.PlatformDouyin", "抖音", "NetworkSpeedTestDouyinLatency");
-        AssertPlatformCard(panel, "Icon.PlatformJd", "京东", "NetworkSpeedTestJdLatency");
-        AssertPlatformCard(panel, "Icon.PlatformCtrip", "携程", "NetworkSpeedTestCtripLatency");
-        AssertPlatformCard(panel, "Icon.PlatformToutiao", "今日头条", "NetworkSpeedTestToutiaoLatency");
-
-        foreach (var key in new[]
+        foreach (var (asset, icon) in new[]
         {
-            "Icon.PlatformLeague",
-            "Icon.PlatformDouyin",
-            "Icon.PlatformJd",
-            "Icon.PlatformCtrip",
-            "Icon.PlatformToutiao"
+            ("league", "Icon.PlatformLeague"),
+            ("douyin", "Icon.PlatformDouyin"),
+            ("jd", "Icon.PlatformJd"),
+            ("ctrip", "Icon.PlatformCtrip"),
+            ("toutiao", "Icon.PlatformToutiao")
         })
-            Assert.Contains($"x:Key=\"{key}\"", controls, StringComparison.Ordinal);
+        {
+            Assert.Contains($"pack://application:,,,/ChronoIsle;component/Assets/platform-{asset}.ico", island, StringComparison.Ordinal);
+            Assert.Contains($"Assets\\platform-{asset}.ico", project, StringComparison.Ordinal);
+            Assert.DoesNotContain(icon, panel, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("Icon.PlatformLeague", controls, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -113,13 +115,6 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("FillBehavior = FillBehavior.HoldEnd", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("#39C98B", island, StringComparison.Ordinal);
         Assert.DoesNotContain("#39C98B", codeBehind, StringComparison.Ordinal);
-    }
-
-    static void AssertPlatformCard(string panel, string icon, string platform, string latencyName)
-    {
-        Assert.Contains($"Data=\"{{StaticResource {icon}}}\"", panel, StringComparison.Ordinal);
-        Assert.Contains($"Text=\"{platform}\"", panel, StringComparison.Ordinal);
-        Assert.Contains($"x:Name=\"{latencyName}\" Text=\"未测得\"", panel, StringComparison.Ordinal);
     }
 
     static string NetworkSpeedTestPanel(string island)

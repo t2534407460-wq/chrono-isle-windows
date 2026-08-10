@@ -54,5 +54,10 @@
   <ItemGroup>
     <Resource Include="Assets\face.ico" />
     <Resource Include="Assets\island-mascot.png" />
+    <Resource Include="Assets\platform-league.ico" />
+    <Resource Include="Assets\platform-douyin.ico" />
+    <Resource Include="Assets\platform-jd.ico" />
+    <Resource Include="Assets\platform-ctrip.ico" />
+    <Resource Include="Assets\platform-toutiao.ico" />
   </ItemGroup>
 </Project>
