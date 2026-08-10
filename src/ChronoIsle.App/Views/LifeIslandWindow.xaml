@@ -595,6 +595,10 @@
                         <TextBlock x:Name="NetworkSpeedTestPhaseText" Text="等待开始测速"
                                    Foreground="{DynamicResource Brush.TextSecondary}"
                                    FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        <Button x:Name="NetworkSpeedTestUnitButton" Content="Mbps ⇄ Mb/s"
+                                Style="{StaticResource IslandTab}" Click="NetworkSpeedTestUnitButton_Click"
+                                MinHeight="20" Height="20" Padding="6,1" FontSize="10"
+                                HorizontalAlignment="Center" Margin="0,2,0,0"/>
                       </StackPanel>
                     </Canvas>
                   </Grid>

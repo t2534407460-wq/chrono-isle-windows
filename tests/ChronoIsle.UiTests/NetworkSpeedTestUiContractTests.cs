@@ -152,6 +152,53 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.DoesNotContain("#39C98B", codeBehind, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NetworkSpeedTest_TogglesOnlyTheDisplayedRateUnit()
+    {
+        var workspace = FindWorkspace();
+        var island = File.ReadAllText(Path.Combine(
+            workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml"));
+        var codeBehind = File.ReadAllText(Path.Combine(
+            workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml.cs"));
+        var panel = NetworkSpeedTestPanel(island);
+        var unitButton = Element(panel, "x:Name=\"NetworkSpeedTestUnitButton\"");
+        var phaseTextIndex = panel.IndexOf("x:Name=\"NetworkSpeedTestPhaseText\"", StringComparison.Ordinal);
+        var unitButtonIndex = panel.IndexOf("x:Name=\"NetworkSpeedTestUnitButton\"", StringComparison.Ordinal);
+        var enumStart = codeBehind.IndexOf("enum NetworkSpeedTestDisplayUnit", StringComparison.Ordinal);
+        var enumEnd = codeBehind.IndexOf('}', enumStart);
+        var handlerStart = codeBehind.IndexOf("void NetworkSpeedTestUnitButton_Click", StringComparison.Ordinal);
+        var handlerEnd = codeBehind.IndexOf("    void ShowCalendarDashboard()", handlerStart, StringComparison.Ordinal);
+        var formatStart = codeBehind.IndexOf("string FormatNetworkSpeedTestRate(double? rate)", StringComparison.Ordinal);
+        var formatEnd = codeBehind.IndexOf("    static string FormatNetworkSpeedTestLatency", formatStart, StringComparison.Ordinal);
+
+        Assert.Contains("Content=\"Mbps ⇄ Mb/s\"", unitButton, StringComparison.Ordinal);
+        Assert.Contains("Style=\"{StaticResource IslandTab}\"", unitButton, StringComparison.Ordinal);
+        Assert.Contains("Click=\"NetworkSpeedTestUnitButton_Click\"", unitButton, StringComparison.Ordinal);
+        Assert.True(phaseTextIndex >= 0 && phaseTextIndex < unitButtonIndex, "The unit toggle must sit by the gauge phase text.");
+        Assert.True(enumStart >= 0 && enumEnd > enumStart, "The rate-unit enum is missing.");
+        var unitEnum = codeBehind[enumStart..(enumEnd + 1)];
+        Assert.Contains("Mbps", unitEnum, StringComparison.Ordinal);
+        Assert.Contains("MbPerSecond", unitEnum, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("string NetworkSpeedTestRateUnit =>", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("? \"Mbps\" : \"Mb/s\"", codeBehind, StringComparison.Ordinal);
+        Assert.True(handlerStart >= 0 && handlerEnd > handlerStart, "The rate-unit click handler is missing.");
+        var unitHandler = codeBehind[handlerStart..handlerEnd];
+        Assert.Contains("NetworkSpeedTestDisplayUnit.MbPerSecond", unitHandler, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestDisplayUnit.Mbps", unitHandler, StringComparison.Ordinal);
+        Assert.Contains("UpdateNetworkSpeedTestView(networkSpeedTest.Current);", unitHandler, StringComparison.Ordinal);
+        var updateStart = codeBehind.IndexOf("void UpdateNetworkSpeedTestView(NetworkSpeedTestSnapshot snapshot)", StringComparison.Ordinal);
+        var gaugeRateStart = codeBehind.IndexOf("var gaugeRate = snapshot.Phase switch", updateStart, StringComparison.Ordinal);
+        var gaugeUnitUpdate = codeBehind.IndexOf("NetworkSpeedTestGaugeUnit.Text = NetworkSpeedTestRateUnit;", updateStart, StringComparison.Ordinal);
+        Assert.True(updateStart >= 0 && gaugeRateStart > updateStart, "The speed-test view update is missing.");
+        Assert.True(gaugeUnitUpdate > updateStart && gaugeUnitUpdate < gaugeRateStart,
+            "The gauge unit must refresh for every snapshot, including completed tests.");
+        Assert.True(formatStart >= 0 && formatEnd > formatStart, "The rate formatter is missing.");
+        var rateFormatter = codeBehind[formatStart..formatEnd];
+        Assert.Contains("value.ToString(\"0.00\", CultureInfo.InvariantCulture)", rateFormatter, StringComparison.Ordinal);
+        Assert.Contains("{NetworkSpeedTestRateUnit}", rateFormatter, StringComparison.Ordinal);
+    }
+
     static string NetworkSpeedTestPanel(string island)
     {
         var panelStart = island.IndexOf("x:Name=\"NetworkSpeedTestToolPanel\"", StringComparison.Ordinal);

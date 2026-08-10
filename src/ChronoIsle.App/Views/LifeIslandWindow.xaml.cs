@@ -95,6 +95,7 @@ public partial class LifeIslandWindow : Window
     bool collapsedMediaControlsVisible;
     bool collapsedMediaControlsPinned;
     bool networkSpeedTestSpinnerAnimating;
+    NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit;
     bool isClosed;
     bool musicModeActive;
     IslandPlacement placement;
@@ -136,7 +137,11 @@ public partial class LifeIslandWindow : Window
 
     enum IslandPlacement { Free, Top, Taskbar }
     enum CollapsedHeaderTarget { None, QuickAsk, Calendar, Telemetry, Today }
+    enum NetworkSpeedTestDisplayUnit { Mbps, MbPerSecond }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
+
+    string NetworkSpeedTestRateUnit => networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps
+        ? "Mbps" : "Mb/s";
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -1860,6 +1865,14 @@ public partial class LifeIslandWindow : Window
     void NamingToolTab_Click(object sender, RoutedEventArgs e) => ShowNamingTool();
     void NetworkSpeedTestToolTab_Click(object sender, RoutedEventArgs e) => ShowNetworkSpeedTestTool();
 
+    void NetworkSpeedTestUnitButton_Click(object sender, RoutedEventArgs e)
+    {
+        networkSpeedTestDisplayUnit = networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps
+            ? NetworkSpeedTestDisplayUnit.MbPerSecond
+            : NetworkSpeedTestDisplayUnit.Mbps;
+        UpdateNetworkSpeedTestView(networkSpeedTest.Current);
+    }
+
     async void NetworkSpeedTestStartButton_Click(object sender, RoutedEventArgs e)
     {
         if (networkSpeedTest.Current.IsRunning)
@@ -1977,6 +1990,7 @@ public partial class LifeIslandWindow : Window
             platform => platform.Milliseconds,
             StringComparer.Ordinal);
         NetworkSpeedTestPhaseText.Text = snapshot.Status;
+        NetworkSpeedTestGaugeUnit.Text = NetworkSpeedTestRateUnit;
         NetworkSpeedTestDownloadValue.Text = FormatNetworkSpeedTestRate(snapshot.DownloadMegabitsPerSecond);
         NetworkSpeedTestUploadValue.Text = FormatNetworkSpeedTestRate(snapshot.UploadMegabitsPerSecond);
         NetworkSpeedTestNodeLatencyValue.Text = FormatNetworkSpeedTestLatency(snapshot.NodeLatencyMilliseconds);
@@ -1998,13 +2012,11 @@ public partial class LifeIslandWindow : Window
         if (gaugeRate is { } rate && double.IsFinite(rate))
         {
             NetworkSpeedTestGaugeValue.Text = rate.ToString("0.00", CultureInfo.InvariantCulture);
-            NetworkSpeedTestGaugeUnit.Text = "Mbps";
             AnimateNetworkSpeedTestGauge(rate);
         }
         else if (snapshot.Phase is NetworkSpeedTestPhase.Idle or NetworkSpeedTestPhase.SelectingNode or NetworkSpeedTestPhase.MeasuringPlatforms)
         {
             NetworkSpeedTestGaugeValue.Text = "--";
-            NetworkSpeedTestGaugeUnit.Text = "Mbps";
             ResetNetworkSpeedTestGauge();
         }
         else
@@ -2018,9 +2030,9 @@ public partial class LifeIslandWindow : Window
             StopNetworkSpeedTestSpinner();
     }
 
-    static string FormatNetworkSpeedTestRate(double? rate) =>
+    string FormatNetworkSpeedTestRate(double? rate) =>
         rate is { } value && double.IsFinite(value)
-            ? $"{value.ToString("0.00", CultureInfo.InvariantCulture)} Mbps"
+            ? $"{value.ToString("0.00", CultureInfo.InvariantCulture)} {NetworkSpeedTestRateUnit}"
             : "未测得";
 
     static string FormatNetworkSpeedTestLatency(long? milliseconds) =>
