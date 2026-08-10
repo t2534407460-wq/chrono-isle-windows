@@ -34,7 +34,7 @@
     <Compile Include="Services\Productivity\*.cs" />
     <Compile Include="Services\Reporting\*.cs" />
     <Compile Include="Services\Sync\*.cs" />
-    <Compile Include="Services\LifeDataService.cs;Services\ProviderSettingsService.cs;Services\OpenAiChatService.cs;Services\AutoStartService.cs;Services\LegacyDataMigration.cs;Services\MediaSessionService.cs;Services\AudioSpectrumService.cs;Services\LyricsService.cs;Services\FullscreenAvoidanceService.cs;Services\SystemTelemetryService.cs;Services\SystemToastInboxService.cs;Services\ThemeService.cs;Services\NetworkSpeedTestService.cs" />
+    <Compile Include="Services\LifeDataService.cs;Services\ProviderSettingsService.cs;Services\OpenAiChatService.cs;Services\AutoStartService.cs;Services\LegacyDataMigration.cs;Services\MediaSessionService.cs;Services\AudioSpectrumService.cs;Services\LyricsService.cs;Services\FullscreenAvoidanceService.cs;Services\SystemTelemetryService.cs;Services\SystemToastInboxService.cs;Services\ThemeService.cs;Services\NetworkSpeedTestService.cs;Services\ForegroundFpsService.cs" />
     <Compile Include="Services\LifePreferencesService.cs;Services\DesktopMusicSessionDetector.cs;Services\AssistantIntentService.cs;Services\AssistantActionService.cs;Services\ReminderService.cs;Services\WindowsNotificationService.cs;Services\RecurringReminderData.cs;Services\SingleReminderData.cs;Services\ConversationRouter.cs;Services\LocalAgendaQueryService.cs;Services\LifeTrayService.cs;Services\ChinaStatutoryHolidayCalendar.cs" />
     <Compile Remove="Services\LifeDataService.cs;Services\RecurringReminderData.cs;Services\SingleReminderData.cs" />
     <Compile Remove="Services\ReminderService.cs" />
@@ -59,5 +59,15 @@
     <Resource Include="Assets\platform-jd.ico" />
     <Resource Include="Assets\platform-ctrip.ico" />
     <Resource Include="Assets\platform-toutiao.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\PresentMon\PresentMon-2.4.0-x64.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="Assets\PresentMon\LICENSE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 </Project>
