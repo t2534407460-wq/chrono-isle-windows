@@ -41,8 +41,8 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<AudioSpectrumService>();
         collection.AddSingleton<FullscreenAvoidanceService>();
         collection.AddSingleton<SystemTelemetryService>();
+        collection.AddSingleton<ForegroundFpsService>();
         collection.AddSingleton<NetworkSpeedTestService>();
-        collection.AddSingleton<SystemToastInboxService>();
         collection.AddSingleton<ThemeService>();
         collection.AddSingleton<IChatCompletionClient>(provider => provider.GetRequiredService<OpenAiChatService>());
         collection.AddSingleton<ChinaStatutoryHolidayCalendar>();
@@ -115,6 +115,7 @@ public partial class App : System.Windows.Application
         });
 
         var island = services.GetRequiredService<LifeIslandWindow>();
+        var foregroundFps = services.GetRequiredService<ForegroundFpsService>();
         island.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
         island.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
@@ -134,19 +135,9 @@ public partial class App : System.Windows.Application
         tray.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
         tray.ExitRequested += (_, _) => Dispatcher.BeginInvoke(Shutdown);
         tray.Initialize();
-        if (!uiTestMode)
-            island.Loaded += async (_, _) => await StartToastInboxAsync();
         island.Show();
         if (!uiTestMode)
         {
-            var media = services.GetRequiredService<MediaSessionService>();
-            _ = media.StartAsync().ContinueWith(task =>
-            {
-                if (task.Exception is not null)
-                    System.Diagnostics.Debug.WriteLine($"Media session start failed: {task.Exception.GetBaseException().Message}");
-            }, TaskScheduler.Default);
-            services.GetRequiredService<AudioSpectrumService>().Start();
-
             var fullscreen = services.GetRequiredService<FullscreenAvoidanceService>();
             fullscreen.ContextChanged += context =>
                 Dispatcher.BeginInvoke(() => island.SetFullscreenAvoidance(context));
@@ -156,23 +147,22 @@ public partial class App : System.Windows.Application
                     island.SetFullscreenAvoidance(fullscreen.Current);
                     var currentPreferences = services.GetRequiredService<LifePreferencesService>().Load();
                     if (currentPreferences.TelemetryEnabled)
+                    {
                         services.GetRequiredService<SystemTelemetryService>().Start();
-                    if (currentPreferences.ToastInboxEnabled)
-                        _ = StartToastInboxAsync();
+                        foregroundFps.Start();
+                    }
+                    else
+                        foregroundFps.Stop();
                 });
             fullscreen.Start();
 
             if (services.GetRequiredService<LifePreferencesService>().Load().TelemetryEnabled)
+            {
                 services.GetRequiredService<SystemTelemetryService>().Start();
+                foregroundFps.Start();
+            }
         }
         services.GetRequiredService<ReminderService>().Start();
-    }
-
-    async Task StartToastInboxAsync()
-    {
-        var serviceProvider = services!;
-        if (!serviceProvider.GetRequiredService<LifePreferencesService>().Load().ToastInboxEnabled) return;
-        await serviceProvider.GetRequiredService<SystemToastInboxService>().StartAsync();
     }
 
     void OpenMain()

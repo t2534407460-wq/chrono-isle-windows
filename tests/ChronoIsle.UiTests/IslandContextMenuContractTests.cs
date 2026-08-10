@@ -46,14 +46,14 @@ public sealed class IslandContextMenuContractTests
         foreach (var action in new[]
                  {
                      "ManageItems", "Settings", "PauseReminders", "ToggleDoNotDisturb",
-                     "ToggleMusicMode", "ToggleTopDockAutoFold"
+                     "ToggleTopDockAutoFold"
                  })
             Assert.Contains($"IslandQuickAction.{action}", contextActions, StringComparison.Ordinal);
 
         foreach (var action in new[]
                  {
                      "AddTodo", "AddReminder", "StartFocus", "ViewToday",
-                     "ViewCalendar", "ViewStatus", "QuickAsk"
+                     "ViewCalendar", "ViewStatus", "QuickAsk", "ToggleMusicMode"
                  })
             Assert.DoesNotContain($"IslandQuickAction.{action}", contextActions, StringComparison.Ordinal);
     }
@@ -68,7 +68,7 @@ public sealed class IslandContextMenuContractTests
             "IsCheckable = action is IslandQuickAction.ToggleDoNotDisturb",
             code,
             StringComparison.Ordinal);
-        Assert.Contains("or IslandQuickAction.ToggleMusicMode", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("IslandQuickAction.ToggleMusicMode", code, StringComparison.Ordinal);
         Assert.Contains("or IslandQuickAction.ToggleTopDockAutoFold", code, StringComparison.Ordinal);
         Assert.Contains("menu.Items.OfType<MenuItem>()", code, StringComparison.Ordinal);
         Assert.Contains("item.Tag is not IslandQuickAction action", code, StringComparison.Ordinal);

@@ -283,6 +283,8 @@
               <DockPanel x:Name="SummaryWidgets" LastChildFill="True" Margin="9,1,10,0" VerticalAlignment="Center">
                 <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="FpsSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Width="130" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"

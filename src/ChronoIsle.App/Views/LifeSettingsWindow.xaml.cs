@@ -56,11 +56,9 @@ public partial class LifeSettingsWindow : Window
         var savedPreferences = preferences.Load();
         committedPreferences = savedPreferences;
         WindowsNotifications.IsChecked = savedPreferences.WindowsNotifications;
-        MediaAutoTakeover.IsChecked = savedPreferences.MediaAutoTakeover;
         ThemeModeSelector.SelectedValue = ThemeService.Parse(savedPreferences.ThemeMode).ToString();
         AccentSchemeSelector.SelectedValue = ThemeService.ParseAccent(savedPreferences.AccentScheme).ToString();
         TelemetryEnabled.IsChecked = savedPreferences.TelemetryEnabled;
-        ToastInboxEnabled.IsChecked = savedPreferences.ToastInboxEnabled;
         GlowBorderEnabled.IsChecked = savedPreferences.GlowBorderEnabled;
         IslandShowMascot.IsChecked = savedPreferences.IslandShowMascot;
         IslandShowStatusLight.IsChecked = savedPreferences.IslandShowStatusLight;
@@ -133,11 +131,9 @@ public partial class LifeSettingsWindow : Window
         {
             WindowsNotifications = WindowsNotifications.IsChecked == true,
             AssistantPersona = Persona.SelectedValue as string ?? "Direct",
-            MediaAutoTakeover = MediaAutoTakeover.IsChecked == true,
             ThemeMode = ThemeModeSelector.SelectedValue as string ?? "System",
             AccentScheme = AccentSchemeSelector.SelectedValue as string ?? "Emerald",
             TelemetryEnabled = TelemetryEnabled.IsChecked == true,
-            ToastInboxEnabled = ToastInboxEnabled.IsChecked == true,
             GlowBorderEnabled = GlowBorderEnabled.IsChecked == true,
             IslandShowMascot = IslandShowMascot.IsChecked == true,
             IslandShowStatusLight = IslandShowStatusLight.IsChecked == true,

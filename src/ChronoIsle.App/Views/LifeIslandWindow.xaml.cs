@@ -51,10 +51,10 @@ public partial class LifeIslandWindow : Window
     readonly MediaSessionService media;
     readonly AudioSpectrumService audioSpectrum;
     readonly SystemTelemetryService telemetry;
+    readonly ForegroundFpsService foregroundFps;
+    readonly Action<ForegroundFpsSnapshot> foregroundFpsSnapshotChanged;
     readonly NetworkSpeedTestService networkSpeedTest;
     readonly Action<NetworkSpeedTestSnapshot> networkSpeedTestSnapshotChanged;
-    readonly SystemToastInboxService toastInbox;
-    readonly IslandNotificationWindow notificationWindow;
     readonly LifeViewModel assistant;
     readonly DispatcherTimer focusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly RectangleGeometry taskbarClipGeometry = new();
@@ -95,7 +95,6 @@ public partial class LifeIslandWindow : Window
     bool networkSpeedTestSpinnerAnimating;
     NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit;
     bool isClosed;
-    bool musicModeActive;
     IslandPlacement placement;
     string? taskbarMonitorDeviceName;
     double taskbarHorizontalRatio = 0.5;
@@ -161,7 +160,6 @@ public partial class LifeIslandWindow : Window
         Settings,
         PauseReminders,
         ToggleDoNotDisturb,
-        ToggleMusicMode,
         ToggleTopDockAutoFold
     }
     public event EventHandler? OpenRequested;
@@ -180,11 +178,10 @@ public partial class LifeIslandWindow : Window
     public LifeIslandWindow(LifeDataService data, ReminderService reminders, ChinaStatutoryHolidayCalendar holidays,
         TodayDashboardService todayDashboard, FocusService focus, ReportService reports, IIslandStateCoordinator islandState,
         TaskAttributesService taskAttributes, LifePreferencesService preferences, ThemeService theme,
-        MediaSessionService media, AudioSpectrumService audioSpectrum, SystemTelemetryService telemetry, SystemToastInboxService toastInbox,
+        MediaSessionService media, AudioSpectrumService audioSpectrum, SystemTelemetryService telemetry, ForegroundFpsService foregroundFps,
         LifeViewModel assistant, NetworkSpeedTestService networkSpeedTest)
     {
         InitializeComponent();
-        notificationWindow = new IslandNotificationWindow();
         this.data = data;
         this.reminders = reminders;
         this.holidays = holidays;
@@ -201,6 +198,17 @@ public partial class LifeIslandWindow : Window
         this.audioSpectrum = audioSpectrum;
         audioSpectrum.SpectrumChanged += AudioSpectrum_SpectrumChanged;
         this.telemetry = telemetry;
+        this.foregroundFps = foregroundFps;
+        foregroundFpsSnapshotChanged = snapshot =>
+        {
+            if (isClosed || Dispatcher.HasShutdownStarted) return;
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (isClosed || Dispatcher.HasShutdownStarted) return;
+                UpdateForegroundFpsSummary(snapshot);
+            });
+        };
+        foregroundFps.SnapshotChanged += foregroundFpsSnapshotChanged;
         this.networkSpeedTest = networkSpeedTest;
         networkSpeedTestSnapshotChanged = snapshot =>
         {
@@ -212,7 +220,6 @@ public partial class LifeIslandWindow : Window
             });
         };
         networkSpeedTest.SnapshotChanged += networkSpeedTestSnapshotChanged;
-        this.toastInbox = toastInbox;
         this.assistant = assistant;
         media.SnapshotChanged += _ =>
         {
@@ -220,18 +227,6 @@ public partial class LifeIslandWindow : Window
             Dispatcher.BeginInvoke(Refresh);
         };
         telemetry.SnapshotChanged += snapshot => Dispatcher.BeginInvoke(() => UpdateTelemetryView(snapshot));
-        toastInbox.ToastReceived += message =>
-        {
-            var source = ToastInboxDiagnostics.Source(message);
-            ToastInboxDiagnostics.Write("ui-queued", message.Id, source);
-            Dispatcher.BeginInvoke(
-                DispatcherPriority.Send,
-                new Action(() =>
-                {
-                    ToastInboxDiagnostics.Write("ui-dispatch", message.Id, source);
-                    ShowSystemToast(message);
-                }));
-        };
         assistant.Messages.CollectionChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         assistant.PropertyChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         Header.ContextMenuOpening += Header_ContextMenuOpening;
@@ -250,8 +245,6 @@ public partial class LifeIslandWindow : Window
             new Action(CollapseWhenForegroundMovesToAnotherProcess));
         IslandLayout.LayoutUpdated += (_, _) => MaintainTaskbarHeaderAnchor();
         MainBorder.SizeChanged += (_, _) => UpdateTaskbarClip();
-        LocationChanged += (_, _) => PositionNotificationWindow();
-        SizeChanged += (_, _) => PositionNotificationWindow();
         taskbarTopmostTimer.Tick += (_, _) => EnsureTaskbarTopmost();
         SourceInitialized += (_, _) =>
         {
@@ -262,6 +255,8 @@ public partial class LifeIslandWindow : Window
         Closed += (_, _) =>
         {
             isClosed = true;
+            foregroundFps.SnapshotChanged -= foregroundFpsSnapshotChanged;
+            foregroundFps.Stop();
             networkSpeedTest.SnapshotChanged -= networkSpeedTestSnapshotChanged;
             networkSpeedTest.Cancel();
             StopNetworkSpeedTestSpinner();
@@ -272,7 +267,6 @@ public partial class LifeIslandWindow : Window
             headerSingleClickTimer.Stop();
             taskbarTopmostTimer.Stop();
             topDockHoverExitTimer.Stop();
-            notificationWindow.Close();
             theme.ThemeChanged -= Theme_Changed;
             audioSpectrum.SpectrumChanged -= AudioSpectrum_SpectrumChanged;
             windowHandle = IntPtr.Zero;
@@ -755,27 +749,11 @@ public partial class LifeIslandWindow : Window
                 StatusLight.Fill = new SolidColorBrush(Color.FromRgb(255, 159, 10));
                 ShowSummaryOverride(reminderBannerItem is null ? ReminderText.Text : $"提醒 · {reminderBannerItem.Title}");
             }
-            else if (currentPreferences.IslandShowMusicMode &&
-                     media.Current is { IsPlaying: true, IsMusic: true } mediaSnapshot)
-            {
-                StatusLight.Fill = new SolidColorBrush(Color.FromRgb(50, 173, 230));
-                ShowSummaryOverride($"♫ {mediaSnapshot.Title}{(string.IsNullOrWhiteSpace(mediaSnapshot.Artist) ? "" : $" · {mediaSnapshot.Artist}")}");
-            }
-            else
-            {
-                UpdateIdleSummary(currentPreferences);
-            }
+            else UpdateIdleSummary(currentPreferences);
         }
-        var currentMusic = currentPreferences.IslandShowMusicMode &&
-                           media.Current is { IsMusic: true } musicSnapshot
-            ? musicSnapshot : null;
-        if (currentMusic?.IsPlaying == true) musicModeActive = true;
-        if (currentMusic is null) musicModeActive = false;
-        var collapsedMedia = musicModeActive ? currentMusic : null;
-        UpdateCollapsedMediaView(collapsedMedia, currentPreferences);
+        UpdateCollapsedMediaView(null, currentPreferences);
         UpdateTelemetryView(telemetry.Current);
-        if (collapsedMedia is not null) SetTopDockFolded(false);
-        else RefreshTopDockAutoFold();
+        RefreshTopDockAutoFold();
         ResizeCollapsedToContent();
         BuildCalendar();
         BuildDayAgenda();
@@ -792,10 +770,7 @@ public partial class LifeIslandWindow : Window
             currentPreferences.IslandShowMascot || currentPreferences.IslandShowStatusLight);
         var showSummary =
             currentPreferences.IslandShowAgendaSummary ||
-            currentPreferences.TelemetryEnabled &&
-            (currentPreferences.IslandShowNetworkSpeed ||
-             currentPreferences.IslandShowCpuUsage ||
-             currentPreferences.IslandShowMemoryUsage);
+            currentPreferences.TelemetryEnabled;
         SetIdleSummaryWidgetVisibility(currentPreferences);
         NetworkStatusLight.Visibility = VisibilityFor(
             currentPreferences.IslandShowNetworkStatus && currentPreferences.TelemetryEnabled);
@@ -816,6 +791,7 @@ public partial class LifeIslandWindow : Window
             currentPreferences.TelemetryEnabled && currentPreferences.IslandShowNetworkSpeed);
         CpuUsageSummary.Visibility = VisibilityFor(
             currentPreferences.TelemetryEnabled && currentPreferences.IslandShowCpuUsage);
+        FpsSummary.Visibility = VisibilityFor(currentPreferences.TelemetryEnabled);
         MemoryUsageSummary.Visibility = VisibilityFor(
             currentPreferences.TelemetryEnabled && currentPreferences.IslandShowMemoryUsage);
     }
@@ -826,6 +802,7 @@ public partial class LifeIslandWindow : Window
         Summary.Visibility = Visibility.Visible;
         NetworkSpeedSummary.Visibility = Visibility.Collapsed;
         CpuUsageSummary.Visibility = Visibility.Collapsed;
+        FpsSummary.Visibility = Visibility.Collapsed;
         MemoryUsageSummary.Visibility = Visibility.Collapsed;
         DefaultHeaderLeft.Visibility = Visibility.Visible;
     }
@@ -849,6 +826,7 @@ public partial class LifeIslandWindow : Window
         NetworkSpeedSummary.Text =
             $"↑ {FormatRate(telemetry.Current.UploadBytesPerSecond)}  ↓ {FormatRate(telemetry.Current.DownloadBytesPerSecond)}";
         CpuUsageSummary.Text = $"CPU {telemetry.Current.CpuPercent:0}%";
+        UpdateForegroundFpsSummary(foregroundFps.Current);
         MemoryUsageSummary.Text = $"内存 {telemetry.Current.MemoryPercent:0}%";
         CpuUsageSummary.SetResourceReference(
             TextBlock.ForegroundProperty,
@@ -856,6 +834,11 @@ public partial class LifeIslandWindow : Window
         MemoryUsageSummary.SetResourceReference(
             TextBlock.ForegroundProperty,
             TelemetrySummaryBrushKey(telemetry.Current.MemoryPercent));
+    }
+
+    void UpdateForegroundFpsSummary(ForegroundFpsSnapshot snapshot)
+    {
+        FpsSummary.Text = snapshot.FramesPerSecond is { } fps ? $"FPS {fps:0}" : "FPS --";
     }
 
     internal static string TelemetrySummaryBrushKey(double percent) =>
@@ -1329,7 +1312,6 @@ public partial class LifeIslandWindow : Window
             IslandQuickAction.Settings,
             IslandQuickAction.PauseReminders,
             IslandQuickAction.ToggleDoNotDisturb,
-            IslandQuickAction.ToggleMusicMode,
             IslandQuickAction.ToggleTopDockAutoFold
         };
         foreach (var action in contextActions)
@@ -1348,7 +1330,6 @@ public partial class LifeIslandWindow : Window
                 Style = (Style)FindResource("IslandContextMenuItem"),
                 Tag = action,
                 IsCheckable = action is IslandQuickAction.ToggleDoNotDisturb
-                    or IslandQuickAction.ToggleMusicMode
                     or IslandQuickAction.ToggleTopDockAutoFold
             };
             item.Click += (_, _) => RunQuickAction(action);
@@ -1367,7 +1348,6 @@ public partial class LifeIslandWindow : Window
             item.IsChecked = action switch
             {
                 IslandQuickAction.ToggleDoNotDisturb => reminders.IsDoNotDisturbEnabled,
-                IslandQuickAction.ToggleMusicMode => currentPreferences.IslandShowMusicMode,
                 IslandQuickAction.ToggleTopDockAutoFold => currentPreferences.IslandTopDockAutoFold,
                 _ => false
             };
@@ -1449,7 +1429,6 @@ public partial class LifeIslandWindow : Window
         IslandQuickAction.Settings => "⚙ 设置",
         IslandQuickAction.PauseReminders => "Ⅱ 暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "◐ 勿扰模式",
-        IslandQuickAction.ToggleMusicMode => "♫ 显示音乐模式",
         IslandQuickAction.ToggleTopDockAutoFold => "⌃ 顶部吸附自动收缩",
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
@@ -1481,20 +1460,10 @@ public partial class LifeIslandWindow : Window
             case IslandQuickAction.Settings: OpenSettings(); break;
             case IslandQuickAction.PauseReminders: reminders.SetDoNotDisturb(true); BuildTodayDashboard(); break;
             case IslandQuickAction.ToggleDoNotDisturb: reminders.SetDoNotDisturb(!reminders.IsDoNotDisturbEnabled); BuildTodayDashboard(); break;
-            case IslandQuickAction.ToggleMusicMode: ToggleMusicMode(); break;
             case IslandQuickAction.ToggleTopDockAutoFold: ToggleTopDockAutoFold(); break;
             default: throw new ArgumentOutOfRangeException(nameof(action));
         }
         Touch();
-    }
-
-    void ToggleMusicMode()
-    {
-        var current = preferences.Load();
-        collapsedPreferences = current with { IslandShowMusicMode = !current.IslandShowMusicMode };
-        preferences.Save(collapsedPreferences);
-        if (!collapsedPreferences.IslandShowMusicMode) musicModeActive = false;
-        Refresh();
     }
 
     void ToggleTopDockAutoFold()
@@ -2206,31 +2175,6 @@ public partial class LifeIslandWindow : Window
         Refresh();
         UpdateQuickAddType();
     });
-
-    void ShowSystemToast(SystemToastMessage message)
-    {
-        var source = ToastInboxDiagnostics.Source(message);
-        if (!preferences.Load().ToastInboxEnabled)
-        {
-            ToastInboxDiagnostics.Write("ui-suppressed", message.Id, source);
-            return;
-        }
-        notificationWindow.ShowMessage(message);
-        PositionNotificationWindow();
-        ToastInboxDiagnostics.Write("ui-shown", message.Id, source);
-    }
-
-    void PositionNotificationWindow()
-    {
-        if (!IsLoaded || !notificationWindow.IsVisible) return;
-        var workArea = TryGetMonitorGeometry(ScreenForHeader(), out var geometry)
-            ? geometry.WorkArea
-            : SystemParameters.WorkArea;
-        notificationWindow.PositionNextTo(
-            HeaderScreenRect(),
-            workArea,
-            placement == IslandPlacement.Taskbar);
-    }
 
     double CollapsedHeaderHeight()
     {
@@ -3508,8 +3452,7 @@ public partial class LifeIslandWindow : Window
     void SetTopDockFolded(bool folded)
     {
         folded = folded && collapsedPreferences.IslandTopDockAutoFold &&
-                 placement == IslandPlacement.Top && !expanded && !pointerHover &&
-                 !(musicModeActive && media.Current is { IsMusic: true });
+                 placement == IslandPlacement.Top && !expanded && !pointerHover;
         if (folded == topDockFolded) return;
 
         var currentTop = Top;
