@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
@@ -10,7 +11,7 @@ public static class MediaSourceClassifier
         "cloudmusic", "网易云", "qqmusic", "qq 音乐", "spotify",
         "itunes", "applemusic", "apple music", "zunemusic", "music.ui",
         "musicbee", "foobar2000", "aimp", "winamp", "kugou", "酷狗",
-        "kuwo", "酷我"
+        "kuwo", "酷我", "mineradio", "com.mineradio.desktop"
     ];
 
     public static bool IsMusicPlayer(string? sourceAppId) =>
@@ -39,6 +40,11 @@ public sealed record MediaSessionSnapshot(
 /// <summary>读取并控制 Windows 系统媒体会话，不依赖具体播放器。</summary>
 public sealed class MediaSessionService : IDisposable
 {
+    static readonly HttpClient ArtworkClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(4)
+    };
+    static readonly TimeSpan PlaybackConfirmationWindow = TimeSpan.FromSeconds(3);
     readonly SemaphoreSlim refreshGate = new(1, 1);
     readonly DesktopMusicSessionDetector desktop = new();
     readonly MissingMediaTimelineClock missingTimelineClock = new(Path.Combine(
@@ -51,6 +57,12 @@ public sealed class MediaSessionService : IDisposable
     MediaSessionSnapshot? current;
     string? systemArtworkTrackKey;
     byte[]? systemArtwork;
+    string? desktopArtworkUrl;
+    byte[]? desktopArtwork;
+    DateTimeOffset desktopArtworkAttemptedAtUtc;
+    string? pendingPlaybackTrackKey;
+    bool? pendingIsPlaying;
+    DateTimeOffset pendingPlaybackUntilUtc;
     bool disposed;
 
     public MediaSessionService() =>
@@ -93,23 +105,44 @@ public sealed class MediaSessionService : IDisposable
         if (ShouldPreferDesktopMediaKey(Current?.SourceAppId))
         {
             desktop.Control(desktopCommand, Current?.SourceAppId);
+            PublishOptimisticPlaybackToggle(desktopCommand);
             await RefreshAsync();
             return;
         }
 
         var session = activeSession;
+        var commandDispatched = false;
         try
         {
             var handled = session is not null && await operation(session);
             if (!handled) desktop.Control(desktopCommand, Current?.SourceAppId);
+            commandDispatched = true;
         }
         catch (Exception exception)
         {
             activeSession = null;
             System.Diagnostics.Debug.WriteLine($"Media session control failed: {exception.Message}");
-            desktop.Control(desktopCommand, Current?.SourceAppId);
+            try
+            {
+                desktop.Control(desktopCommand, Current?.SourceAppId);
+                commandDispatched = true;
+            }
+            catch (Exception fallbackException)
+            {
+                System.Diagnostics.Debug.WriteLine($"Desktop media control failed: {fallbackException.Message}");
+            }
         }
+        if (commandDispatched) PublishOptimisticPlaybackToggle(desktopCommand);
         await RefreshAsync();
+    }
+
+    void PublishOptimisticPlaybackToggle(DesktopMediaCommand command)
+    {
+        if (command != DesktopMediaCommand.TogglePlayPause || Current is not { } snapshot) return;
+        pendingPlaybackTrackKey = snapshot.TrackKey;
+        pendingIsPlaying = !snapshot.IsPlaying;
+        pendingPlaybackUntilUtc = DateTimeOffset.UtcNow + PlaybackConfirmationWindow;
+        Publish(snapshot with { IsPlaying = pendingIsPlaying.Value }, isOptimistic: true);
     }
 
     static bool ShouldPreferDesktopMediaKey(string? sourceAppId) =>
@@ -123,16 +156,26 @@ public sealed class MediaSessionService : IDisposable
         try
         {
             var session = manager is null ? null : SelectSession(manager);
-            var desktopSession = session is null ? desktop.TryGetCurrent() : null;
+            var desktopSession = desktop.TryGetCurrent();
+            var systemSessionIsMusic = session is not null &&
+                                       MediaSourceClassifier.IsMusicPlayer(session.SourceAppUserModelId);
+            if (ShouldPreferActiveDesktop(
+                    session is not null,
+                    systemSessionIsMusic,
+                    desktopSession,
+                    session?.SourceAppUserModelId))
+            {
+                activeSession = systemSessionIsMusic ? session : null;
+                await PublishDesktopAsync(desktopSession!);
+                return;
+            }
             if (ShouldPublishDesktopFallback(session is not null, desktopSession))
             {
                 activeSession = null;
-                PublishDesktop(desktopSession!);
+                await PublishDesktopAsync(desktopSession!);
                 return;
             }
 
-            var systemSessionIsMusic = session is not null &&
-                                       MediaSourceClassifier.IsMusicPlayer(session.SourceAppUserModelId);
             activeSession = systemSessionIsMusic ? session : null;
             if (session is null)
             {
@@ -141,10 +184,21 @@ public sealed class MediaSessionService : IDisposable
             }
 
             var media = await session.TryGetMediaPropertiesAsync();
+            if (ShouldPreferActiveDesktop(
+                    true,
+                    systemSessionIsMusic,
+                    desktopSession,
+                    session.SourceAppUserModelId,
+                    media.Title))
+            {
+                activeSession = systemSessionIsMusic ? session : null;
+                await PublishDesktopAsync(desktopSession!);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(media.Title))
             {
                 var fallback = desktop.TryGetCurrent();
-                if (fallback is null) Publish(null); else PublishDesktop(fallback);
+                if (fallback is null) Publish(null); else await PublishDesktopAsync(fallback);
                 return;
             }
 
@@ -194,6 +248,13 @@ public sealed class MediaSessionService : IDisposable
                 systemArtworkTrackKey = artworkTrackKey;
                 systemArtwork = await ReadArtworkAsync(media.Thumbnail);
             }
+            if (systemArtwork is null && desktopFallback is null)
+                desktopFallback = desktop.TryGetCurrent(sourceAppId, title, artist);
+            var fallbackArtwork = desktopFallback?.Artwork;
+            if (systemArtwork is null && fallbackArtwork is null)
+            {
+                fallbackArtwork = await ReadDesktopArtworkAsync(desktopFallback?.ArtworkUrl);
+            }
 
             Publish(new MediaSessionSnapshot(
                 sourceAppId,
@@ -208,7 +269,7 @@ public sealed class MediaSessionService : IDisposable
                     : useDesktopProgress
                         ? desktopFallback!.ProgressRatio
                         : null,
-                systemArtwork ?? (useDesktopProgress ? desktopFallback!.Artwork : null),
+                SelectArtwork(systemArtwork, fallbackArtwork),
                 timelineSampledAtUtc,
                 desktopFallback?.CurrentLyric,
                 desktopFallback?.CurrentLyricSampledAtUtc));
@@ -223,7 +284,7 @@ public sealed class MediaSessionService : IDisposable
         }
     }
 
-    void PublishDesktop(DesktopMusicSession fallback)
+    async Task PublishDesktopAsync(DesktopMusicSession fallback)
     {
         var position = TimeSpan.Zero;
         var sampledAtUtc = fallback.ProgressSampledAtUtc;
@@ -246,11 +307,16 @@ public sealed class MediaSessionService : IDisposable
             TimeSpan.Zero,
             fallback.IsPlaying,
             fallback.ProgressRatio,
-            fallback.Artwork,
+            fallback.Artwork ?? await ReadDesktopArtworkAsync(fallback.ArtworkUrl),
             sampledAtUtc,
             fallback.CurrentLyric,
             fallback.CurrentLyricSampledAtUtc));
     }
+
+    internal static byte[]? SelectArtwork(
+        byte[]? systemArtwork,
+        byte[]? desktopArtwork) =>
+        systemArtwork ?? desktopArtwork;
 
     internal static bool ShouldUseDesktopProgress(
         DesktopMusicSession? fallback,
@@ -270,6 +336,73 @@ public sealed class MediaSessionService : IDisposable
         bool hasSystemSession,
         DesktopMusicSession? fallback) =>
         !hasSystemSession && fallback is not null;
+
+    internal static bool ShouldPreferActiveDesktop(
+        bool hasSystemSession,
+        bool systemSessionIsMusic,
+        DesktopMusicSession? desktopSession,
+        string? systemSourceAppId = null,
+        string? systemMediaTitle = null) =>
+        desktopSession is not null &&
+        (desktopSession.IsPlaying &&
+         (!hasSystemSession || !systemSessionIsMusic) ||
+         IsRicherMineradioSnapshot(systemSourceAppId, systemMediaTitle, desktopSession));
+
+    static bool IsRicherMineradioSnapshot(
+        string? systemSourceAppId,
+        string? systemMediaTitle,
+        DesktopMusicSession desktopSession) =>
+        (systemSourceAppId?.Contains("mineradio", StringComparison.OrdinalIgnoreCase) == true ||
+         string.Equals(systemMediaTitle?.Trim(), "Mineradio", StringComparison.OrdinalIgnoreCase)) &&
+        desktopSession.SourceAppId.Contains("mineradio", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(
+            desktopSession.Title.Trim(),
+            desktopSession.SourceAppId.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+
+    async Task<byte[]?> ReadDesktopArtworkAsync(string? artworkUrl)
+    {
+        if (string.IsNullOrWhiteSpace(artworkUrl))
+        {
+            desktopArtworkUrl = null;
+            desktopArtwork = null;
+            return null;
+        }
+        var nowUtc = DateTimeOffset.UtcNow;
+        if (string.Equals(desktopArtworkUrl, artworkUrl, StringComparison.Ordinal) &&
+            (desktopArtwork is not null || nowUtc - desktopArtworkAttemptedAtUtc < TimeSpan.FromSeconds(30)))
+            return desktopArtwork;
+
+        desktopArtworkUrl = artworkUrl;
+        desktopArtwork = null;
+        desktopArtworkAttemptedAtUtc = nowUtc;
+        if (!Uri.TryCreate(artworkUrl, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https"))
+            return null;
+        try
+        {
+            using var response = await ArtworkClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength is > 4 * 1024 * 1024) return null;
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            using var buffer = new MemoryStream();
+            var chunk = new byte[16 * 1024];
+            while (true)
+            {
+                var read = await stream.ReadAsync(chunk);
+                if (read == 0) break;
+                if (buffer.Length + read > 4 * 1024 * 1024) return null;
+                buffer.Write(chunk, 0, read);
+            }
+            desktopArtwork = buffer.Length == 0 ? null : buffer.ToArray();
+            return desktopArtwork;
+        }
+        catch (Exception exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Desktop media artwork download failed: {exception.Message}");
+            return null;
+        }
+    }
 
     static async Task<byte[]?> ReadArtworkAsync(IRandomAccessStreamReference? reference)
     {
@@ -308,8 +441,39 @@ public sealed class MediaSessionService : IDisposable
                ?? sessionManager.GetSessions().FirstOrDefault();
     }
 
-    void Publish(MediaSessionSnapshot? snapshot)
+    internal static bool ShouldHoldPendingPlaybackState(
+        MediaSessionSnapshot snapshot,
+        string? pendingTrackKey,
+        bool? pendingIsPlaying,
+        DateTimeOffset pendingUntilUtc,
+        DateTimeOffset nowUtc) =>
+        pendingIsPlaying is bool pending &&
+        nowUtc <= pendingUntilUtc &&
+        string.Equals(snapshot.TrackKey, pendingTrackKey, StringComparison.Ordinal) &&
+        snapshot.IsPlaying != pending;
+
+    void Publish(MediaSessionSnapshot? snapshot, bool isOptimistic = false)
     {
+        if (snapshot is null)
+        {
+            pendingPlaybackTrackKey = null;
+            pendingIsPlaying = null;
+        }
+        else if (!isOptimistic && pendingIsPlaying is not null)
+        {
+            if (ShouldHoldPendingPlaybackState(
+                    snapshot,
+                    pendingPlaybackTrackKey,
+                    pendingIsPlaying,
+                    pendingPlaybackUntilUtc,
+                    DateTimeOffset.UtcNow))
+                snapshot = snapshot with { IsPlaying = pendingIsPlaying.Value };
+            else
+            {
+                pendingPlaybackTrackKey = null;
+                pendingIsPlaying = null;
+            }
+        }
         var previous = Interlocked.Exchange(ref current, snapshot);
         if (previous == snapshot) return;
         SnapshotChanged?.Invoke(snapshot);

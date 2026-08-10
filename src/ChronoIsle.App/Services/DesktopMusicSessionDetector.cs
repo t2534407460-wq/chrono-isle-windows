@@ -4,6 +4,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using NAudio.CoreAudioApi;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage.Streams;
@@ -49,7 +50,8 @@ internal sealed record DesktopMusicSession(
     byte[]? Artwork,
     DateTimeOffset? ProgressSampledAtUtc,
     string? CurrentLyric = null,
-    DateTimeOffset? CurrentLyricSampledAtUtc = null);
+    DateTimeOffset? CurrentLyricSampledAtUtc = null,
+    string? ArtworkUrl = null);
 
 internal static class DesktopMediaTimeline
 {
@@ -186,9 +188,254 @@ internal sealed class MissingMediaTimelineClock
         }
     }
 }
+internal sealed record MineradioPlaybackSnapshot(
+    string Title,
+    string Artist,
+    bool IsPlaying,
+    TimeSpan Position,
+    TimeSpan Duration,
+    DateTimeOffset SampledAtUtc,
+    string? ArtworkUrl);
+
+internal static class MineradioPlaybackStore
+{
+    static readonly byte[] PlaybackKey = Encoding.UTF8.GetBytes("mineradio-last-playback-v1");
+
+    public static MineradioPlaybackSnapshot? TryReadLatest()
+    {
+        var levelDbDirectory = GetLevelDbDirectory();
+        if (!Directory.Exists(levelDbDirectory)) return null;
+        MineradioPlaybackSnapshot? latest = null;
+        foreach (var file in Directory.EnumerateFiles(levelDbDirectory)
+                     .Where(IsLevelDbRecordFile)
+                     .OrderByDescending(File.GetLastWriteTimeUtc)
+                     .Take(8))
+        {
+            try
+            {
+                using var stream = new FileStream(
+                    file,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                if (stream.Length <= 0 || stream.Length > 8 * 1024 * 1024) continue;
+                var bytes = new byte[stream.Length];
+                stream.ReadExactly(bytes);
+                if (!TryParseLatest(bytes, out var candidate)) continue;
+                if (latest is null || candidate.SampledAtUtc > latest.SampledAtUtc) latest = candidate;
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Mineradio playback snapshot read failed: {exception.Message}");
+            }
+        }
+        return latest;
+    }
+
+    internal static bool IsLevelDbRecordFile(string filePath) =>
+        string.Equals(Path.GetExtension(filePath), ".log", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Path.GetExtension(filePath), ".ldb", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool TryParseLatest(ReadOnlySpan<byte> data, out MineradioPlaybackSnapshot snapshot)
+    {
+        snapshot = default!;
+        var found = false;
+        foreach (var record in ReadLevelDbRecords(data))
+            if (TryParseRaw(record, out var candidate) &&
+                (!found || candidate.SampledAtUtc > snapshot.SampledAtUtc))
+            {
+                snapshot = candidate;
+                found = true;
+            }
+        return found || TryParseRaw(data, out snapshot);
+    }
+
+    static bool TryParseRaw(ReadOnlySpan<byte> data, out MineradioPlaybackSnapshot snapshot)
+    {
+        snapshot = default!;
+        var offset = 0;
+        var found = false;
+        while (offset + PlaybackKey.Length < data.Length)
+        {
+            var relative = data[offset..].IndexOf(PlaybackKey);
+            if (relative < 0) break;
+            var keyEnd = offset + relative + PlaybackKey.Length;
+            var jsonStart = FindUtf16JsonStart(data, keyEnd);
+            if (jsonStart >= 0 && TryParseJson(data[jsonStart..], out var candidate) &&
+                (!found || candidate.SampledAtUtc > snapshot.SampledAtUtc))
+            {
+                snapshot = candidate;
+                found = true;
+            }
+            offset = keyEnd;
+        }
+        return found;
+    }
+
+    static IReadOnlyList<byte[]> ReadLevelDbRecords(ReadOnlySpan<byte> data)
+    {
+        const int blockSize = 32768;
+        const int headerSize = 7;
+        const byte full = 1;
+        const byte first = 2;
+        const byte middle = 3;
+        const byte last = 4;
+        var records = new List<byte[]>();
+        MemoryStream? fragmented = null;
+        var offset = 0;
+        while (offset + headerSize <= data.Length)
+        {
+            var remainingInBlock = blockSize - offset % blockSize;
+            if (remainingInBlock < headerSize)
+            {
+                offset += remainingInBlock;
+                continue;
+            }
+
+            var length = data[offset + 4] | data[offset + 5] << 8;
+            var type = data[offset + 6];
+            if (length == 0 && type == 0)
+            {
+                offset += remainingInBlock;
+                fragmented?.Dispose();
+                fragmented = null;
+                continue;
+            }
+            if (length > remainingInBlock - headerSize || offset + headerSize + length > data.Length)
+                break;
+
+            var payload = data.Slice(offset + headerSize, length);
+            offset += headerSize + length;
+            switch (type)
+            {
+                case full:
+                    fragmented?.Dispose();
+                    fragmented = null;
+                    records.Add(payload.ToArray());
+                    break;
+                case first:
+                    fragmented?.Dispose();
+                    fragmented = new MemoryStream(length * 2);
+                    fragmented.Write(payload);
+                    break;
+                case middle when fragmented is not null:
+                    fragmented.Write(payload);
+                    break;
+                case last when fragmented is not null:
+                    fragmented.Write(payload);
+                    records.Add(fragmented.ToArray());
+                    fragmented.Dispose();
+                    fragmented = null;
+                    break;
+                default:
+                    fragmented?.Dispose();
+                    fragmented = null;
+                    break;
+            }
+        }
+        fragmented?.Dispose();
+        return records;
+    }
+
+    static int FindUtf16JsonStart(ReadOnlySpan<byte> data, int start)
+    {
+        var end = Math.Min(data.Length - 1, start + 64);
+        for (var index = start; index < end; index++)
+            if (data[index] == (byte)'{' && data[index + 1] == 0) return index;
+        return -1;
+    }
+
+    static bool TryParseJson(ReadOnlySpan<byte> data, out MineradioPlaybackSnapshot snapshot)
+    {
+        snapshot = default!;
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        var end = -1;
+        for (var index = 0; index + 1 < data.Length; index += 2)
+        {
+            var character = (char)(data[index] | data[index + 1] << 8);
+            if (inString)
+            {
+                if (escaped) escaped = false;
+                else if (character == '\\') escaped = true;
+                else if (character == '"') inString = false;
+                continue;
+            }
+            if (character == '"') inString = true;
+            else if (character == '{') depth++;
+            else if (character == '}' && --depth == 0)
+            {
+                end = index + 2;
+                break;
+            }
+        }
+        if (end <= 0) return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(Encoding.Unicode.GetString(data[..end]));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("current", out var current)) return false;
+            var title = ReadText(current, "name", "title");
+            if (string.IsNullOrWhiteSpace(title)) return false;
+            var artist = ReadText(current, "artist");
+            var artworkUrl = ReadText(current, "cover");
+            var savedAt = root.GetProperty("savedAt").GetInt64();
+            snapshot = new MineradioPlaybackSnapshot(
+                title.Trim(),
+                artist.Trim(),
+                root.TryGetProperty("playing", out var playing) && playing.GetBoolean(),
+                TimeSpan.FromSeconds(ReadNumber(root, "currentTime")),
+                TimeSpan.FromSeconds(ReadNumber(root, "duration")),
+                DateTimeOffset.FromUnixTimeMilliseconds(savedAt),
+                string.IsNullOrWhiteSpace(artworkUrl) ? null : artworkUrl.Trim());
+            return true;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    static string ReadText(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+            if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString() ?? string.Empty;
+        return string.Empty;
+    }
+
+    static double ReadNumber(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.TryGetDouble(out var number)
+            ? Math.Max(0, number)
+            : 0;
+
+    static string GetLevelDbDirectory()
+    {
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Mineradio");
+        var root = Directory.Exists(@"D:\") ? @"D:\MineradioCache" : Path.Combine(appData, "cache");
+        try
+        {
+            var settingsPath = Path.Combine(appData, "cache-settings.json");
+            if (File.Exists(settingsPath))
+            {
+                using var settings = JsonDocument.Parse(File.ReadAllText(settingsPath));
+                if (settings.RootElement.TryGetProperty("rootPath", out var rootPath) && !string.IsNullOrWhiteSpace(rootPath.GetString()))
+                    root = Path.GetFullPath(rootPath.GetString()!);
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Mineradio cache settings read failed: {exception.Message}");
+        }
+        return Path.Combine(root, "chromium", "Mineradio", "Local Storage", "leveldb");
+    }
+}
+
 /// <summary>
 /// 为不发布 Windows 系统媒体会话的桌面版网易云音乐、QQ 音乐提供本地兼容检测。
-/// 只读取播放器进程的公开窗口标题和渲染画面，不读取 Cookie、账号数据库或登录令牌。
+/// 只读取公开窗口信息、渲染画面和 Mineradio 自己的当前播放快照，不读取 Cookie、账号数据库或登录令牌。
 /// </summary>
 internal sealed class DesktopMusicSessionDetector
 {
@@ -198,6 +445,7 @@ internal sealed class DesktopMusicSessionDetector
     const ushort MediaPlayPause = 0xB3;
     const ushort ControlKey = 0x11;
     const ushort AltKey = 0x12;
+    const ushort SpaceKey = 0x20;
     const ushort LeftKey = 0x25;
     const ushort RightKey = 0x27;
 
@@ -206,7 +454,8 @@ internal sealed class DesktopMusicSessionDetector
     static readonly PlayerProfile[] Profiles =
     [
         new("cloudmusic", "网易云音乐", "OrpheusBrowserHost", true),
-        new("QQMusic", "QQ 音乐", null, false)
+        new("QQMusic", "QQ 音乐", null, false),
+        new("Mineradio", "Mineradio", null, false)
     ];
 
     string? cachedTrackKey;
@@ -219,21 +468,47 @@ internal sealed class DesktopMusicSessionDetector
     DateTimeOffset? cachedProgressSampledAtUtc;
     DateTimeOffset lastCaptureAt;
 
+    string? cachedSourceAppId;
     public DesktopMusicSession? TryGetCurrent(
         string? sourceAppId = null,
         string? knownTitle = null,
         string? knownArtist = null)
     {
-        var windows = FindPlayerWindows(sourceAppId, knownTitle, knownArtist);
+        var activeProfile = TryGetActiveAudioProfile(sourceAppId);
+        if (activeProfile?.ProcessName.Equals("Mineradio", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var mineradio = TryGetMineradioCurrent();
+            if (mineradio is not null)
+            {
+                cachedIsPlaying = true;
+                return mineradio with { IsPlaying = true };
+            }
+        }
+        var windows = FindPlayerWindows(sourceAppId, knownTitle, knownArtist, activeProfile);
         var candidate = windows
-            .OrderByDescending(window => WindowScore(window))
+            .OrderByDescending(window => WindowScore(window, activeProfile))
             .FirstOrDefault();
         if (candidate is null)
         {
             cachedPlayerProcessName = null;
+            if (activeProfile is not null) return CreateActiveProfileFallback(activeProfile);
+            if (string.IsNullOrWhiteSpace(sourceAppId) ||
+                sourceAppId.Contains("mineradio", StringComparison.OrdinalIgnoreCase))
+                return TryGetMineradioCurrent();
             return null;
         }
         cachedPlayerProcessName = candidate.Profile.ProcessName;
+
+        if (ShouldUseMineradioSnapshot(
+                candidate.Profile.ProcessName,
+                candidate.Title,
+                candidate.Artist) &&
+            TryGetMineradioCurrent() is { } snapshot)
+        {
+            if (!ReferenceEquals(candidate.Profile, activeProfile)) return snapshot;
+            cachedIsPlaying = true;
+            return snapshot with { IsPlaying = true };
+        }
 
         var trackKey = $"{candidate.Profile.DisplayName}\n{candidate.Title}\n{candidate.Artist}";
         var trackChanged = !string.Equals(trackKey, cachedTrackKey, StringComparison.Ordinal);
@@ -245,18 +520,22 @@ internal sealed class DesktopMusicSessionDetector
             cachedCurrentLyricSampledAtUtc = null;
             cachedProgressRatio = null;
             cachedProgressSampledAtUtc = null;
-            cachedIsPlaying = true;
+            cachedIsPlaying = ReferenceEquals(candidate.Profile, activeProfile);
             lastCaptureAt = DateTimeOffset.MinValue;
         }
 
+        bool? capturedPlaybackState = null;
         if (candidate.Profile.SupportsLocalCapture &&
-            candidate.IsVisible &&
             (trackChanged || DateTimeOffset.UtcNow - lastCaptureAt >= TimeSpan.FromMilliseconds(750)) &&
             TryCaptureNetEase(candidate.Window, out var capture))
         {
             var capturedAt = DateTimeOffset.UtcNow;
             lastCaptureAt = capturedAt;
-            if (capture.IsPlaying is bool isPlaying) cachedIsPlaying = isPlaying;
+            if (capture.IsPlaying is bool isPlaying)
+            {
+                capturedPlaybackState = isPlaying;
+                cachedIsPlaying = isPlaying;
+            }
             if (capture.ProgressRatio is double progressRatio)
                 cachedProgressRatio = progressRatio;
             if (capture.ProgressRatio is not null)
@@ -268,7 +547,12 @@ internal sealed class DesktopMusicSessionDetector
             }
             if (trackChanged || cachedArtwork is null) cachedArtwork = capture.Artwork;
         }
+        cachedIsPlaying = ResolvePlaybackState(
+            cachedIsPlaying,
+            capturedPlaybackState,
+            activeProfile is null ? null : ReferenceEquals(candidate.Profile, activeProfile));
 
+        cachedSourceAppId = candidate.Profile.DisplayName;
         return new DesktopMusicSession(
             candidate.Profile.DisplayName,
             candidate.Title,
@@ -281,8 +565,72 @@ internal sealed class DesktopMusicSessionDetector
             cachedCurrentLyricSampledAtUtc);
     }
 
+    public DesktopMusicSession? TryGetMineradioCurrent()
+    {
+        var processes = Process.GetProcessesByName("Mineradio");
+        DateTimeOffset processStartedAtUtc;
+        try
+        {
+            if (processes.Length == 0) return null;
+            processStartedAtUtc = DateTimeOffset.MaxValue;
+            foreach (var process in processes)
+                try
+                {
+                    var startedAt = new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero);
+                    if (startedAt < processStartedAtUtc) processStartedAtUtc = startedAt;
+                }
+                catch { }
+            if (processStartedAtUtc == DateTimeOffset.MaxValue) processStartedAtUtc = DateTimeOffset.UtcNow;
+        }
+        finally
+        {
+            foreach (var process in processes) process.Dispose();
+        }
+        var snapshot = MineradioPlaybackStore.TryReadLatest();
+        if (snapshot is null) return null;
+        if (!IsMineradioSnapshotCurrent(snapshot.SampledAtUtc, processStartedAtUtc, DateTimeOffset.UtcNow))
+            return null;
+
+        var trackKey = $"Mineradio\n{snapshot.Title}\n{snapshot.Artist}";
+        if (!string.Equals(trackKey, cachedTrackKey, StringComparison.Ordinal))
+        {
+            cachedTrackKey = trackKey;
+            cachedArtwork = null;
+            cachedCurrentLyric = null;
+        }
+        cachedSourceAppId = "Mineradio";
+        cachedIsPlaying = snapshot.IsPlaying;
+        cachedProgressRatio = snapshot.Duration > TimeSpan.Zero
+            ? Math.Clamp(snapshot.Position.TotalSeconds / snapshot.Duration.TotalSeconds, 0, 1)
+            : null;
+        cachedProgressSampledAtUtc = snapshot.SampledAtUtc;
+        return new DesktopMusicSession(
+            "Mineradio",
+            snapshot.Title,
+            snapshot.Artist,
+            snapshot.IsPlaying,
+            cachedProgressRatio,
+            null,
+            snapshot.SampledAtUtc,
+            ArtworkUrl: snapshot.ArtworkUrl);
+    }
+
+    internal static bool IsMineradioSnapshotCurrent(
+        DateTimeOffset sampledAtUtc,
+        DateTimeOffset processStartedAtUtc,
+        DateTimeOffset nowUtc) =>
+        nowUtc - sampledAtUtc >= TimeSpan.FromMinutes(-1) &&
+        sampledAtUtc >= processStartedAtUtc - TimeSpan.FromSeconds(5);
+
     public void Control(DesktopMediaCommand command, string? sourceAppId = null)
     {
+        if (string.Equals(cachedSourceAppId, "Mineradio", StringComparison.OrdinalIgnoreCase))
+        {
+            SendMineradioShortcut(command);
+            if (command == DesktopMediaCommand.TogglePlayPause) cachedIsPlaying = !cachedIsPlaying;
+            lastCaptureAt = DateTimeOffset.MinValue;
+            return;
+        }
         if (ShouldUseNetEaseShortcut(sourceAppId, command) ||
             ShouldUseNetEaseShortcut(cachedPlayerProcessName, command))
             SendNetEaseShortcut(command);
@@ -313,7 +661,8 @@ internal sealed class DesktopMusicSessionDetector
     static IReadOnlyList<PlayerWindow> FindPlayerWindows(
         string? sourceAppId = null,
         string? knownTitle = null,
-        string? knownArtist = null)
+        string? knownArtist = null,
+        PlayerProfile? activeProfile = null)
     {
         var processProfiles = new Dictionary<uint, PlayerProfile>();
         foreach (var profile in Profiles)
@@ -345,8 +694,12 @@ internal sealed class DesktopMusicSessionDetector
             GetWindowText(window, titleBuffer, titleBuffer.Capacity);
             if (!DesktopMusicTitleParser.TryParse(titleBuffer.ToString(), out var title, out var artist))
             {
-                if (string.IsNullOrWhiteSpace(knownTitle)) return true;
-                title = knownTitle.Trim();
+                if (string.IsNullOrWhiteSpace(knownTitle) &&
+                    !ReferenceEquals(profile, activeProfile))
+                    return true;
+                title = string.IsNullOrWhiteSpace(knownTitle)
+                    ? profile.DisplayName
+                    : knownTitle.Trim();
                 artist = knownArtist?.Trim() ?? string.Empty;
             }
 
@@ -368,9 +721,10 @@ internal sealed class DesktopMusicSessionDetector
         sourceAppId.Contains(profile.ProcessName, StringComparison.OrdinalIgnoreCase) ||
         sourceAppId.Contains(profile.DisplayName, StringComparison.OrdinalIgnoreCase);
 
-    static int WindowScore(PlayerWindow window)
+    static int WindowScore(PlayerWindow window, PlayerProfile? activeProfile)
     {
-        var score = window.IsVisible ? 100 : 0;
+        var score = ReferenceEquals(window.Profile, activeProfile) ? 1000 : 0;
+        if (window.IsVisible) score += 100;
         if (!string.IsNullOrWhiteSpace(window.Profile.PreferredWindowClass) &&
             string.Equals(
                 window.WindowClass,
@@ -379,6 +733,83 @@ internal sealed class DesktopMusicSessionDetector
             score += 50;
         return score;
     }
+
+    DesktopMusicSession CreateActiveProfileFallback(PlayerProfile profile)
+    {
+        cachedTrackKey = $"{profile.DisplayName}\n{profile.DisplayName}\n";
+        cachedSourceAppId = profile.DisplayName;
+        cachedIsPlaying = true;
+        cachedProgressRatio = null;
+        cachedProgressSampledAtUtc = DateTimeOffset.UtcNow;
+        cachedArtwork = null;
+        return new DesktopMusicSession(
+            profile.DisplayName,
+            profile.DisplayName,
+            string.Empty,
+            true,
+            null,
+            null,
+            cachedProgressSampledAtUtc);
+    }
+
+    static PlayerProfile? TryGetActiveAudioProfile(string? sourceAppId)
+    {
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            var sessions = device.AudioSessionManager.Sessions;
+            for (var index = 0; index < sessions.Count; index++)
+            {
+                try
+                {
+                    using var session = sessions[index];
+                    if (session.State != NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive)
+                        continue;
+                    var processId = session.GetProcessID;
+                    if (processId == 0) continue;
+                    using var process = Process.GetProcessById(checked((int)processId));
+                    var profile = ProfileForProcessName(process.ProcessName);
+                    if (profile is null ||
+                        !string.IsNullOrWhiteSpace(sourceAppId) &&
+                        !ProfileMatchesSource(profile, sourceAppId))
+                        continue;
+                    return profile;
+                }
+                catch (Exception exception)
+                {
+                    Debug.WriteLine($"Skipping inaccessible audio session: {exception.Message}");
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Active music audio session detection failed: {exception.Message}");
+        }
+        return null;
+    }
+
+    static PlayerProfile? ProfileForProcessName(string? processName) =>
+        Profiles.FirstOrDefault(profile =>
+            string.Equals(profile.ProcessName, processName, StringComparison.OrdinalIgnoreCase));
+
+    internal static bool ShouldUseMineradioSnapshot(
+        string? processName,
+        string? title,
+        string? artist) =>
+        string.Equals(processName, "Mineradio", StringComparison.OrdinalIgnoreCase) &&
+        (string.IsNullOrWhiteSpace(title) ||
+         string.Equals(title.Trim(), "Mineradio", StringComparison.OrdinalIgnoreCase) ||
+         string.IsNullOrWhiteSpace(artist));
+
+    internal static bool ResolvePlaybackState(
+        bool currentState,
+        bool? capturedState,
+        bool? activeProfileMatches) =>
+        capturedState ?? activeProfileMatches ?? currentState;
+
+    internal static string? PlayerDisplayNameForProcess(string? processName) =>
+        ProfileForProcessName(processName)?.DisplayName;
 
     static bool TryCaptureNetEase(IntPtr window, out PlayerCapture capture)
     {
@@ -585,13 +1016,26 @@ internal sealed class DesktopMusicSessionDetector
         keybd_event((byte)virtualKey, 0, KeyUp, UIntPtr.Zero);
     }
 
-    static void SendNetEaseShortcut(DesktopMediaCommand command)
+    static void SendMineradioShortcut(DesktopMediaCommand command)
     {
-        var key = (byte)NetEaseShortcutKey(command);
+        var key = command switch
+        {
+            DesktopMediaCommand.Previous => LeftKey,
+            DesktopMediaCommand.Next => RightKey,
+            _ => SpaceKey
+        };
+        SendShortcut(key);
+    }
+
+    static void SendNetEaseShortcut(DesktopMediaCommand command) =>
+        SendShortcut(NetEaseShortcutKey(command));
+
+    static void SendShortcut(ushort virtualKey)
+    {
         keybd_event((byte)ControlKey, 0, 0, UIntPtr.Zero);
         keybd_event((byte)AltKey, 0, 0, UIntPtr.Zero);
-        keybd_event(key, 0, 0, UIntPtr.Zero);
-        keybd_event(key, 0, KeyUp, UIntPtr.Zero);
+        keybd_event((byte)virtualKey, 0, 0, UIntPtr.Zero);
+        keybd_event((byte)virtualKey, 0, KeyUp, UIntPtr.Zero);
         keybd_event((byte)AltKey, 0, KeyUp, UIntPtr.Zero);
         keybd_event((byte)ControlKey, 0, KeyUp, UIntPtr.Zero);
     }

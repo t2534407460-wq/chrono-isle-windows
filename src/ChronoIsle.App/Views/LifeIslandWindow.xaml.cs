@@ -93,6 +93,7 @@ public partial class LifeIslandWindow : Window
     bool collapsedMediaControlsVisible;
     bool collapsedMediaControlsPinned;
     bool networkSpeedTestSpinnerAnimating;
+    bool networkSpeedTestGaugeSyncRendering;
     NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit;
     bool isClosed;
     bool musicModeActive;
@@ -2045,28 +2046,31 @@ public partial class LifeIslandWindow : Window
 
     static Point GetNetworkSpeedTestGaugeProgressPoint(double rate)
     {
-        var radians = Math.PI / 180d * GetNetworkSpeedTestGaugeAngle(rate);
+        return GetNetworkSpeedTestGaugeProgressPointForAngle(GetNetworkSpeedTestGaugeAngle(rate));
+    }
+
+    static Point GetNetworkSpeedTestGaugeProgressPointForAngle(double angle)
+    {
+        var radians = Math.PI / 180d * angle;
         return new Point(118 + 98 * Math.Sin(radians), 122 - 98 * Math.Cos(radians));
     }
 
     void AnimateNetworkSpeedTestGauge(double rate)
     {
         var target = GetNetworkSpeedTestGaugeAngle(rate);
-        var targetPoint = GetNetworkSpeedTestGaugeProgressPoint(rate);
         if (!SystemParameters.ClientAreaAnimation)
         {
             StopNetworkSpeedTestGaugeAnimation();
             NetworkSpeedTestGaugeNeedleRotation.Angle = target;
-            NetworkSpeedTestGaugeProgressArc.Point = targetPoint;
+            NetworkSpeedTestGaugeProgressArc.Point = GetNetworkSpeedTestGaugeProgressPointForAngle(target);
             return;
         }
 
         var current = NetworkSpeedTestGaugeNeedleRotation.Angle;
-        var currentPoint = NetworkSpeedTestGaugeProgressArc.Point;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
         NetworkSpeedTestGaugeNeedleRotation.Angle = current;
-        NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, null);
-        NetworkSpeedTestGaugeProgressArc.Point = currentPoint;
+        NetworkSpeedTestGaugeProgressArc.Point = GetNetworkSpeedTestGaugeProgressPointForAngle(current);
+        StartNetworkSpeedTestGaugeProgressSynchronization();
         var animation = new DoubleAnimation
         {
             From = current,
@@ -2075,13 +2079,6 @@ public partial class LifeIslandWindow : Window
             FillBehavior = FillBehavior.HoldEnd
         };
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
-        NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, new PointAnimation
-        {
-            From = currentPoint,
-            To = targetPoint,
-            Duration = TimeSpan.FromMilliseconds(180),
-            FillBehavior = FillBehavior.HoldEnd
-        });
     }
 
     void ResetNetworkSpeedTestGauge()
@@ -2094,11 +2091,30 @@ public partial class LifeIslandWindow : Window
     void StopNetworkSpeedTestGaugeAnimation()
     {
         var current = NetworkSpeedTestGaugeNeedleRotation.Angle;
-        var currentPoint = NetworkSpeedTestGaugeProgressArc.Point;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
         NetworkSpeedTestGaugeNeedleRotation.Angle = current;
-        NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, null);
-        NetworkSpeedTestGaugeProgressArc.Point = currentPoint;
+        NetworkSpeedTestGaugeProgressArc.Point = GetNetworkSpeedTestGaugeProgressPointForAngle(current);
+        StopNetworkSpeedTestGaugeProgressSynchronization();
+    }
+
+    void StartNetworkSpeedTestGaugeProgressSynchronization()
+    {
+        if (networkSpeedTestGaugeSyncRendering) return;
+        CompositionTarget.Rendering += NetworkSpeedTestGaugeProgress_Rendering;
+        networkSpeedTestGaugeSyncRendering = true;
+    }
+
+    void StopNetworkSpeedTestGaugeProgressSynchronization()
+    {
+        if (!networkSpeedTestGaugeSyncRendering) return;
+        CompositionTarget.Rendering -= NetworkSpeedTestGaugeProgress_Rendering;
+        networkSpeedTestGaugeSyncRendering = false;
+    }
+
+    void NetworkSpeedTestGaugeProgress_Rendering(object? sender, EventArgs e)
+    {
+        NetworkSpeedTestGaugeProgressArc.Point =
+            GetNetworkSpeedTestGaugeProgressPointForAngle(NetworkSpeedTestGaugeNeedleRotation.Angle);
     }
 
     void StartNetworkSpeedTestSpinner()
