@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Net.Http;
 using System.Security.Cryptography;
 
 namespace ChronoIsle.App.Services;
