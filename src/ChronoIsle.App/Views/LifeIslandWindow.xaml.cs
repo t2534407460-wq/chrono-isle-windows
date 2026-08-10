@@ -809,7 +809,8 @@ public partial class LifeIslandWindow : Window
             currentPreferences.TelemetryEnabled && currentPreferences.IslandShowNetworkSpeed);
         CpuUsageSummary.Visibility = VisibilityFor(
             currentPreferences.TelemetryEnabled && currentPreferences.IslandShowCpuUsage);
-        FpsSummary.Visibility = VisibilityFor(currentPreferences.TelemetryEnabled);
+        FpsSummary.Visibility = VisibilityFor(
+            currentPreferences.TelemetryEnabled && currentPreferences.IslandShowFps);
         MemoryUsageSummary.Visibility = VisibilityFor(
             currentPreferences.TelemetryEnabled && currentPreferences.IslandShowMemoryUsage);
     }

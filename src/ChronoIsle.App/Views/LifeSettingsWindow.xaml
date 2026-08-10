@@ -153,6 +153,13 @@
                                      Foreground="{DynamicResource Brush.TextSecondary}"
                                      FontSize="11" VerticalAlignment="Center"/>
                         </CheckBox>
+                        <CheckBox x:Name="IslandShowFps"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="当前前台应用帧率" AutomationProperties.Name="FPS 帧率">
+                          <TextBlock Text="FPS 60"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="11" VerticalAlignment="Center"/>
+                        </CheckBox>
                         <CheckBox x:Name="IslandShowNetworkStatus"
                                   Style="{StaticResource IslandVisualOption}"
                                   ToolTip="网络状态点" AutomationProperties.Name="网络状态点">

@@ -32,9 +32,11 @@ public sealed class PackageIdentityContractTests
         Assert.Contains("<uap10:AllowExternalContent>true</uap10:AllowExternalContent>", packageManifest, StringComparison.Ordinal);
         Assert.Contains("<rescap:Capability Name=\"runFullTrust\" />", packageManifest, StringComparison.Ordinal);
         Assert.Contains("<rescap:Capability Name=\"unvirtualizedResources\" />", packageManifest, StringComparison.Ordinal);
+        Assert.DoesNotContain("graphicsCaptureWithoutBorder", packageManifest, StringComparison.Ordinal);
         Assert.Contains("publisher=\"CN=ChronoIsle Development\"", applicationManifest, StringComparison.Ordinal);
         Assert.Contains("packageName=\"Tr11111.ChronoIsle\"", applicationManifest, StringComparison.Ordinal);
         Assert.Contains("applicationId=\"ChronoIsle\"", applicationManifest, StringComparison.Ordinal);
+        Assert.Contains("requestedExecutionLevel level=\"requireAdministrator\"", applicationManifest, StringComparison.Ordinal);
         Assert.Contains(
             "<PackageReference Include=\"Microsoft.Windows.SDK.BuildTools\" Version=\"10.0.26100.7463\" PrivateAssets=\"all\" />",
             buildToolsProject,

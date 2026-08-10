@@ -67,6 +67,7 @@ public partial class LifeSettingsWindow : Window
         IslandShowNetworkSpeed.IsChecked = savedPreferences.IslandShowNetworkSpeed;
         IslandShowCpuUsage.IsChecked = savedPreferences.IslandShowCpuUsage;
         IslandShowMemoryUsage.IsChecked = savedPreferences.IslandShowMemoryUsage;
+        IslandShowFps.IsChecked = savedPreferences.IslandShowFps;
         IslandShowNetworkStatus.IsChecked = savedPreferences.IslandShowNetworkStatus;
         IslandShowClock.IsChecked = savedPreferences.IslandShowClock;
         IslandShowExpandIndicator.IsChecked = savedPreferences.IslandShowExpandIndicator;
@@ -143,6 +144,7 @@ public partial class LifeSettingsWindow : Window
             IslandShowNetworkSpeed = IslandShowNetworkSpeed.IsChecked == true,
             IslandShowCpuUsage = IslandShowCpuUsage.IsChecked == true,
             IslandShowMemoryUsage = IslandShowMemoryUsage.IsChecked == true,
+            IslandShowFps = IslandShowFps.IsChecked == true,
             IslandShowNetworkStatus = IslandShowNetworkStatus.IsChecked == true,
             IslandShowClock = IslandShowClock.IsChecked == true,
             IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true,

@@ -141,6 +141,7 @@ public sealed record LifePreferences(
     bool IslandTopDockAutoFold = true,
     bool IslandShowCpuUsage = false,
     bool IslandShowMemoryUsage = false,
+    bool IslandShowFps = true,
     bool IslandShowMusicMode = true)
 {
     public static LifePreferences Default => new(true, "Direct");

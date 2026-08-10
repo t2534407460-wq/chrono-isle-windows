@@ -16,7 +16,7 @@ public sealed class CollapsedIslandCustomizationContractTests
         foreach (var preference in new[]
                  {
                      "IslandShowMascot", "IslandShowStatusLight", "IslandShowAgendaSummary",
-                     "IslandShowNetworkSpeed", "IslandShowCpuUsage", "IslandShowMemoryUsage",
+                     "IslandShowNetworkSpeed", "IslandShowCpuUsage", "IslandShowFps", "IslandShowMemoryUsage",
                      "IslandShowNetworkStatus", "IslandShowClock",
                      "IslandShowExpandIndicator"
                  })
