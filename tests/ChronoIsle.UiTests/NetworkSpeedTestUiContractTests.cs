@@ -19,6 +19,7 @@ public sealed class NetworkSpeedTestUiContractTests
         var panel = NetworkSpeedTestPanel(island);
         var button = Element(panel, "x:Name=\"NetworkSpeedTestStartButton\"");
         var spinner = Element(panel, "x:Name=\"NetworkSpeedTestSpinnerPath\"");
+        var progressArc = Element(panel, "x:Name=\"NetworkSpeedTestGaugeProgressArc\"", "</Path>");
         var style = Element(island, "x:Key=\"IslandNetworkSpeedTestPrimary\"", "</Style>");
 
         Assert.Contains("x:Name=\"NetworkSpeedTestToolTab\" Content=\"网络测速\"", tab, StringComparison.Ordinal);
@@ -33,6 +34,9 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("StrokeStartLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.Contains("StrokeEndLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", panel, StringComparison.Ordinal);
+        Assert.Contains("Point=\"20,122\"", progressArc, StringComparison.Ordinal);
+        Assert.Contains("Size=\"98,98\"", progressArc, StringComparison.Ordinal);
+        Assert.Contains("SweepDirection=\"Clockwise\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestStartButton\" Content=\"开始测速\" Style=\"{StaticResource IslandNetworkSpeedTestPrimary}\"", button, StringComparison.Ordinal);
         Assert.Contains("Click=\"NetworkSpeedTestStartButton_Click\"", button, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource Brush.Accent}", panel, StringComparison.Ordinal);
@@ -130,6 +134,13 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty, null)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestSpinnerPath.StrokeDashOffset = 0;", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("static Point GetNetworkSpeedTestGaugeProgressPoint(double rate)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("(GetNetworkSpeedTestGaugeAngle(rate) + 75) / 150", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("new Point(118 - 98 * Math.Cos(radians), 122 - 98 * Math.Sin(radians))", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("var targetPoint = GetNetworkSpeedTestGaugeProgressPoint(rate);", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, new PointAnimation", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("To = targetPoint", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, null);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("static double GetNetworkSpeedTestGaugeAngle(double rate)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("rate = Math.Clamp(rate, 0, 500);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("rate <= 100", codeBehind, StringComparison.Ordinal);
@@ -153,7 +164,7 @@ public sealed class NetworkSpeedTestUiContractTests
     }
 
     [Fact]
-    public void NetworkSpeedTest_TogglesOnlyTheDisplayedRateUnit()
+    public void NetworkSpeedTest_TogglesAndConvertsDisplayedRateUnit()
     {
         var workspace = FindWorkspace();
         var island = File.ReadAllText(Path.Combine(
@@ -171,7 +182,7 @@ public sealed class NetworkSpeedTestUiContractTests
         var formatStart = codeBehind.IndexOf("string FormatNetworkSpeedTestRate(double? rate)", StringComparison.Ordinal);
         var formatEnd = codeBehind.IndexOf("    static string FormatNetworkSpeedTestLatency", formatStart, StringComparison.Ordinal);
 
-        Assert.Contains("Content=\"Mbps ⇄ Mb/s\"", unitButton, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Mbps ⇄ MB/s\"", unitButton, StringComparison.Ordinal);
         Assert.Contains("Style=\"{StaticResource IslandTab}\"", unitButton, StringComparison.Ordinal);
         Assert.Contains("Click=\"NetworkSpeedTestUnitButton_Click\"", unitButton, StringComparison.Ordinal);
         Assert.DoesNotContain("Background=", unitButton, StringComparison.Ordinal);
@@ -182,15 +193,17 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.True(phaseTextIndex >= 0 && phaseTextIndex < unitButtonIndex, "The unit toggle must sit by the gauge phase text.");
         Assert.True(enumStart >= 0 && enumEnd > enumStart, "The rate-unit enum is missing.");
         var unitEnum = codeBehind[enumStart..(enumEnd + 1)];
-        Assert.Contains("enum NetworkSpeedTestDisplayUnit { Mbps, MbPerSecond }", unitEnum, StringComparison.Ordinal);
+        Assert.Contains("enum NetworkSpeedTestDisplayUnit { Mbps, MegabytesPerSecond }", unitEnum, StringComparison.Ordinal);
         Assert.Contains("Mbps", unitEnum, StringComparison.Ordinal);
-        Assert.Contains("MbPerSecond", unitEnum, StringComparison.Ordinal);
+        Assert.Contains("MegabytesPerSecond", unitEnum, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("string NetworkSpeedTestRateUnit =>", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("? \"Mbps\" : \"Mb/s\"", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("? \"Mbps\" : \"MB/s\"", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("double GetNetworkSpeedTestDisplayRate(double rate) =>", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("? rate : rate / 8d;", codeBehind, StringComparison.Ordinal);
         Assert.True(handlerStart >= 0 && handlerEnd > handlerStart, "The rate-unit click handler is missing.");
         var unitHandler = codeBehind[handlerStart..handlerEnd];
-        Assert.Contains("NetworkSpeedTestDisplayUnit.MbPerSecond", unitHandler, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestDisplayUnit.MegabytesPerSecond", unitHandler, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestDisplayUnit.Mbps", unitHandler, StringComparison.Ordinal);
         Assert.Contains("UpdateNetworkSpeedTestView(networkSpeedTest.Current);", unitHandler, StringComparison.Ordinal);
         Assert.Equal(1, unitHandler.Split("networkSpeedTest.", StringSplitOptions.None).Length - 1);
@@ -205,12 +218,11 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.True(gaugeUnitUpdate > updateStart && gaugeUnitUpdate < gaugeRateStart,
             "The gauge unit must refresh for every snapshot, including completed tests.");
         var gaugeUpdate = codeBehind[updateStart..updateEnd];
-        Assert.Contains("NetworkSpeedTestGaugeValue.Text = rate.ToString(\"0.00\", CultureInfo.InvariantCulture);", gaugeUpdate, StringComparison.Ordinal);
-        Assert.DoesNotContain("*", gaugeUpdate, StringComparison.Ordinal);
-        Assert.DoesNotContain("/", gaugeUpdate, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestGaugeValue.Text = GetNetworkSpeedTestDisplayRate(rate).ToString(\"0.00\", CultureInfo.InvariantCulture);", gaugeUpdate, StringComparison.Ordinal);
+        Assert.Contains("AnimateNetworkSpeedTestGauge(rate);", gaugeUpdate, StringComparison.Ordinal);
         Assert.True(formatStart >= 0 && formatEnd > formatStart, "The rate formatter is missing.");
         var rateFormatter = codeBehind[formatStart..formatEnd];
-        Assert.Contains("value.ToString(\"0.00\", CultureInfo.InvariantCulture)", rateFormatter, StringComparison.Ordinal);
+        Assert.Contains("GetNetworkSpeedTestDisplayRate(value).ToString(\"0.00\", CultureInfo.InvariantCulture)", rateFormatter, StringComparison.Ordinal);
         Assert.Contains("{NetworkSpeedTestRateUnit}", rateFormatter, StringComparison.Ordinal);
     }
 

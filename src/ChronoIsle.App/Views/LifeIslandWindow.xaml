@@ -583,6 +583,17 @@
                             Data="M 20,122 A 98,98 0 0 1 216,122"
                             Stroke="{DynamicResource Brush.Accent}" StrokeThickness="3"
                             StrokeDashArray="2 5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                      <Path Stroke="{DynamicResource Brush.Accent}" StrokeThickness="5"
+                            StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                        <Path.Data>
+                          <PathGeometry>
+                            <PathFigure StartPoint="20,122">
+                              <ArcSegment x:Name="NetworkSpeedTestGaugeProgressArc" Point="20,122" Size="98,98"
+                                          SweepDirection="Clockwise"/>
+                            </PathFigure>
+                          </PathGeometry>
+                        </Path.Data>
+                      </Path>
                       <StackPanel Canvas.Top="84" Width="236" HorizontalAlignment="Center">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
                           <TextBlock x:Name="NetworkSpeedTestGaugeValue" Text="--"
@@ -595,7 +606,7 @@
                         <TextBlock x:Name="NetworkSpeedTestPhaseText" Text="等待开始测速"
                                    Foreground="{DynamicResource Brush.TextSecondary}"
                                    FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0"/>
-                        <Button x:Name="NetworkSpeedTestUnitButton" Content="Mbps ⇄ Mb/s"
+                        <Button x:Name="NetworkSpeedTestUnitButton" Content="Mbps ⇄ MB/s"
                                 Style="{StaticResource IslandTab}" Click="NetworkSpeedTestUnitButton_Click"
                                 MinHeight="20" Height="20" Padding="6,1" FontSize="10"
                                 HorizontalAlignment="Center" Margin="0,2,0,0"/>

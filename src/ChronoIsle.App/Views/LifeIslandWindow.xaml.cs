@@ -137,11 +137,14 @@ public partial class LifeIslandWindow : Window
 
     enum IslandPlacement { Free, Top, Taskbar }
     enum CollapsedHeaderTarget { None, QuickAsk, Calendar, Telemetry, Today }
-    enum NetworkSpeedTestDisplayUnit { Mbps, MbPerSecond }
+    enum NetworkSpeedTestDisplayUnit { Mbps, MegabytesPerSecond }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
 
     string NetworkSpeedTestRateUnit => networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps
-        ? "Mbps" : "Mb/s";
+        ? "Mbps" : "MB/s";
+
+    double GetNetworkSpeedTestDisplayRate(double rate) =>
+        networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps ? rate : rate / 8d;
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -1868,7 +1871,7 @@ public partial class LifeIslandWindow : Window
     void NetworkSpeedTestUnitButton_Click(object sender, RoutedEventArgs e)
     {
         networkSpeedTestDisplayUnit = networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps
-            ? NetworkSpeedTestDisplayUnit.MbPerSecond
+            ? NetworkSpeedTestDisplayUnit.MegabytesPerSecond
             : NetworkSpeedTestDisplayUnit.Mbps;
         UpdateNetworkSpeedTestView(networkSpeedTest.Current);
     }
@@ -2011,7 +2014,7 @@ public partial class LifeIslandWindow : Window
         };
         if (gaugeRate is { } rate && double.IsFinite(rate))
         {
-            NetworkSpeedTestGaugeValue.Text = rate.ToString("0.00", CultureInfo.InvariantCulture);
+            NetworkSpeedTestGaugeValue.Text = GetNetworkSpeedTestDisplayRate(rate).ToString("0.00", CultureInfo.InvariantCulture);
             AnimateNetworkSpeedTestGauge(rate);
         }
         else if (snapshot.Phase is NetworkSpeedTestPhase.Idle or NetworkSpeedTestPhase.SelectingNode or NetworkSpeedTestPhase.MeasuringPlatforms)
@@ -2032,7 +2035,7 @@ public partial class LifeIslandWindow : Window
 
     string FormatNetworkSpeedTestRate(double? rate) =>
         rate is { } value && double.IsFinite(value)
-            ? $"{value.ToString("0.00", CultureInfo.InvariantCulture)} {NetworkSpeedTestRateUnit}"
+            ? $"{GetNetworkSpeedTestDisplayRate(value).ToString("0.00", CultureInfo.InvariantCulture)} {NetworkSpeedTestRateUnit}"
             : "未测得";
 
     static string FormatNetworkSpeedTestLatency(long? milliseconds) =>
@@ -2046,19 +2049,31 @@ public partial class LifeIslandWindow : Window
             : 55 + Math.Log(1 + rate - 100) / Math.Log(401) * 20;
     }
 
+    static Point GetNetworkSpeedTestGaugeProgressPoint(double rate)
+    {
+        var progress = (GetNetworkSpeedTestGaugeAngle(rate) + 75) / 150;
+        var radians = Math.PI * progress;
+        return new Point(118 - 98 * Math.Cos(radians), 122 - 98 * Math.Sin(radians));
+    }
+
     void AnimateNetworkSpeedTestGauge(double rate)
     {
         var target = GetNetworkSpeedTestGaugeAngle(rate);
+        var targetPoint = GetNetworkSpeedTestGaugeProgressPoint(rate);
         if (!SystemParameters.ClientAreaAnimation)
         {
             StopNetworkSpeedTestGaugeAnimation();
             NetworkSpeedTestGaugeNeedleRotation.Angle = target;
+            NetworkSpeedTestGaugeProgressArc.Point = targetPoint;
             return;
         }
 
         var current = NetworkSpeedTestGaugeNeedleRotation.Angle;
+        var currentPoint = NetworkSpeedTestGaugeProgressArc.Point;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
         NetworkSpeedTestGaugeNeedleRotation.Angle = current;
+        NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, null);
+        NetworkSpeedTestGaugeProgressArc.Point = currentPoint;
         var animation = new DoubleAnimation
         {
             From = current,
@@ -2067,19 +2082,30 @@ public partial class LifeIslandWindow : Window
             FillBehavior = FillBehavior.HoldEnd
         };
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
+        NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, new PointAnimation
+        {
+            From = currentPoint,
+            To = targetPoint,
+            Duration = TimeSpan.FromMilliseconds(180),
+            FillBehavior = FillBehavior.HoldEnd
+        });
     }
 
     void ResetNetworkSpeedTestGauge()
     {
         StopNetworkSpeedTestGaugeAnimation();
         NetworkSpeedTestGaugeNeedleRotation.Angle = -75;
+        NetworkSpeedTestGaugeProgressArc.Point = new Point(20, 122);
     }
 
     void StopNetworkSpeedTestGaugeAnimation()
     {
         var current = NetworkSpeedTestGaugeNeedleRotation.Angle;
+        var currentPoint = NetworkSpeedTestGaugeProgressArc.Point;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
         NetworkSpeedTestGaugeNeedleRotation.Angle = current;
+        NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, null);
+        NetworkSpeedTestGaugeProgressArc.Point = currentPoint;
     }
 
     void StartNetworkSpeedTestSpinner()
