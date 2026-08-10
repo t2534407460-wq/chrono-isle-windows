@@ -2065,7 +2065,9 @@ public partial class LifeIslandWindow : Window
 
     void StopNetworkSpeedTestGaugeAnimation()
     {
+        var current = NetworkSpeedTestGaugeNeedleRotation.Angle;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        NetworkSpeedTestGaugeNeedleRotation.Angle = current;
     }
 
     void StartNetworkSpeedTestSpinner()

@@ -29,6 +29,7 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("x:Name=\"NetworkSpeedTestGaugeNeedleRotation\"", panel, StringComparison.Ordinal);
         Assert.Contains("Data=\"M 20,122 A 98,98 0 0 1 216,122\"", spinner, StringComparison.Ordinal);
         Assert.Contains("StrokeDashArray=\"2 5\"", spinner, StringComparison.Ordinal);
+        Assert.Contains("Stroke=\"{DynamicResource Brush.Accent}\"", spinner, StringComparison.Ordinal);
         Assert.Contains("StrokeStartLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.Contains("StrokeEndLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", panel, StringComparison.Ordinal);
@@ -121,11 +122,14 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("UpdateNetworkSpeedTestView", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestGaugeNeedleRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("if (!SystemParameters.ClientAreaAnimation)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("From = 0", codeBehind, StringComparison.Ordinal);
         Assert.Contains("To = -14", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Duration = TimeSpan.FromMilliseconds(900)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("RepeatBehavior = RepeatBehavior.Forever", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty, null)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestSpinnerPath.StrokeDashOffset = 0;", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", codeBehind, StringComparison.Ordinal);
         Assert.Contains("static double GetNetworkSpeedTestGaugeAngle(double rate)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("rate = Math.Clamp(rate, 0, 500);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("rate <= 100", codeBehind, StringComparison.Ordinal);
@@ -135,6 +139,15 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("Duration = TimeSpan.FromMilliseconds(180)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var current = NetworkSpeedTestGaugeNeedleRotation.Angle;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("FillBehavior = FillBehavior.HoldEnd", codeBehind, StringComparison.Ordinal);
+        var stopGaugeStart = codeBehind.IndexOf("void StopNetworkSpeedTestGaugeAnimation()", StringComparison.Ordinal);
+        var stopGaugeEnd = codeBehind.IndexOf("    void StartNetworkSpeedTestSpinner()", stopGaugeStart, StringComparison.Ordinal);
+        Assert.True(stopGaugeStart >= 0 && stopGaugeEnd > stopGaugeStart, "The gauge stop method is missing.");
+        var stopGauge = codeBehind[stopGaugeStart..stopGaugeEnd];
+        var savedGaugeAngle = stopGauge.IndexOf("var current = NetworkSpeedTestGaugeNeedleRotation.Angle;", StringComparison.Ordinal);
+        var clearGaugeAnimation = stopGauge.IndexOf("NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);", StringComparison.Ordinal);
+        var restoreGaugeAngle = stopGauge.IndexOf("NetworkSpeedTestGaugeNeedleRotation.Angle = current;", StringComparison.Ordinal);
+        Assert.True(savedGaugeAngle >= 0 && savedGaugeAngle < clearGaugeAnimation && clearGaugeAnimation < restoreGaugeAngle,
+            "Stopping the gauge animation must preserve its effective angle before clearing it.");
         Assert.DoesNotContain("#39C98B", island, StringComparison.Ordinal);
         Assert.DoesNotContain("#39C98B", codeBehind, StringComparison.Ordinal);
     }
