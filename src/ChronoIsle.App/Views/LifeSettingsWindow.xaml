@@ -186,6 +186,7 @@
               </Border>
               <CheckBox x:Name="TelemetryEnabled" Content="显示实时网速、流量、CPU 与内存" Margin="0,14,0,0"/>
               <CheckBox x:Name="GlowBorderEnabled" Content="启用低饱和青绿流光边框与弹簧动画" Margin="0,12,0,0"/>
+              <CheckBox x:Name="MediaAutoTakeover" Content="播放音乐时在折叠岛显示歌曲信息" Margin="0,14,0,0"/>
               <CheckBox x:Name="MoveIslandDuringFullscreen" Content="游戏全屏时将灵动岛移至其他屏幕" Margin="0,12,0,0"/>
               <TextBlock Text="全屏结束后会恢复原位置；没有其他屏幕时才临时隐藏。" Style="{StaticResource Text.Secondary}" Margin="24,3,0,12" TextWrapping="Wrap"/>
             </StackPanel></Border>

@@ -95,6 +95,7 @@ public partial class LifeIslandWindow : Window
     bool networkSpeedTestSpinnerAnimating;
     NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit;
     bool isClosed;
+    bool musicModeActive;
     IslandPlacement placement;
     string? taskbarMonitorDeviceName;
     double taskbarHorizontalRatio = 0.5;
@@ -160,6 +161,7 @@ public partial class LifeIslandWindow : Window
         Settings,
         PauseReminders,
         ToggleDoNotDisturb,
+        ToggleMusicMode,
         ToggleTopDockAutoFold
     }
     public event EventHandler? OpenRequested;
@@ -749,11 +751,27 @@ public partial class LifeIslandWindow : Window
                 StatusLight.Fill = new SolidColorBrush(Color.FromRgb(255, 159, 10));
                 ShowSummaryOverride(reminderBannerItem is null ? ReminderText.Text : $"提醒 · {reminderBannerItem.Title}");
             }
-            else UpdateIdleSummary(currentPreferences);
+            else if (currentPreferences.IslandShowMusicMode &&
+                     media.Current is { IsPlaying: true, IsMusic: true } mediaSnapshot)
+            {
+                StatusLight.Fill = new SolidColorBrush(Color.FromRgb(50, 173, 230));
+                ShowSummaryOverride($"♫ {mediaSnapshot.Title}{(string.IsNullOrWhiteSpace(mediaSnapshot.Artist) ? "" : $" · {mediaSnapshot.Artist}")}");
+            }
+            else
+            {
+                UpdateIdleSummary(currentPreferences);
+            }
         }
-        UpdateCollapsedMediaView(null, currentPreferences);
+        var currentMusic = currentPreferences.IslandShowMusicMode &&
+                           media.Current is { IsMusic: true } musicSnapshot
+            ? musicSnapshot : null;
+        if (currentMusic?.IsPlaying == true) musicModeActive = true;
+        if (currentMusic is null) musicModeActive = false;
+        var collapsedMedia = musicModeActive ? currentMusic : null;
+        UpdateCollapsedMediaView(collapsedMedia, currentPreferences);
         UpdateTelemetryView(telemetry.Current);
-        RefreshTopDockAutoFold();
+        if (collapsedMedia is not null) SetTopDockFolded(false);
+        else RefreshTopDockAutoFold();
         ResizeCollapsedToContent();
         BuildCalendar();
         BuildDayAgenda();
@@ -1312,6 +1330,7 @@ public partial class LifeIslandWindow : Window
             IslandQuickAction.Settings,
             IslandQuickAction.PauseReminders,
             IslandQuickAction.ToggleDoNotDisturb,
+            IslandQuickAction.ToggleMusicMode,
             IslandQuickAction.ToggleTopDockAutoFold
         };
         foreach (var action in contextActions)
@@ -1330,6 +1349,7 @@ public partial class LifeIslandWindow : Window
                 Style = (Style)FindResource("IslandContextMenuItem"),
                 Tag = action,
                 IsCheckable = action is IslandQuickAction.ToggleDoNotDisturb
+                    or IslandQuickAction.ToggleMusicMode
                     or IslandQuickAction.ToggleTopDockAutoFold
             };
             item.Click += (_, _) => RunQuickAction(action);
@@ -1348,6 +1368,7 @@ public partial class LifeIslandWindow : Window
             item.IsChecked = action switch
             {
                 IslandQuickAction.ToggleDoNotDisturb => reminders.IsDoNotDisturbEnabled,
+                IslandQuickAction.ToggleMusicMode => currentPreferences.IslandShowMusicMode,
                 IslandQuickAction.ToggleTopDockAutoFold => currentPreferences.IslandTopDockAutoFold,
                 _ => false
             };
@@ -1429,6 +1450,7 @@ public partial class LifeIslandWindow : Window
         IslandQuickAction.Settings => "⚙ 设置",
         IslandQuickAction.PauseReminders => "Ⅱ 暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "◐ 勿扰模式",
+        IslandQuickAction.ToggleMusicMode => "♫ 显示音乐模式",
         IslandQuickAction.ToggleTopDockAutoFold => "⌃ 顶部吸附自动收缩",
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
@@ -1460,10 +1482,20 @@ public partial class LifeIslandWindow : Window
             case IslandQuickAction.Settings: OpenSettings(); break;
             case IslandQuickAction.PauseReminders: reminders.SetDoNotDisturb(true); BuildTodayDashboard(); break;
             case IslandQuickAction.ToggleDoNotDisturb: reminders.SetDoNotDisturb(!reminders.IsDoNotDisturbEnabled); BuildTodayDashboard(); break;
+            case IslandQuickAction.ToggleMusicMode: ToggleMusicMode(); break;
             case IslandQuickAction.ToggleTopDockAutoFold: ToggleTopDockAutoFold(); break;
             default: throw new ArgumentOutOfRangeException(nameof(action));
         }
         Touch();
+    }
+
+    void ToggleMusicMode()
+    {
+        var current = preferences.Load();
+        collapsedPreferences = current with { IslandShowMusicMode = !current.IslandShowMusicMode };
+        preferences.Save(collapsedPreferences);
+        if (!collapsedPreferences.IslandShowMusicMode) musicModeActive = false;
+        Refresh();
     }
 
     void ToggleTopDockAutoFold()
@@ -3452,7 +3484,8 @@ public partial class LifeIslandWindow : Window
     void SetTopDockFolded(bool folded)
     {
         folded = folded && collapsedPreferences.IslandTopDockAutoFold &&
-                 placement == IslandPlacement.Top && !expanded && !pointerHover;
+                 placement == IslandPlacement.Top && !expanded && !pointerHover &&
+                 !(musicModeActive && media.Current is { IsMusic: true });
         if (folded == topDockFolded) return;
 
         var currentTop = Top;

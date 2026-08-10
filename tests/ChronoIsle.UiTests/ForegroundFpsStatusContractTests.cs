@@ -28,7 +28,7 @@ public sealed class ForegroundFpsStatusContractTests
     }
 
     [Fact]
-    public void SettingsAndIsland_DoNotExposeRetiredNotificationOrMusicTakeover()
+    public void SettingsAndIsland_RetireNotificationsButKeepMusicMode()
     {
         var workspace = FindWorkspace();
         var settingsXaml = File.ReadAllText(Path.Combine(
@@ -39,12 +39,11 @@ public sealed class ForegroundFpsStatusContractTests
             workspace, "src", "ChronoIsle.App", "App.xaml.cs"));
 
         Assert.DoesNotContain("x:Name=\"ToastInboxEnabled\"", settingsXaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("x:Name=\"MediaAutoTakeover\"", settingsXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("StartToastInboxAsync", app, StringComparison.Ordinal);
         Assert.DoesNotContain("SystemToastInboxService", app, StringComparison.Ordinal);
-        Assert.DoesNotContain("ToggleMusicMode", island, StringComparison.Ordinal);
-        Assert.DoesNotContain("currentPreferences.IslandShowMusicMode &&", island, StringComparison.Ordinal);
-        Assert.Contains("UpdateCollapsedMediaView(null, currentPreferences);", island, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"MediaAutoTakeover\"", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("ToggleMusicMode", island, StringComparison.Ordinal);
+        Assert.Contains("currentPreferences.IslandShowMusicMode &&", island, StringComparison.Ordinal);
     }
 
     [Fact]
