@@ -34,7 +34,8 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("StrokeStartLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.Contains("StrokeEndLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", panel, StringComparison.Ordinal);
-        Assert.Contains("Point=\"20,122\"", progressArc, StringComparison.Ordinal);
+        Assert.Contains("<PathFigure StartPoint=\"23.339,93.636\">", panel, StringComparison.Ordinal);
+        Assert.Contains("Point=\"23.339,93.636\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("Size=\"98,98\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("SweepDirection=\"Clockwise\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestStartButton\" Content=\"开始测速\" Style=\"{StaticResource IslandNetworkSpeedTestPrimary}\"", button, StringComparison.Ordinal);
@@ -135,8 +136,9 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("NetworkSpeedTestSpinnerPath.StrokeDashOffset = 0;", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", codeBehind, StringComparison.Ordinal);
         Assert.Contains("static Point GetNetworkSpeedTestGaugeProgressPoint(double rate)", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("(GetNetworkSpeedTestGaugeAngle(rate) + 75) / 150", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("new Point(118 - 98 * Math.Cos(radians), 122 - 98 * Math.Sin(radians))", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("var radians = Math.PI / 180d * GetNetworkSpeedTestGaugeAngle(rate);", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("new Point(118 + 98 * Math.Sin(radians), 119 - 98 * Math.Cos(radians))", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("(GetNetworkSpeedTestGaugeAngle(rate) + 75) / 150", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var targetPoint = GetNetworkSpeedTestGaugeProgressPoint(rate);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, new PointAnimation", codeBehind, StringComparison.Ordinal);
         Assert.Contains("To = targetPoint", codeBehind, StringComparison.Ordinal);

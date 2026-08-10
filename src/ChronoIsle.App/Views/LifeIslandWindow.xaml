@@ -587,8 +587,8 @@
                             StrokeStartLineCap="Round" StrokeEndLineCap="Round">
                         <Path.Data>
                           <PathGeometry>
-                            <PathFigure StartPoint="20,122">
-                              <ArcSegment x:Name="NetworkSpeedTestGaugeProgressArc" Point="20,122" Size="98,98"
+                            <PathFigure StartPoint="23.339,93.636">
+                              <ArcSegment x:Name="NetworkSpeedTestGaugeProgressArc" Point="23.339,93.636" Size="98,98"
                                           SweepDirection="Clockwise"/>
                             </PathFigure>
                           </PathGeometry>
