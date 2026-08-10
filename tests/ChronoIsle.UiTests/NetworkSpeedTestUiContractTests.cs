@@ -18,6 +18,7 @@ public sealed class NetworkSpeedTestUiContractTests
         var namingPanel = Element(island, "x:Name=\"NamingToolPanel\"");
         var panel = NetworkSpeedTestPanel(island);
         var button = Element(panel, "x:Name=\"NetworkSpeedTestStartButton\"");
+        var spinner = Element(panel, "x:Name=\"NetworkSpeedTestSpinnerPath\"");
         var style = Element(island, "x:Key=\"IslandNetworkSpeedTestPrimary\"", "</Style>");
 
         Assert.Contains("x:Name=\"NetworkSpeedTestToolTab\" Content=\"网络测速\"", tab, StringComparison.Ordinal);
@@ -26,8 +27,11 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("x:Name=\"NetworkSpeedTestToolPanel\" Visibility=\"Collapsed\"", panel, StringComparison.Ordinal);
         Assert.DoesNotContain("Visibility=", namingPanel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestGaugeNeedleRotation\"", panel, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"NetworkSpeedTestSpinnerRotation\"", panel, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"NetworkSpeedTestSpinnerRotation\" CenterX=\"118\" CenterY=\"119\"", panel, StringComparison.Ordinal);
+        Assert.Contains("Data=\"M 20,122 A 98,98 0 0 1 216,122\"", spinner, StringComparison.Ordinal);
+        Assert.Contains("StrokeDashArray=\"2 5\"", spinner, StringComparison.Ordinal);
+        Assert.Contains("StrokeStartLineCap=\"Round\"", spinner, StringComparison.Ordinal);
+        Assert.Contains("StrokeEndLineCap=\"Round\"", spinner, StringComparison.Ordinal);
+        Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", panel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestStartButton\" Content=\"开始测速\" Style=\"{StaticResource IslandNetworkSpeedTestPrimary}\"", button, StringComparison.Ordinal);
         Assert.Contains("Click=\"NetworkSpeedTestStartButton_Click\"", button, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource Brush.Accent}", panel, StringComparison.Ordinal);
@@ -116,7 +120,19 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("ShowNetworkSpeedTestTool", codeBehind, StringComparison.Ordinal);
         Assert.Contains("UpdateNetworkSpeedTestView", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestGaugeNeedleRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("NetworkSpeedTestSpinnerRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("To = -14", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Duration = TimeSpan.FromMilliseconds(900)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("RepeatBehavior = RepeatBehavior.Forever", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty, null)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestSpinnerPath.StrokeDashOffset = 0;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("static double GetNetworkSpeedTestGaugeAngle(double rate)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("rate = Math.Clamp(rate, 0, 500);", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("rate <= 100", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("-75 + rate / 100d * 130", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("55 + Math.Log(1 + rate - 100) / Math.Log(401) * 20", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("var target = GetNetworkSpeedTestGaugeAngle(rate);", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Duration = TimeSpan.FromMilliseconds(180)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var current = NetworkSpeedTestGaugeNeedleRotation.Angle;", codeBehind, StringComparison.Ordinal);
         Assert.Contains("FillBehavior = FillBehavior.HoldEnd", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("#39C98B", island, StringComparison.Ordinal);

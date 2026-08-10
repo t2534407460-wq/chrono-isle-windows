@@ -2026,9 +2026,17 @@ public partial class LifeIslandWindow : Window
     static string FormatNetworkSpeedTestLatency(long? milliseconds) =>
         milliseconds is { } value ? $"{value} ms" : "未测得";
 
+    static double GetNetworkSpeedTestGaugeAngle(double rate)
+    {
+        rate = Math.Clamp(rate, 0, 500);
+        return rate <= 100
+            ? -75 + rate / 100d * 130
+            : 55 + Math.Log(1 + rate - 100) / Math.Log(401) * 20;
+    }
+
     void AnimateNetworkSpeedTestGauge(double rate)
     {
-        var target = -75 + Math.Log(1 + Math.Clamp(rate, 0, 500)) / Math.Log(501) * 150;
+        var target = GetNetworkSpeedTestGaugeAngle(rate);
         if (!SystemParameters.ClientAreaAnimation)
         {
             StopNetworkSpeedTestGaugeAnimation();
@@ -2043,7 +2051,7 @@ public partial class LifeIslandWindow : Window
         {
             From = current,
             To = target,
-            Duration = TimeSpan.FromMilliseconds(150),
+            Duration = TimeSpan.FromMilliseconds(180),
             FillBehavior = FillBehavior.HoldEnd
         };
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
@@ -2069,11 +2077,11 @@ public partial class LifeIslandWindow : Window
         }
         if (networkSpeedTestSpinnerAnimating) return;
 
-        NetworkSpeedTestSpinnerRotation.Angle = 0;
-        NetworkSpeedTestSpinnerRotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation
+        NetworkSpeedTestSpinnerPath.StrokeDashOffset = 0;
+        NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty, new DoubleAnimation
         {
             From = 0,
-            To = 360,
+            To = -14,
             Duration = TimeSpan.FromMilliseconds(900),
             RepeatBehavior = RepeatBehavior.Forever
         });
@@ -2082,8 +2090,8 @@ public partial class LifeIslandWindow : Window
 
     void StopNetworkSpeedTestSpinner()
     {
-        NetworkSpeedTestSpinnerRotation.BeginAnimation(RotateTransform.AngleProperty, null);
-        NetworkSpeedTestSpinnerRotation.Angle = 0;
+        NetworkSpeedTestSpinnerPath.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+        NetworkSpeedTestSpinnerPath.StrokeDashOffset = 0;
         networkSpeedTestSpinnerAnimating = false;
     }
 
