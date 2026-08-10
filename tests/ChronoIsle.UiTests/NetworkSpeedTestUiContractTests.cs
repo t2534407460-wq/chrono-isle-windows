@@ -63,11 +63,17 @@ public sealed class NetworkSpeedTestUiContractTests
         })
         {
             Assert.Contains($"pack://application:,,,/ChronoIsle;component/Assets/platform-{asset}.ico", island, StringComparison.Ordinal);
-            Assert.Contains($"Assets\\platform-{asset}.ico", project, StringComparison.Ordinal);
+            Assert.Contains($"<Resource Include=\"Assets\\platform-{asset}.ico\" />", project, StringComparison.Ordinal);
             Assert.DoesNotContain(icon, panel, StringComparison.Ordinal);
-        }
+            Assert.DoesNotContain(icon, controls, StringComparison.Ordinal);
 
-        Assert.DoesNotContain("Icon.PlatformLeague", controls, StringComparison.Ordinal);
+            var assetPath = Path.Combine(workspace, "src", "ChronoIsle.App", "Assets", $"platform-{asset}.ico");
+            Assert.True(File.Exists(assetPath), $"The {asset} icon file is missing.");
+            var bytes = File.ReadAllBytes(assetPath);
+            Assert.True(bytes.Length > 0, $"The {asset} icon file is empty.");
+            Assert.True(bytes.Length >= 4, $"The {asset} icon file is too short to contain an ICO signature.");
+            Assert.Equal(new byte[] { 0, 0, 1, 0 }, bytes[..4]);
+        }
     }
 
     [Fact]
