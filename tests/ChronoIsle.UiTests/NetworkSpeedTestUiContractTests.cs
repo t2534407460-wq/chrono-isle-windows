@@ -25,6 +25,7 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.DoesNotContain("Visibility=", namingPanel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestGaugeNeedleRotation\"", panel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestSpinnerRotation\"", panel, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"NetworkSpeedTestSpinnerRotation\" CenterX=\"118\" CenterY=\"119\"", panel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestStartButton\" Content=\"开始测速\" Style=\"{StaticResource IslandNetworkSpeedTestPrimary}\"", button, StringComparison.Ordinal);
         Assert.Contains("Click=\"NetworkSpeedTestStartButton_Click\"", button, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource Brush.Accent}", panel, StringComparison.Ordinal);
@@ -108,6 +109,8 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("UpdateNetworkSpeedTestView", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestGaugeNeedleRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestSpinnerRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("var current = NetworkSpeedTestGaugeNeedleRotation.Angle;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("FillBehavior = FillBehavior.HoldEnd", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("#39C98B", island, StringComparison.Ordinal);
         Assert.DoesNotContain("#39C98B", codeBehind, StringComparison.Ordinal);
     }

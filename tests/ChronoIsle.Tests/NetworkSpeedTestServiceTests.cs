@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http;
+using System.Reflection;
 using ChronoIsle.App.Services;
 
 namespace ChronoIsle.Tests;
@@ -24,6 +26,18 @@ public sealed class NetworkSpeedTestServiceTests
         ]);
 
         Assert.Equal(tsinghua, selected);
+    }
+
+    [Fact]
+    public void DomesticNodes_UsesPublishedChineseEducationBackends()
+    {
+        var field = typeof(NetworkSpeedTestService).GetField("DomesticNodes", BindingFlags.Static | BindingFlags.NonPublic);
+        var nodes = Assert.IsType<NetworkSpeedTestNode[]>(field?.GetValue(null));
+
+        Assert.True(nodes.Select(node => node.BaseUri.Host).Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 5);
+        Assert.Contains(nodes, node => node.BaseUri.Host == "speed.nuaa.edu.cn" && node.BaseUri.AbsolutePath == "/backend/");
+        Assert.Contains(nodes, node => node.BaseUri.Host == "wsus.sjtu.edu.cn" && node.BaseUri.AbsolutePath == "/speedtest/backend/");
+        Assert.Contains(nodes, node => node.BaseUri.Host == "test.ustc.edu.cn" && node.BaseUri.AbsolutePath == "/backend/");
     }
 
     [Theory]
@@ -82,7 +96,7 @@ public sealed class NetworkSpeedTestServiceTests
         using var service = CreateService(handler);
 
         var session = service.StartAsync();
-        await handler.FirstRequest.WaitAsync(TimeSpan.FromSeconds(1));
+        await handler.FirstRequest.Task.WaitAsync(TimeSpan.FromSeconds(1));
         service.Cancel();
         await session.WaitAsync(TimeSpan.FromSeconds(1));
 
@@ -100,7 +114,7 @@ public sealed class NetworkSpeedTestServiceTests
         service.SnapshotChanged += snapshot => phases.Enqueue(snapshot.Phase);
 
         var firstSession = service.StartAsync();
-        await handler.FirstRequest.WaitAsync(TimeSpan.FromSeconds(1));
+        await handler.FirstRequest.Task.WaitAsync(TimeSpan.FromSeconds(1));
         var requestCount = handler.RequestCount;
         var selectingSnapshots = phases.Count(phase => phase == NetworkSpeedTestPhase.SelectingNode);
 
@@ -121,7 +135,7 @@ public sealed class NetworkSpeedTestServiceTests
         using var service = CreateService(handler, transferDuration: TimeSpan.FromSeconds(1));
 
         var session = service.StartAsync();
-        await handler.DownloadStarted.WaitAsync(TimeSpan.FromSeconds(1));
+        await handler.DownloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         service.Cancel();
         await session.WaitAsync(TimeSpan.FromSeconds(1));
 
@@ -145,7 +159,7 @@ public sealed class NetworkSpeedTestServiceTests
         };
 
         var session = service.StartAsync();
-        await handler.DownloadStarted.WaitAsync(TimeSpan.FromSeconds(1));
+        await handler.DownloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await session.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(0, handler.ActiveDownloadWorkers);
@@ -177,7 +191,7 @@ public sealed class NetworkSpeedTestServiceTests
         Assert.False(service.Current.IsRunning);
 
         var restartedSession = service.StartAsync();
-        await handler.FirstRequest.WaitAsync(TimeSpan.FromSeconds(1));
+        await handler.FirstRequest.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(2, Volatile.Read(ref selectingSnapshots));
         Assert.True(handler.RequestCount > 0);
@@ -208,7 +222,7 @@ public sealed class NetworkSpeedTestServiceTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var uri = request.RequestUri!;
-            if (request.Method == HttpMethod.Get && uri.Host == "iptv.tsinghua.edu.cn" && uri.AbsolutePath.EndsWith("empty.php", StringComparison.Ordinal))
+            if (request.Method == HttpMethod.Get && uri.AbsolutePath.EndsWith("empty.php", StringComparison.Ordinal))
             {
                 return new HttpResponseMessage(HttpStatusCode.OK);
             }

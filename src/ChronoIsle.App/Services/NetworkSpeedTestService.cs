@@ -48,14 +48,19 @@ public sealed record NetworkSpeedTestSnapshot(
 public sealed class NetworkSpeedTestService : IDisposable
 {
     const int TransferWorkerCount = 4;
-    static readonly TimeSpan DefaultProbeTimeout = TimeSpan.FromSeconds(1.5);
+    static readonly TimeSpan DefaultProbeTimeout = TimeSpan.FromSeconds(3);
     static readonly TimeSpan DefaultTransferDuration = TimeSpan.FromSeconds(7);
     static readonly TimeSpan DefaultSnapshotInterval = TimeSpan.FromMilliseconds(250);
 
     static readonly NetworkSpeedTestNode[] DomesticNodes =
     [
-        new("清华大学", new Uri("https://iptv.tsinghua.edu.cn/st/")),
-        new("武汉大学图书馆", new Uri("https://www.lib.whu.edu.cn/speedtest/backend/"))
+        new("南京航空航天大学", new Uri("http://speed.nuaa.edu.cn/backend/")),
+        new("上海交通大学", new Uri("https://wsus.sjtu.edu.cn/speedtest/backend/")),
+        new("中国科学技术大学", new Uri("https://test.ustc.edu.cn/backend/")),
+        new("东北大学", new Uri("https://speed.neu.edu.cn/")),
+        new("东南大学", new Uri("https://xnfz.seu.edu.cn/speed/")),
+        new("上海大学", new Uri("https://speedtest.shu.edu.cn/backend/")),
+        new("浙江大学", new Uri("http://speedtest.zju.edu.cn/"))
     ];
 
     static readonly PlatformTarget[] Platforms =

@@ -81,7 +81,6 @@ public partial class LifeIslandWindow : Window
     int expandedContentAnimationVersion;
     int expandedContentResizeVersion;
     int collapsedMediaTransitionVersion;
-    int networkSpeedTestGaugeAnimationVersion;
     int taskbarHeightAnimationVersion;
     bool taskbarHeightAnimationActive;
     bool updatingTaskbarHeaderAnchor;
@@ -2037,20 +2036,16 @@ public partial class LifeIslandWindow : Window
             return;
         }
 
-        var version = ++networkSpeedTestGaugeAnimationVersion;
+        var current = NetworkSpeedTestGaugeNeedleRotation.Angle;
+        NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        NetworkSpeedTestGaugeNeedleRotation.Angle = current;
         var animation = new DoubleAnimation
         {
-            From = NetworkSpeedTestGaugeNeedleRotation.Angle,
+            From = current,
             To = target,
             Duration = TimeSpan.FromMilliseconds(150),
-            FillBehavior = FillBehavior.Stop
+            FillBehavior = FillBehavior.HoldEnd
         };
-        animation.Completed += (_, _) =>
-        {
-            if (version != networkSpeedTestGaugeAnimationVersion) return;
-            NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
-        };
-        NetworkSpeedTestGaugeNeedleRotation.Angle = target;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
     }
 
@@ -2062,7 +2057,6 @@ public partial class LifeIslandWindow : Window
 
     void StopNetworkSpeedTestGaugeAnimation()
     {
-        networkSpeedTestGaugeAnimationVersion++;
         NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
     }
 
