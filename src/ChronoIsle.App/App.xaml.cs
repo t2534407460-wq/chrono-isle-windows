@@ -41,6 +41,7 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<AudioSpectrumService>();
         collection.AddSingleton<FullscreenAvoidanceService>();
         collection.AddSingleton<SystemTelemetryService>();
+        collection.AddSingleton<NetworkSpeedTestService>();
         collection.AddSingleton<SystemToastInboxService>();
         collection.AddSingleton<ThemeService>();
         collection.AddSingleton<IChatCompletionClient>(provider => provider.GetRequiredService<OpenAiChatService>());

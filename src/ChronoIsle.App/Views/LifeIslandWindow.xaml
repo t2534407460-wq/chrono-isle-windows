@@ -533,9 +533,11 @@
                   <Button x:Name="NamingToolTab" Content="取名"
                           Style="{StaticResource IslandTab}"
                           Background="{DynamicResource Brush.AccentSoft}"
-                          BorderBrush="{DynamicResource Brush.Accent}" Margin="0,0,8,0"/>
+                          BorderBrush="{DynamicResource Brush.Accent}" Margin="0,0,8,0"
+                          Click="NamingToolTab_Click"/>
                   <Button x:Name="NetworkSpeedTestToolTab" Content="网络测速"
-                          Style="{StaticResource IslandTab}"/>
+                          Style="{StaticResource IslandTab}"
+                          Click="NetworkSpeedTestToolTab_Click"/>
                 </StackPanel>
                 <StackPanel x:Name="NamingToolPanel">
                   <Border Background="{DynamicResource Brush.Surface}"
@@ -698,7 +700,8 @@
                       </Grid>
                     </Border>
                   </UniformGrid>
-                  <Button x:Name="NetworkSpeedTestStartButton" Content="开始测速" Style="{StaticResource IslandNetworkSpeedTestPrimary}"/>
+                  <Button x:Name="NetworkSpeedTestStartButton" Content="开始测速" Style="{StaticResource IslandNetworkSpeedTestPrimary}"
+                          Click="NetworkSpeedTestStartButton_Click"/>
                 </StackPanel>
               </StackPanel>
             </Border>

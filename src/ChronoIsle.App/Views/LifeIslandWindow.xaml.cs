@@ -51,6 +51,8 @@ public partial class LifeIslandWindow : Window
     readonly MediaSessionService media;
     readonly AudioSpectrumService audioSpectrum;
     readonly SystemTelemetryService telemetry;
+    readonly NetworkSpeedTestService networkSpeedTest;
+    readonly Action<NetworkSpeedTestSnapshot> networkSpeedTestSnapshotChanged;
     readonly SystemToastInboxService toastInbox;
     readonly IslandNotificationWindow notificationWindow;
     readonly LifeViewModel assistant;
@@ -79,6 +81,7 @@ public partial class LifeIslandWindow : Window
     int expandedContentAnimationVersion;
     int expandedContentResizeVersion;
     int collapsedMediaTransitionVersion;
+    int networkSpeedTestGaugeAnimationVersion;
     int taskbarHeightAnimationVersion;
     bool taskbarHeightAnimationActive;
     bool updatingTaskbarHeaderAnchor;
@@ -92,6 +95,7 @@ public partial class LifeIslandWindow : Window
     ImageSource? displayedArtworkImage;
     bool collapsedMediaControlsVisible;
     bool collapsedMediaControlsPinned;
+    bool networkSpeedTestSpinnerAnimating;
     bool isClosed;
     bool musicModeActive;
     IslandPlacement placement;
@@ -173,7 +177,7 @@ public partial class LifeIslandWindow : Window
         TodayDashboardService todayDashboard, FocusService focus, ReportService reports, IIslandStateCoordinator islandState,
         TaskAttributesService taskAttributes, LifePreferencesService preferences, ThemeService theme,
         MediaSessionService media, AudioSpectrumService audioSpectrum, SystemTelemetryService telemetry, SystemToastInboxService toastInbox,
-        LifeViewModel assistant)
+        LifeViewModel assistant, NetworkSpeedTestService networkSpeedTest)
     {
         InitializeComponent();
         notificationWindow = new IslandNotificationWindow();
@@ -193,6 +197,17 @@ public partial class LifeIslandWindow : Window
         this.audioSpectrum = audioSpectrum;
         audioSpectrum.SpectrumChanged += AudioSpectrum_SpectrumChanged;
         this.telemetry = telemetry;
+        this.networkSpeedTest = networkSpeedTest;
+        networkSpeedTestSnapshotChanged = snapshot =>
+        {
+            if (isClosed || Dispatcher.HasShutdownStarted) return;
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (isClosed || Dispatcher.HasShutdownStarted) return;
+                UpdateNetworkSpeedTestView(snapshot);
+            });
+        };
+        networkSpeedTest.SnapshotChanged += networkSpeedTestSnapshotChanged;
         this.toastInbox = toastInbox;
         this.assistant = assistant;
         media.SnapshotChanged += _ =>
@@ -246,6 +261,10 @@ public partial class LifeIslandWindow : Window
         Closed += (_, _) =>
         {
             isClosed = true;
+            networkSpeedTest.SnapshotChanged -= networkSpeedTestSnapshotChanged;
+            networkSpeedTest.Cancel();
+            StopNetworkSpeedTestSpinner();
+            StopNetworkSpeedTestGaugeAnimation();
             clockTimer.Stop();
             focusTimer.Stop();
             collapseTimer.Stop();
@@ -1839,6 +1858,19 @@ public partial class LifeIslandWindow : Window
     void QuickAskTab_Click(object sender, RoutedEventArgs e) => ShowQuickAskDashboard();
     void ToolsTab_Click(object sender, RoutedEventArgs e) => ShowToolsDashboard();
     void NamingTool_Click(object sender, RoutedEventArgs e) => OpenNaming();
+    void NamingToolTab_Click(object sender, RoutedEventArgs e) => ShowNamingTool();
+    void NetworkSpeedTestToolTab_Click(object sender, RoutedEventArgs e) => ShowNetworkSpeedTestTool();
+
+    async void NetworkSpeedTestStartButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (networkSpeedTest.Current.IsRunning)
+        {
+            networkSpeedTest.Cancel();
+            return;
+        }
+
+        await networkSpeedTest.StartAsync();
+    }
 
     void ShowCalendarDashboard()
     {
@@ -1895,7 +1927,36 @@ public partial class LifeIslandWindow : Window
         QuickAskPanel.Visibility = Visibility.Collapsed;
         ToolsPanel.Visibility = Visibility.Visible;
         SelectDashboardTab(ToolsDashboardTab);
+        ShowNamingTool();
+    }
+
+    void ShowNamingTool()
+    {
+        NamingToolPanel.Visibility = Visibility.Visible;
+        NetworkSpeedTestToolPanel.Visibility = Visibility.Collapsed;
+        SelectToolTab(NamingToolTab);
         Touch();
+    }
+
+    void ShowNetworkSpeedTestTool()
+    {
+        NamingToolPanel.Visibility = Visibility.Collapsed;
+        NetworkSpeedTestToolPanel.Visibility = Visibility.Visible;
+        SelectToolTab(NetworkSpeedTestToolTab);
+        UpdateNetworkSpeedTestView(networkSpeedTest.Current);
+        Touch();
+    }
+
+    void SelectToolTab(Button selected)
+    {
+        foreach (var tab in new[] { NamingToolTab, NetworkSpeedTestToolTab })
+        {
+            var active = ReferenceEquals(tab, selected);
+            tab.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, active ? "Brush.AccentSoft" : "Brush.Control");
+            tab.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, active ? "Brush.TextPrimary" : "Brush.TextSecondary");
+            tab.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, active ? "Brush.Accent" : "Brush.Stroke");
+        }
+        ResizeExpandedToContent();
     }
 
     void SelectDashboardTab(Button selected)
@@ -1908,6 +1969,128 @@ public partial class LifeIslandWindow : Window
             tab.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, active ? "Brush.Accent" : "Brush.Stroke");
         }
         ResizeExpandedToContent();
+    }
+
+    void UpdateNetworkSpeedTestView(NetworkSpeedTestSnapshot snapshot)
+    {
+        var platformLatencies = snapshot.Platforms.ToDictionary(
+            platform => platform.Key,
+            platform => platform.Milliseconds,
+            StringComparer.Ordinal);
+        NetworkSpeedTestPhaseText.Text = snapshot.Status;
+        NetworkSpeedTestDownloadValue.Text = FormatNetworkSpeedTestRate(snapshot.DownloadMegabitsPerSecond);
+        NetworkSpeedTestUploadValue.Text = FormatNetworkSpeedTestRate(snapshot.UploadMegabitsPerSecond);
+        NetworkSpeedTestNodeLatencyValue.Text = FormatNetworkSpeedTestLatency(snapshot.NodeLatencyMilliseconds);
+        NetworkSpeedTestLeagueLatency.Text = FormatNetworkSpeedTestLatency(platformLatencies.GetValueOrDefault("league"));
+        NetworkSpeedTestDouyinLatency.Text = FormatNetworkSpeedTestLatency(platformLatencies.GetValueOrDefault("douyin"));
+        NetworkSpeedTestJdLatency.Text = FormatNetworkSpeedTestLatency(platformLatencies.GetValueOrDefault("jd"));
+        NetworkSpeedTestCtripLatency.Text = FormatNetworkSpeedTestLatency(platformLatencies.GetValueOrDefault("ctrip"));
+        NetworkSpeedTestToutiaoLatency.Text = FormatNetworkSpeedTestLatency(platformLatencies.GetValueOrDefault("toutiao"));
+        NetworkSpeedTestStartButton.Content = snapshot.IsRunning
+            ? "取消测速"
+            : snapshot.Phase == NetworkSpeedTestPhase.Idle ? "开始测速" : "重新测速";
+
+        var gaugeRate = snapshot.Phase switch
+        {
+            NetworkSpeedTestPhase.MeasuringDownload => snapshot.DownloadMegabitsPerSecond,
+            NetworkSpeedTestPhase.MeasuringUpload => snapshot.UploadMegabitsPerSecond,
+            _ => null
+        };
+        if (gaugeRate is { } rate && double.IsFinite(rate))
+        {
+            NetworkSpeedTestGaugeValue.Text = rate.ToString("0.00", CultureInfo.InvariantCulture);
+            NetworkSpeedTestGaugeUnit.Text = "Mbps";
+            AnimateNetworkSpeedTestGauge(rate);
+        }
+        else if (snapshot.Phase is NetworkSpeedTestPhase.Idle or NetworkSpeedTestPhase.SelectingNode or NetworkSpeedTestPhase.MeasuringPlatforms)
+        {
+            NetworkSpeedTestGaugeValue.Text = "--";
+            NetworkSpeedTestGaugeUnit.Text = "Mbps";
+            ResetNetworkSpeedTestGauge();
+        }
+        else
+        {
+            StopNetworkSpeedTestGaugeAnimation();
+        }
+
+        if (snapshot.Phase is NetworkSpeedTestPhase.SelectingNode or NetworkSpeedTestPhase.MeasuringPlatforms)
+            StartNetworkSpeedTestSpinner();
+        else
+            StopNetworkSpeedTestSpinner();
+    }
+
+    static string FormatNetworkSpeedTestRate(double? rate) =>
+        rate is { } value && double.IsFinite(value)
+            ? $"{value.ToString("0.00", CultureInfo.InvariantCulture)} Mbps"
+            : "未测得";
+
+    static string FormatNetworkSpeedTestLatency(long? milliseconds) =>
+        milliseconds is { } value ? $"{value} ms" : "未测得";
+
+    void AnimateNetworkSpeedTestGauge(double rate)
+    {
+        var target = -75 + Math.Log(1 + Math.Clamp(rate, 0, 500)) / Math.Log(501) * 150;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            StopNetworkSpeedTestGaugeAnimation();
+            NetworkSpeedTestGaugeNeedleRotation.Angle = target;
+            return;
+        }
+
+        var version = ++networkSpeedTestGaugeAnimationVersion;
+        var animation = new DoubleAnimation
+        {
+            From = NetworkSpeedTestGaugeNeedleRotation.Angle,
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(150),
+            FillBehavior = FillBehavior.Stop
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (version != networkSpeedTestGaugeAnimationVersion) return;
+            NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        };
+        NetworkSpeedTestGaugeNeedleRotation.Angle = target;
+        NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
+    }
+
+    void ResetNetworkSpeedTestGauge()
+    {
+        StopNetworkSpeedTestGaugeAnimation();
+        NetworkSpeedTestGaugeNeedleRotation.Angle = -75;
+    }
+
+    void StopNetworkSpeedTestGaugeAnimation()
+    {
+        networkSpeedTestGaugeAnimationVersion++;
+        NetworkSpeedTestGaugeNeedleRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+    }
+
+    void StartNetworkSpeedTestSpinner()
+    {
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            StopNetworkSpeedTestSpinner();
+            return;
+        }
+        if (networkSpeedTestSpinnerAnimating) return;
+
+        NetworkSpeedTestSpinnerRotation.Angle = 0;
+        NetworkSpeedTestSpinnerRotation.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = 360,
+            Duration = TimeSpan.FromMilliseconds(900),
+            RepeatBehavior = RepeatBehavior.Forever
+        });
+        networkSpeedTestSpinnerAnimating = true;
+    }
+
+    void StopNetworkSpeedTestSpinner()
+    {
+        NetworkSpeedTestSpinnerRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        NetworkSpeedTestSpinnerRotation.Angle = 0;
+        networkSpeedTestSpinnerAnimating = false;
     }
 
     void UpdateTelemetryView(SystemTelemetrySnapshot snapshot)

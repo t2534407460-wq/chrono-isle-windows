@@ -19,13 +19,14 @@ public sealed class NetworkSpeedTestUiContractTests
         var style = Element(island, "x:Key=\"IslandNetworkSpeedTestPrimary\"", "</Style>");
 
         Assert.Contains("x:Name=\"NetworkSpeedTestToolTab\" Content=\"网络测速\"", tab, StringComparison.Ordinal);
-        Assert.DoesNotContain("Click=", tab, StringComparison.Ordinal);
+        Assert.Contains("Click=\"NamingToolTab_Click\"", Element(island, "x:Name=\"NamingToolTab\""), StringComparison.Ordinal);
+        Assert.Contains("Click=\"NetworkSpeedTestToolTab_Click\"", tab, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestToolPanel\" Visibility=\"Collapsed\"", panel, StringComparison.Ordinal);
         Assert.DoesNotContain("Visibility=", namingPanel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestGaugeNeedleRotation\"", panel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestSpinnerRotation\"", panel, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestStartButton\" Content=\"开始测速\" Style=\"{StaticResource IslandNetworkSpeedTestPrimary}\"", button, StringComparison.Ordinal);
-        Assert.DoesNotContain("Click=", button, StringComparison.Ordinal);
+        Assert.Contains("Click=\"NetworkSpeedTestStartButton_Click\"", button, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource Brush.Accent}", panel, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource Brush.AccentSoft}", panel, StringComparison.Ordinal);
         Assert.Contains("BasedOn=\"{StaticResource IslandPrimary}\"", style, StringComparison.Ordinal);
@@ -64,6 +65,51 @@ public sealed class NetworkSpeedTestUiContractTests
             "Icon.PlatformToutiao"
         })
             Assert.Contains($"x:Key=\"{key}\"", controls, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NetworkSpeedTest_WiresServiceTabsCancellationAndAnimations()
+    {
+        var workspace = FindWorkspace();
+        var app = File.ReadAllText(Path.Combine(workspace, "src", "ChronoIsle.App", "App.xaml.cs"));
+        var island = File.ReadAllText(Path.Combine(workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml"));
+        var codeBehind = File.ReadAllText(Path.Combine(workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml.cs"));
+        var closedHandlerStart = codeBehind.IndexOf("Closed += (_, _) =>", StringComparison.Ordinal);
+        var closedHandlerEnd = codeBehind.IndexOf("        };", closedHandlerStart, StringComparison.Ordinal);
+        var snapshotHandlerStart = codeBehind.IndexOf("networkSpeedTestSnapshotChanged = snapshot =>", StringComparison.Ordinal);
+        var snapshotHandlerEnd = codeBehind.IndexOf("networkSpeedTest.SnapshotChanged +=", snapshotHandlerStart, StringComparison.Ordinal);
+
+        Assert.Contains("collection.AddSingleton<NetworkSpeedTestService>();", app, StringComparison.Ordinal);
+        Assert.Contains("networkSpeedTest.SnapshotChanged += networkSpeedTestSnapshotChanged;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("networkSpeedTest.SnapshotChanged -= networkSpeedTestSnapshotChanged;", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("networkSpeedTest.Cancel();", codeBehind, StringComparison.Ordinal);
+        Assert.True(closedHandlerStart >= 0 && closedHandlerEnd > closedHandlerStart, "The Closed handler is missing.");
+        var isClosedInClosedHandler = codeBehind.IndexOf("isClosed = true;", closedHandlerStart, StringComparison.Ordinal);
+        var cancelInClosedHandler = codeBehind.IndexOf("networkSpeedTest.Cancel();", closedHandlerStart, StringComparison.Ordinal);
+        var unsubscribeInClosedHandler = codeBehind.IndexOf("networkSpeedTest.SnapshotChanged -= networkSpeedTestSnapshotChanged;", closedHandlerStart, StringComparison.Ordinal);
+        Assert.True(cancelInClosedHandler >= closedHandlerStart && cancelInClosedHandler < closedHandlerEnd, "The Closed handler must cancel the speed test.");
+        Assert.True(unsubscribeInClosedHandler >= closedHandlerStart && unsubscribeInClosedHandler < cancelInClosedHandler, "The Closed handler must unsubscribe before cancellation.");
+        Assert.True(
+            isClosedInClosedHandler >= closedHandlerStart &&
+            isClosedInClosedHandler < unsubscribeInClosedHandler &&
+            unsubscribeInClosedHandler < cancelInClosedHandler &&
+            cancelInClosedHandler < closedHandlerEnd,
+            "The Closed handler must mark itself closed before unsubscribing and cancelling.");
+        Assert.True(snapshotHandlerStart >= 0 && snapshotHandlerEnd > snapshotHandlerStart, "The speed-test snapshot handler is missing.");
+        var snapshotHandler = codeBehind[snapshotHandlerStart..snapshotHandlerEnd];
+        var dispatchStart = snapshotHandler.IndexOf("Dispatcher.BeginInvoke", StringComparison.Ordinal);
+        var firstClosedGuard = snapshotHandler.IndexOf("if (isClosed || Dispatcher.HasShutdownStarted) return;", StringComparison.Ordinal);
+        var secondClosedGuard = snapshotHandler.IndexOf("if (isClosed || Dispatcher.HasShutdownStarted) return;", dispatchStart, StringComparison.Ordinal);
+        var updateStart = snapshotHandler.IndexOf("UpdateNetworkSpeedTestView(snapshot);", StringComparison.Ordinal);
+        Assert.True(firstClosedGuard >= 0 && firstClosedGuard < dispatchStart, "The snapshot handler must short-circuit before dispatching.");
+        Assert.True(dispatchStart < secondClosedGuard && secondClosedGuard < updateStart, "The dispatched update must short-circuit after closing.");
+        Assert.Contains("async void NetworkSpeedTestStartButton_Click", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ShowNetworkSpeedTestTool", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("UpdateNetworkSpeedTestView", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestGaugeNeedleRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("NetworkSpeedTestSpinnerRotation.BeginAnimation", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("#39C98B", island, StringComparison.Ordinal);
+        Assert.DoesNotContain("#39C98B", codeBehind, StringComparison.Ordinal);
     }
 
     static void AssertPlatformCard(string panel, string icon, string platform, string latencyName)
