@@ -2037,14 +2037,14 @@ public partial class LifeIslandWindow : Window
     {
         rate = Math.Clamp(rate, 0, 500);
         return rate <= 100
-            ? -75 + rate / 100d * 130
-            : 55 + Math.Log(1 + rate - 100) / Math.Log(401) * 20;
+            ? -90 + rate / 100d * 156
+            : 66 + Math.Log(1 + rate - 100) / Math.Log(401) * 24;
     }
 
     static Point GetNetworkSpeedTestGaugeProgressPoint(double rate)
     {
         var radians = Math.PI / 180d * GetNetworkSpeedTestGaugeAngle(rate);
-        return new Point(118 + 98 * Math.Sin(radians), 119 - 98 * Math.Cos(radians));
+        return new Point(118 + 98 * Math.Sin(radians), 122 - 98 * Math.Cos(radians));
     }
 
     void AnimateNetworkSpeedTestGauge(double rate)
@@ -2085,8 +2085,8 @@ public partial class LifeIslandWindow : Window
     void ResetNetworkSpeedTestGauge()
     {
         StopNetworkSpeedTestGaugeAnimation();
-        NetworkSpeedTestGaugeNeedleRotation.Angle = -75;
-        NetworkSpeedTestGaugeProgressArc.Point = new Point(23.339, 93.636);
+        NetworkSpeedTestGaugeNeedleRotation.Angle = -90;
+        NetworkSpeedTestGaugeProgressArc.Point = new Point(20, 122);
     }
 
     void StopNetworkSpeedTestGaugeAnimation()

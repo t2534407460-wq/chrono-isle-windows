@@ -34,8 +34,11 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("StrokeStartLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.Contains("StrokeEndLineCap=\"Round\"", spinner, StringComparison.Ordinal);
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", panel, StringComparison.Ordinal);
-        Assert.Contains("<PathFigure StartPoint=\"23.339,93.636\">", panel, StringComparison.Ordinal);
-        Assert.Contains("Point=\"23.339,93.636\"", progressArc, StringComparison.Ordinal);
+        Assert.Contains("Data=\"M 118,122 L 118,48\"", panel, StringComparison.Ordinal);
+        Assert.Contains("CenterX=\"118\" CenterY=\"122\"", panel, StringComparison.Ordinal);
+        Assert.Contains("Canvas.Left=\"112\" Canvas.Top=\"116\"", panel, StringComparison.Ordinal);
+        Assert.Contains("<PathFigure StartPoint=\"20,122\">", panel, StringComparison.Ordinal);
+        Assert.Contains("Point=\"20,122\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("Size=\"98,98\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("SweepDirection=\"Clockwise\"", progressArc, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"NetworkSpeedTestStartButton\" Content=\"开始测速\" Style=\"{StaticResource IslandNetworkSpeedTestPrimary}\"", button, StringComparison.Ordinal);
@@ -137,7 +140,7 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.DoesNotContain("NetworkSpeedTestSpinnerRotation", codeBehind, StringComparison.Ordinal);
         Assert.Contains("static Point GetNetworkSpeedTestGaugeProgressPoint(double rate)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var radians = Math.PI / 180d * GetNetworkSpeedTestGaugeAngle(rate);", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("new Point(118 + 98 * Math.Sin(radians), 119 - 98 * Math.Cos(radians))", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("new Point(118 + 98 * Math.Sin(radians), 122 - 98 * Math.Cos(radians))", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("(GetNetworkSpeedTestGaugeAngle(rate) + 75) / 150", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var targetPoint = GetNetworkSpeedTestGaugeProgressPoint(rate);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedTestGaugeProgressArc.BeginAnimation(ArcSegment.PointProperty, new PointAnimation", codeBehind, StringComparison.Ordinal);
@@ -146,8 +149,8 @@ public sealed class NetworkSpeedTestUiContractTests
         Assert.Contains("static double GetNetworkSpeedTestGaugeAngle(double rate)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("rate = Math.Clamp(rate, 0, 500);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("rate <= 100", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("-75 + rate / 100d * 130", codeBehind, StringComparison.Ordinal);
-        Assert.Contains("55 + Math.Log(1 + rate - 100) / Math.Log(401) * 20", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("-90 + rate / 100d * 156", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("66 + Math.Log(1 + rate - 100) / Math.Log(401) * 24", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var target = GetNetworkSpeedTestGaugeAngle(rate);", codeBehind, StringComparison.Ordinal);
         Assert.Contains("Duration = TimeSpan.FromMilliseconds(180)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("var current = NetworkSpeedTestGaugeNeedleRotation.Angle;", codeBehind, StringComparison.Ordinal);

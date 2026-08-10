@@ -571,13 +571,13 @@
                       <Path Data="M 20,122 A 98,98 0 0 1 216,122"
                             Stroke="{DynamicResource Brush.StrokeSoft}" StrokeThickness="1"
                             StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                      <Path Data="M 118,119 L 118,48" Stroke="{DynamicResource Brush.Accent}"
+                      <Path Data="M 118,122 L 118,48" Stroke="{DynamicResource Brush.Accent}"
                             StrokeThickness="3" StrokeStartLineCap="Round">
                         <Path.RenderTransform>
-                          <RotateTransform x:Name="NetworkSpeedTestGaugeNeedleRotation" CenterX="118" CenterY="119"/>
+                          <RotateTransform x:Name="NetworkSpeedTestGaugeNeedleRotation" CenterX="118" CenterY="122"/>
                         </Path.RenderTransform>
                       </Path>
-                      <Ellipse Canvas.Left="112" Canvas.Top="113" Width="12" Height="12"
+                      <Ellipse Canvas.Left="112" Canvas.Top="116" Width="12" Height="12"
                                Fill="{DynamicResource Brush.Accent}"/>
                       <Path x:Name="NetworkSpeedTestSpinnerPath"
                             Data="M 20,122 A 98,98 0 0 1 216,122"
@@ -587,8 +587,8 @@
                             StrokeStartLineCap="Round" StrokeEndLineCap="Round">
                         <Path.Data>
                           <PathGeometry>
-                            <PathFigure StartPoint="23.339,93.636">
-                              <ArcSegment x:Name="NetworkSpeedTestGaugeProgressArc" Point="23.339,93.636" Size="98,98"
+                            <PathFigure StartPoint="20,122">
+                              <ArcSegment x:Name="NetworkSpeedTestGaugeProgressArc" Point="20,122" Size="98,98"
                                           SweepDirection="Clockwise"/>
                             </PathFigure>
                           </PathGeometry>
