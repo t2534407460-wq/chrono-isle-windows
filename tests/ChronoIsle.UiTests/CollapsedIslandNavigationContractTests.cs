@@ -29,7 +29,7 @@ public sealed class CollapsedIslandNavigationContractTests
     }
 
     [Fact]
-    public void CollapsedControl_SingleClickRoutesToExpectedDashboard()
+    public void CollapsedControl_SingleClickRestoresTheLastVisibleDashboard()
     {
         var workspace = FindWorkspace();
         var source = File.ReadAllText(Path.Combine(
@@ -39,33 +39,31 @@ public sealed class CollapsedIslandNavigationContractTests
             "Views",
             "LifeIslandWindow.xaml.cs"));
 
-        Assert.Contains("CollapsedHeaderTargetFor(e.OriginalSource as DependencyObject)", source, StringComparison.Ordinal);
-        Assert.Contains("ScheduleHeaderSingleClick(pressedCollapsedHeaderTarget);", source, StringComparison.Ordinal);
-        Assert.Contains("ToggleCollapsedHeaderTarget(target);", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedHeaderTarget.QuickAsk => QuickAskPanel.Visibility == Visibility.Visible", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedHeaderTarget.Calendar => CalendarPanel.Visibility == Visibility.Visible", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedHeaderTarget.Telemetry => TelemetryPanel.Visibility == Visibility.Visible", source, StringComparison.Ordinal);
-        Assert.Contains("CollapsedHeaderTarget.Today => todayPanel?.Visibility == Visibility.Visible", source, StringComparison.Ordinal);
-        Assert.Contains("ShowQuickAskDashboard();", source, StringComparison.Ordinal);
-        Assert.Contains("ShowCalendarDashboard();", source, StringComparison.Ordinal);
-        Assert.Contains("ShowTelemetryDashboard();", source, StringComparison.Ordinal);
-        Assert.Contains("ShowTodayDashboard();", source, StringComparison.Ordinal);
-        Assert.Contains("Dispatcher.BeginInvoke(QuickAskInput.Focus);", source, StringComparison.Ordinal);
+        Assert.Contains("ScheduleHeaderSingleClick();", source, StringComparison.Ordinal);
+        Assert.Contains("headerSingleClickTimer.Tick += (_, _) =>", source, StringComparison.Ordinal);
+        Assert.Contains("ToggleExpanded();", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CollapsedHeaderTarget", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToggleCollapsedHeaderTarget", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void CollapsedControl_WhenSelectedAndExpanded_CollapsesAgain()
+    public void CollapsedControl_DoesNotKeepLocalDashboardHitTargets()
     {
         var workspace = FindWorkspace();
-        var source = File.ReadAllText(Path.Combine(
+        var xaml = File.ReadAllText(Path.Combine(
             workspace,
             "src",
             "ChronoIsle.App",
             "Views",
-            "LifeIslandWindow.xaml.cs"));
+            "LifeIslandWindow.xaml"));
 
-        Assert.Contains("if (expanded && IsCollapsedHeaderTargetSelected(target))", source, StringComparison.Ordinal);
-        Assert.Contains("Collapse();", source, StringComparison.Ordinal);
+        foreach (var name in new[] { "MascotButton", "AgendaSummaryButton", "NetworkStatusLight", "ClockButton" })
+        {
+            var start = xaml.IndexOf($"x:Name=\"{name}\"", StringComparison.Ordinal);
+            var end = xaml.IndexOf('>', start);
+            Assert.True(start >= 0 && end > start, $"The collapsed header control {name} is missing.");
+            Assert.Contains("IsHitTestVisible=\"False\"", xaml[start..end], StringComparison.Ordinal);
+        }
     }
 
     [Fact]

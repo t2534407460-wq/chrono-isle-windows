@@ -271,7 +271,7 @@
           <Grid x:Name="DefaultHeaderLeft" VerticalAlignment="Center" Margin="14,0,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Grid x:Name="MascotArea" Width="48" Height="30">
-              <Button x:Name="MascotButton" AutomationProperties.AutomationId="IslandExpandButton" Width="48" Height="30" Padding="0" Background="Transparent" BorderThickness="0" Focusable="False">
+              <Button x:Name="MascotButton" AutomationProperties.AutomationId="IslandExpandButton" Width="48" Height="30" Padding="0" Background="Transparent" BorderThickness="0" Focusable="False" IsHitTestVisible="False">
                 <Button.Template><ControlTemplate TargetType="Button"><Image Source="pack://application:,,,/ChronoIsle;component/Assets/island-mascot.png" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="False"/></ControlTemplate></Button.Template>
               </Button>
               <Ellipse x:Name="StatusLight" Width="8" Height="8" IsHitTestVisible="False"
@@ -279,7 +279,7 @@
             </Grid>
             <Button x:Name="AgendaSummaryButton" Grid.Column="1"
                     AutomationProperties.AutomationId="IslandAgendaButton"
-                    Style="{StaticResource CollapsedHeaderButton}" HorizontalContentAlignment="Stretch">
+                    Style="{StaticResource CollapsedHeaderButton}" HorizontalContentAlignment="Stretch" IsHitTestVisible="False">
               <DockPanel x:Name="SummaryWidgets" LastChildFill="True" Margin="9,1,10,0" VerticalAlignment="Center">
                 <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -295,7 +295,7 @@
           <StackPanel x:Name="ClockGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,13,0">
             <Button x:Name="NetworkStatusLight" AutomationProperties.AutomationId="IslandNetworkStatusButton"
                     Style="{StaticResource CollapsedHeaderButton}" Margin="0,0,8,0"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center" IsHitTestVisible="False">
               <Viewbox Width="14" Height="14" Stretch="Uniform">
                 <Path x:Name="NetworkStatusGlyph"
                       Data="{StaticResource Icon.NetworkGlobe}"
@@ -305,7 +305,7 @@
               </Viewbox>
             </Button>
             <Button x:Name="ClockButton" AutomationProperties.AutomationId="IslandClockButton"
-                    Style="{StaticResource CollapsedHeaderButton}">
+                    Style="{StaticResource CollapsedHeaderButton}" IsHitTestVisible="False">
               <TextBlock x:Name="Clock" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="15"
                          FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
             </Button>

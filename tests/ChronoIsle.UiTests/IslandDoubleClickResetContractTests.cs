@@ -21,7 +21,7 @@ public sealed class IslandDoubleClickResetContractTests
         Assert.DoesNotContain("System.Windows.Forms.SystemInformation.DoubleClickTime", source, StringComparison.Ordinal);
         Assert.Contains("headerSingleClickTimer.Tick += (_, _) =>", source, StringComparison.Ordinal);
         Assert.Contains("headerSingleClickTimer.Stop();", source, StringComparison.Ordinal);
-        Assert.Contains("ScheduleHeaderSingleClick(pressedCollapsedHeaderTarget);", source, StringComparison.Ordinal);
+        Assert.Contains("ScheduleHeaderSingleClick();", source, StringComparison.Ordinal);
         Assert.Contains("dragStartScreenPixels", source, StringComparison.Ordinal);
         Assert.DoesNotContain("dragStart = e.GetPosition(this)", source, StringComparison.Ordinal);
         Assert.Contains("ResetToDefaultPlacement();", source, StringComparison.Ordinal);
@@ -32,7 +32,7 @@ public sealed class IslandDoubleClickResetContractTests
         var interactiveStart = source.IndexOf("static bool IsInteractiveSource", mouseUpStart, StringComparison.Ordinal);
         Assert.True(mouseUpStart >= 0 && interactiveStart > mouseUpStart);
         var mouseUp = source[mouseUpStart..interactiveStart];
-        Assert.Contains("ScheduleHeaderSingleClick(pressedCollapsedHeaderTarget);", mouseUp, StringComparison.Ordinal);
+        Assert.Contains("ScheduleHeaderSingleClick();", mouseUp, StringComparison.Ordinal);
         Assert.DoesNotContain("ToggleExpanded();", mouseUp, StringComparison.Ordinal);
 
         Assert.Contains("++expandedContentAnimationVersion;", source, StringComparison.Ordinal);

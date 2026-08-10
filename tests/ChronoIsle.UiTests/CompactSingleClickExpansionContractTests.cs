@@ -15,11 +15,10 @@ public sealed class CompactSingleClickExpansionContractTests
             "Views",
             "LifeIslandWindow.xaml.cs"));
 
-        Assert.Contains(
-            "if (target == CollapsedHeaderTarget.None) ToggleExpanded();",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains("else ToggleCollapsedHeaderTarget(target);", source, StringComparison.Ordinal);
+        Assert.Contains("ScheduleHeaderSingleClick();", source, StringComparison.Ordinal);
+        Assert.Contains("headerSingleClickTimer.Tick += (_, _) =>", source, StringComparison.Ordinal);
+        Assert.Contains("ToggleExpanded();", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CollapsedHeaderTarget", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ShowMediaDashboard", source, StringComparison.Ordinal);
         Assert.Contains("Expand();", source, StringComparison.Ordinal);
         Assert.Contains("void Expand()", source, StringComparison.Ordinal);

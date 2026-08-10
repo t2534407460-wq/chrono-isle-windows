@@ -86,8 +86,6 @@ public partial class LifeIslandWindow : Window
     bool updatingTaskbarHeaderAnchor;
     double taskbarHeaderAnchorTop;
     bool suppressDoubleClickMouseUp;
-    CollapsedHeaderTarget pressedCollapsedHeaderTarget;
-    CollapsedHeaderTarget pendingCollapsedHeaderTarget;
     bool topDockFolded;
     double topDockUnfoldedTop = double.NaN;
     byte[]? displayedArtworkBytes;
@@ -136,7 +134,6 @@ public partial class LifeIslandWindow : Window
     double fullscreenOriginalTopDockUnfoldedTop;
 
     enum IslandPlacement { Free, Top, Taskbar }
-    enum CollapsedHeaderTarget { None, QuickAsk, Calendar, Telemetry, Today }
     enum NetworkSpeedTestDisplayUnit { Mbps, MegabytesPerSecond }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
 
@@ -246,10 +243,7 @@ public partial class LifeIslandWindow : Window
         headerSingleClickTimer.Tick += (_, _) =>
         {
             headerSingleClickTimer.Stop();
-            var target = pendingCollapsedHeaderTarget;
-            pendingCollapsedHeaderTarget = CollapsedHeaderTarget.None;
-            if (target == CollapsedHeaderTarget.None) ToggleExpanded();
-            else ToggleCollapsedHeaderTarget(target);
+            ToggleExpanded();
         };
         Deactivated += (_, _) => Dispatcher.BeginInvoke(
             DispatcherPriority.Input,
@@ -394,8 +388,6 @@ public partial class LifeIslandWindow : Window
         ClearTaskbarDragConstraints();
         collapseTimer.Stop();
         headerSingleClickTimer.Stop();
-        pressedCollapsedHeaderTarget = CollapsedHeaderTarget.None;
-        pendingCollapsedHeaderTarget = CollapsedHeaderTarget.None;
         expanded = false;
         pointerHover = false;
 
@@ -3034,13 +3026,10 @@ public partial class LifeIslandWindow : Window
     void Header_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (IsCollapsedMediaControlSource(e.OriginalSource as DependencyObject)) return;
-        pressedCollapsedHeaderTarget = CollapsedHeaderTargetFor(e.OriginalSource as DependencyObject);
-        if (pressedCollapsedHeaderTarget == CollapsedHeaderTarget.None &&
-            IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
+        if (IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
         var pointer = System.Windows.Forms.Cursor.Position;
         var doubleClick = IsHeaderDoubleClick(pointer);
         headerSingleClickTimer.Stop();
-        pendingCollapsedHeaderTarget = CollapsedHeaderTarget.None;
         if (doubleClick)
         {
             suppressDoubleClickMouseUp = true;
@@ -3059,7 +3048,6 @@ public partial class LifeIslandWindow : Window
         dragStartScreenPixels = pointer;
         Header.CaptureMouse();
         PrepareTaskbarDragConstraints();
-        if (pressedCollapsedHeaderTarget != CollapsedHeaderTarget.None) e.Handled = true;
     }
 
     void Header_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -3116,7 +3104,6 @@ public partial class LifeIslandWindow : Window
             dragging = false;
             dragged = false;
             freeCustomDragging = false;
-            pressedCollapsedHeaderTarget = CollapsedHeaderTarget.None;
             Header.ReleaseMouseCapture();
             ClearTaskbarDragConstraints();
             e.Handled = true;
@@ -3125,48 +3112,26 @@ public partial class LifeIslandWindow : Window
         if (freeCustomDragging)
         {
             FinishFreeCustomDrag();
-            pressedCollapsedHeaderTarget = CollapsedHeaderTarget.None;
             e.Handled = true;
             return;
         }
         if (taskbarCustomDragging)
         {
             FinishTaskbarCustomDrag();
-            pressedCollapsedHeaderTarget = CollapsedHeaderTarget.None;
             e.Handled = true;
             return;
         }
-        if (pressedCollapsedHeaderTarget == CollapsedHeaderTarget.None &&
-            IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
+        if (IsInteractiveSource(e.OriginalSource as DependencyObject)) return;
         if (dragging && !dragged)
         {
-            ScheduleHeaderSingleClick(pressedCollapsedHeaderTarget);
+            ScheduleHeaderSingleClick();
             e.Handled = true;
         }
         dragging = false;
-        pressedCollapsedHeaderTarget = CollapsedHeaderTarget.None;
         Header.ReleaseMouseCapture();
         RestoreCollapsedMediaHoverAfterHeaderCapture();
         if (dragged) UpdatePlacementAfterDrag();
         ClearTaskbarDragConstraints();
-    }
-
-    CollapsedHeaderTarget CollapsedHeaderTargetFor(DependencyObject? source)
-    {
-        for (var current = source; current is not null; current = current switch
-        {
-            FrameworkElement element when element.Parent is not null => element.Parent,
-            FrameworkContentElement element => element.Parent,
-            _ => VisualTreeHelper.GetParent(current)
-        })
-        {
-            if (ReferenceEquals(current, MascotButton)) return CollapsedHeaderTarget.QuickAsk;
-            if (ReferenceEquals(current, AgendaSummaryButton)) return CollapsedHeaderTarget.Calendar;
-            if (ReferenceEquals(current, NetworkStatusLight)) return CollapsedHeaderTarget.Telemetry;
-            if (ReferenceEquals(current, ClockButton)) return CollapsedHeaderTarget.Today;
-            if (ReferenceEquals(current, Header)) break;
-        }
-        return CollapsedHeaderTarget.None;
     }
 
     static bool IsInteractiveSource(DependencyObject? source)
@@ -3219,10 +3184,9 @@ public partial class LifeIslandWindow : Window
         if (expanded) Collapse();
     }
 
-    void ScheduleHeaderSingleClick(CollapsedHeaderTarget target)
+    void ScheduleHeaderSingleClick()
     {
         headerSingleClickTimer.Stop();
-        pendingCollapsedHeaderTarget = target;
         headerSingleClickTimer.Interval = TimeSpan.FromMilliseconds(
             HeaderDoubleClickMilliseconds);
         headerSingleClickTimer.Start();
@@ -3233,42 +3197,6 @@ public partial class LifeIslandWindow : Window
         if (expanded) Collapse();
         else Expand();
     }
-
-    void ToggleCollapsedHeaderTarget(CollapsedHeaderTarget target)
-    {
-        if (expanded && IsCollapsedHeaderTargetSelected(target))
-        {
-            Collapse();
-            return;
-        }
-
-        Expand();
-        switch (target)
-        {
-            case CollapsedHeaderTarget.QuickAsk:
-                ShowQuickAskDashboard();
-                Dispatcher.BeginInvoke(QuickAskInput.Focus);
-                break;
-            case CollapsedHeaderTarget.Calendar:
-                ShowCalendarDashboard();
-                break;
-            case CollapsedHeaderTarget.Telemetry:
-                ShowTelemetryDashboard();
-                break;
-            case CollapsedHeaderTarget.Today:
-                ShowTodayDashboard();
-                break;
-        }
-    }
-
-    bool IsCollapsedHeaderTargetSelected(CollapsedHeaderTarget target) => target switch
-    {
-        CollapsedHeaderTarget.QuickAsk => QuickAskPanel.Visibility == Visibility.Visible,
-        CollapsedHeaderTarget.Calendar => CalendarPanel.Visibility == Visibility.Visible,
-        CollapsedHeaderTarget.Telemetry => TelemetryPanel.Visibility == Visibility.Visible,
-        CollapsedHeaderTarget.Today => todayPanel?.Visibility == Visibility.Visible,
-        _ => false
-    };
 
     void Expand()
     {
