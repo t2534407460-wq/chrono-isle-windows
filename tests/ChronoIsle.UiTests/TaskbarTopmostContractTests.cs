@@ -71,6 +71,44 @@ public sealed class TaskbarTopmostContractTests
         Assert.Contains("taskbarTopmostTimer.Stop();", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TaskbarTopmostTimer_OnlyRunsWhileTaskbarTopmostPinIsActive()
+    {
+        var workspace = FindWorkspace();
+        var source = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml.cs"));
+        var updateTimer = ExtractMethodBody(source, "void UpdateTaskbarTopmostTimer()");
+
+        Assert.Contains(
+            "placement == IslandPlacement.Taskbar && expandedPinState == ExpandedPinState.Topmost",
+            updateTimer,
+            StringComparison.Ordinal);
+        Assert.Contains("EnsureTaskbarTopmost();", updateTimer, StringComparison.Ordinal);
+        Assert.Contains("taskbarTopmostTimer.Start();", updateTimer, StringComparison.Ordinal);
+        Assert.Contains("taskbarTopmostTimer.Stop();", updateTimer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlacementAndPinState_RefreshTaskbarTopmostTimer()
+    {
+        var workspace = FindWorkspace();
+        var source = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml.cs"));
+        var applyPlacementVisuals = ExtractMethodBody(source, "void ApplyPlacementVisuals(");
+        var setExpandedPinState = ExtractMethodBody(source, "void SetExpandedPinState(");
+
+        Assert.Contains("UpdateTaskbarTopmostTimer();", applyPlacementVisuals, StringComparison.Ordinal);
+        Assert.Contains("UpdateTaskbarTopmostTimer();", setExpandedPinState, StringComparison.Ordinal);
+    }
+
     static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

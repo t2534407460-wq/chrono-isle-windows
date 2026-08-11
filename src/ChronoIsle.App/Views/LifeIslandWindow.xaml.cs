@@ -518,7 +518,12 @@ public partial class LifeIslandWindow : Window
         }
 
         UpdateTaskbarClip();
-        if (taskbarMode)
+        UpdateTaskbarTopmostTimer();
+    }
+
+    void UpdateTaskbarTopmostTimer()
+    {
+        if (placement == IslandPlacement.Taskbar && expandedPinState == ExpandedPinState.Topmost)
         {
             EnsureTaskbarTopmost();
             if (!taskbarTopmostTimer.IsEnabled) taskbarTopmostTimer.Start();
@@ -3419,7 +3424,10 @@ public partial class LifeIslandWindow : Window
             ExpandedPinSolid,
             System.Windows.Shapes.Path.FillProperty,
             state == ExpandedPinState.Normal ? "Brush.TextSecondary" : "Brush.Accent");
-        EnsureTaskbarTopmost();
+        if (state != ExpandedPinState.Normal)
+            collapseTimer.Stop();
+        else if (expanded && !pointerHover) ScheduleMouseLeaveCollapse();
+        UpdateTaskbarTopmostTimer();
     }
 
     void AutoCollapse()
@@ -3670,6 +3678,7 @@ public partial class LifeIslandWindow : Window
     void ScheduleMouseLeaveCollapse()
     {
         collapseTimer.Stop();
+        if (expandedPinState != ExpandedPinState.Normal) return;
         collapseTimer.Start();
     }
 

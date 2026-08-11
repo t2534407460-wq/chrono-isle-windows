@@ -46,6 +46,26 @@ public sealed class ExternalFocusCollapseContractTests
     }
 
     [Fact]
+    public void PinnedExpandedStates_StopMouseLeaveCollapseTimer_AndNormalRestoresIt()
+    {
+        var source = ReadIslandSource();
+        var setExpandedPinState = ExtractMethodBody(source, "void SetExpandedPinState(");
+        var scheduleMouseLeaveCollapse = ExtractMethodBody(source, "void ScheduleMouseLeaveCollapse()");
+
+        Assert.Contains("if (state != ExpandedPinState.Normal)", setExpandedPinState, StringComparison.Ordinal);
+        Assert.Contains("collapseTimer.Stop();", setExpandedPinState, StringComparison.Ordinal);
+        Assert.Contains(
+            "else if (expanded && !pointerHover) ScheduleMouseLeaveCollapse();",
+            setExpandedPinState,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (expandedPinState != ExpandedPinState.Normal) return;",
+            scheduleMouseLeaveCollapse,
+            StringComparison.Ordinal);
+        Assert.Contains("collapseTimer.Start();", scheduleMouseLeaveCollapse, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TimeSelectorDropDown_DoesNotTriggerExternalFocusCollapse()
     {
         var source = ReadIslandSource();
