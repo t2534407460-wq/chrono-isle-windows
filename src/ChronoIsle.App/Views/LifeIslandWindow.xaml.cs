@@ -348,29 +348,8 @@ public partial class LifeIslandWindow : Window
 
     void RestoreInitialPlacement()
     {
-        var saved = preferences.Load();
-        if (saved.IslandTaskbarDocked && !string.IsNullOrWhiteSpace(saved.IslandTaskbarMonitor))
-        {
-            var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(candidate =>
-                string.Equals(candidate.DeviceName, saved.IslandTaskbarMonitor, StringComparison.OrdinalIgnoreCase));
-            if (screen is not null && TryGetMonitorGeometry(screen, out var geometry) && geometry.Taskbar is Rect taskbar)
-            {
-                placement = IslandPlacement.Taskbar;
-                taskbarMonitorDeviceName = screen.DeviceName;
-                taskbarHorizontalRatio = saved.IslandTaskbarHorizontalRatio is double ratio && double.IsFinite(ratio)
-                    ? Math.Clamp(ratio, 0, 1)
-                    : 0.5;
-                ApplyPlacementVisuals(taskbar);
-                UpdateLayout();
-                PositionAtTaskbar(geometry);
-                Dispatcher.BeginInvoke(() =>
-                {
-                    if (placement == IslandPlacement.Taskbar) AlignTaskbarAfterLayout();
-                });
-                return;
-            }
-        }
-
+        // A normal pin state is deliberately not topmost. Restoring it inside the
+        // taskbar would put the island behind the taskbar before it can be opened.
         PositionAtTopCenter();
     }
 

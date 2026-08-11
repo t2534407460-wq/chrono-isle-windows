@@ -33,7 +33,7 @@ $shortcut.TargetPath = $app
 $shortcut.WorkingDirectory = Split-Path $app -Parent
 $icon = Join-Path $root 'src\ChronoIsle.App\Assets\face-desktop-v2.ico'
 $shortcut.IconLocation = ("{0},0" -f $icon)
-$shortcut.Description = '时屿 ChronoIsle'
+$shortcut.Description = [string]::Concat([char]0x65F6, [char]0x5C7F, ' ChronoIsle')
 $shortcut.Save()
 
 $legacyShortcutPaths = @(
