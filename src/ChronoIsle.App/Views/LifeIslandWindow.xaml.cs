@@ -84,6 +84,7 @@ public partial class LifeIslandWindow : Window
     bool dragged;
     bool expanded;
     bool pointerHover;
+    ExpandedPinState expandedPinState = ExpandedPinState.Normal;
     int windowBoundsAnimationVersion;
     int topDockAnimationVersion;
     int expandedContentAnimationVersion;
@@ -143,6 +144,7 @@ public partial class LifeIslandWindow : Window
     double fullscreenOriginalTopDockUnfoldedTop;
 
     enum IslandPlacement { Free, Top, Taskbar }
+    enum ExpandedPinState { Normal, KeepExpanded, Topmost }
     enum NetworkSpeedTestDisplayUnit { Mbps, MegabytesPerSecond }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
 
@@ -245,7 +247,7 @@ public partial class LifeIslandWindow : Window
         Header.ContextMenu = CreateQuickActionMenu();
         clockTimer.Tick += (_, _) => Refresh();
         this.taskAttributes = taskAttributes;
-        collapseTimer.Tick += (_, _) => Collapse();
+        collapseTimer.Tick += (_, _) => AutoCollapse();
         topDockHoverExitTimer.Tick += (_, _) => ConfirmTopDockHoverExit();
         headerSingleClickTimer.Tick += (_, _) =>
         {
@@ -394,6 +396,7 @@ public partial class LifeIslandWindow : Window
         ClearTaskbarDragConstraints();
         collapseTimer.Stop();
         headerSingleClickTimer.Stop();
+        SetExpandedPinState(ExpandedPinState.Normal);
         expanded = false;
         pointerHover = false;
 
@@ -549,7 +552,8 @@ public partial class LifeIslandWindow : Window
 
     void EnsureTaskbarTopmost()
     {
-        if (placement != IslandPlacement.Taskbar || windowHandle == IntPtr.Zero || !IsVisible) return;
+        if (placement != IslandPlacement.Taskbar || expandedPinState != ExpandedPinState.Topmost ||
+            windowHandle == IntPtr.Zero || !IsVisible) return;
         SetWindowPos(
             windowHandle,
             HwndTopmost,
@@ -3359,7 +3363,7 @@ public partial class LifeIslandWindow : Window
         if (foregroundProcessId == 0 || foregroundProcessId == (uint)Environment.ProcessId) return;
 
         headerSingleClickTimer.Stop();
-        if (expanded) Collapse();
+        if (expanded) AutoCollapse();
     }
 
     void ScheduleHeaderSingleClick()
@@ -3389,8 +3393,43 @@ public partial class LifeIslandWindow : Window
             collapseTimer.Start();
     }
 
+    void ExpandedPin_Click(object sender, RoutedEventArgs e)
+    {
+        var state = expandedPinState switch
+        {
+            ExpandedPinState.Normal => ExpandedPinState.KeepExpanded,
+            ExpandedPinState.KeepExpanded => ExpandedPinState.Topmost,
+            _ => ExpandedPinState.Normal
+        };
+        SetExpandedPinState(state);
+    }
+
+    void SetExpandedPinState(ExpandedPinState state)
+    {
+        expandedPinState = state;
+        Topmost = state == ExpandedPinState.Topmost;
+        var topmost = state == ExpandedPinState.Topmost;
+        ExpandedPinOutline.Visibility = topmost ? Visibility.Collapsed : Visibility.Visible;
+        ExpandedPinSolid.Visibility = topmost ? Visibility.Visible : Visibility.Collapsed;
+        SetThemeResource(
+            ExpandedPinOutline,
+            System.Windows.Shapes.Path.StrokeProperty,
+            state == ExpandedPinState.Normal ? "Brush.TextSecondary" : "Brush.Accent");
+        SetThemeResource(
+            ExpandedPinSolid,
+            System.Windows.Shapes.Path.FillProperty,
+            state == ExpandedPinState.Normal ? "Brush.TextSecondary" : "Brush.Accent");
+        EnsureTaskbarTopmost();
+    }
+
+    void AutoCollapse()
+    {
+        if (expandedPinState == ExpandedPinState.Normal) Collapse();
+    }
+
     void Collapse()
     {
+        SetExpandedPinState(ExpandedPinState.Normal);
         if (!expanded) return;
         expanded = false;
         AnimateExpandedState(false);

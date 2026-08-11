@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:ChronoIsle.App"
         xmlns:domain="clr-namespace:ChronoIsle.App.Services.Domain"
         Width="294" SizeToContent="Height" Background="Transparent" AllowsTransparency="True"
-        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True" ShowActivated="False"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False"
         UseLayoutRounding="True" AutomationProperties.AutomationId="LifeIslandWindow"
         SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
         MouseEnter="Island_MouseEnter" MouseLeave="Island_MouseLeave">
@@ -428,6 +428,19 @@
                 <Button x:Name="ToolsDashboardTab" Content="工具" Click="ToolsTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="ExpandedPinButton" Click="ExpandedPin_Click" Style="{StaticResource IslandIcon}"
+                        Width="30" Height="30" Padding="0" Margin="0,0,7,0"
+                        AutomationProperties.Name="切换展开图钉状态">
+                  <Viewbox Width="14" Height="14">
+                    <Grid>
+                      <Path x:Name="ExpandedPinOutline" Data="M5,2 H11 V7 L13,10 H3 L5,7 Z M8,10 V14"
+                            Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.5"
+                            StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                      <Path x:Name="ExpandedPinSolid" Data="M5,2 H11 V7 L13,10 H9 V14 H7 V10 H3 L5,7 Z"
+                            Fill="{DynamicResource Brush.TextSecondary}" Visibility="Collapsed"/>
+                    </Grid>
+                  </Viewbox>
+                </Button>
                 <Button x:Name="IslandManagementButton" Content="☰ 事项管理"
                         Click="ManageItems_Click" Style="{StaticResource IslandTab}"
                         AutomationProperties.AutomationId="IslandManagementButton"
