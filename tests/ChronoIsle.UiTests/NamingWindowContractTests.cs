@@ -1,11 +1,12 @@
 using System.IO;
+using System.Xml.Linq;
 
 namespace ChronoIsle.UiTests;
 
 public sealed class NamingWindowContractTests
 {
     [Fact]
-    public void Naming_window_uses_custom_chrome_and_exposes_critical_controls()
+    public void Island_embeds_the_full_naming_tool_and_has_no_standalone_naming_window()
     {
         var workspace = FindWorkspace();
         var xaml = File.ReadAllText(Path.Combine(
@@ -13,17 +14,26 @@ public sealed class NamingWindowContractTests
             "src",
             "ChronoIsle.App",
             "Views",
-            "NamingWindow.xaml"));
+            "LifeIslandWindow.xaml"));
+        var project = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "ChronoIsle.App.csproj"));
+        var app = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "App.xaml.cs"));
 
-        Assert.Contains("WindowStyle=\"None\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("AllowsTransparency=\"True\"", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("<ProgressBar", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("MessageBox", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"ContentScroller\" Grid.Row=\"2\"", xaml, StringComparison.Ordinal);
-
+        var document = XDocument.Parse(xaml);
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var panel = document.Descendants()
+            .FirstOrDefault(element => (string?)element.Attribute(x + "Name") == "NamingToolPanel");
+        Assert.True(panel is not null, "NamingToolPanel was not found in LifeIslandWindow.xaml.");
+        var panelXaml = panel!.ToString();
         foreach (var automationId in new[]
                  {
-                     "NamingWindow",
                      "NamingMeaningInput",
                      "NamingKindSelector",
                      "NamingGenerateButton",
@@ -39,41 +49,50 @@ public sealed class NamingWindowContractTests
                  })
             Assert.Contains(
                 $"AutomationProperties.AutomationId=\"{automationId}\"",
-                xaml,
+                panelXaml,
                 StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Island_exposes_a_text_only_tools_tab_with_naming_as_its_first_tool()
-    {
-        var workspace = FindWorkspace();
-        var xaml = File.ReadAllText(Path.Combine(
+        Assert.False(File.Exists(Path.Combine(
             workspace,
             "src",
             "ChronoIsle.App",
             "Views",
-            "LifeIslandWindow.xaml"));
-        var code = File.ReadAllText(Path.Combine(
+            "NamingWindow.xaml")));
+        Assert.False(File.Exists(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "NamingWindow.xaml.cs")));
+        Assert.DoesNotContain("NamingWindow", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("NamingWindow", app, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Naming_entries_open_the_island_naming_tab_instead_of_a_standalone_window()
+    {
+        var workspace = FindWorkspace();
+        var app = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "App.xaml.cs"));
+        var island = File.ReadAllText(Path.Combine(
             workspace,
             "src",
             "ChronoIsle.App",
             "Views",
             "LifeIslandWindow.xaml.cs"));
 
-        Assert.Contains(
-            "x:Name=\"ToolsDashboardTab\" Content=\"工具\" Click=\"ToolsTab_Click\"",
-            xaml,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("Content=\"✎ 工具\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"ToolsPanel\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"NamingToolTab\" Content=\"取名\"", xaml, StringComparison.Ordinal);
-        Assert.Contains(
-            "AutomationProperties.AutomationId=\"IslandNamingButton\"",
-            xaml,
-            StringComparison.Ordinal);
-        Assert.Contains("void ShowToolsDashboard()", code, StringComparison.Ordinal);
-        Assert.Contains("SelectDashboardTab(ToolsDashboardTab);", code, StringComparison.Ordinal);
-        Assert.Contains("void NamingTool_Click", code, StringComparison.Ordinal);
+        var openNamingTool = ExtractMethodBody(island, "public void OpenNamingTool()");
+
+        Assert.Contains("Show();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("Expand();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("ShowToolsDashboard();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("ShowNamingTool();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("NamingContentScroller.ScrollToTop();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("MeaningInput.Focus();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("Touch();", openNamingTool, StringComparison.Ordinal);
+        Assert.Contains("OpenNamingTool();", app, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -105,5 +124,23 @@ public sealed class NamingWindowContractTests
                 return directory.FullName;
         throw new DirectoryNotFoundException(
             "ChronoIsle.sln was not found from the UI test host.");
+    }
+
+    static string ExtractMethodBody(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Method signature was not found: {signature}.");
+        var openingBrace = source.IndexOf('{', start + signature.Length);
+        Assert.True(openingBrace >= 0, $"Opening brace was not found for {signature}.");
+
+        var depth = 0;
+        for (var index = openingBrace; index < source.Length; index++)
+        {
+            if (source[index] == '{') depth++;
+            if (source[index] != '}') continue;
+            if (--depth == 0) return source[start..(index + 1)];
+        }
+
+        throw new InvalidOperationException($"Closing brace was not found for {signature}.");
     }
 }

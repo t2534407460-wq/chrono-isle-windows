@@ -99,7 +99,6 @@ public partial class App : System.Windows.Application
         collection.AddTransient<LifeMainWindow>();
         collection.AddTransient<LifeSettingsWindow>();
         collection.AddTransient<LifeManagementWindow>();
-        collection.AddTransient<NamingWindow>();
         services = collection.BuildServiceProvider();
         services.GetRequiredService<ThemeService>().Start();
 
@@ -118,7 +117,6 @@ public partial class App : System.Windows.Application
         var foregroundFps = services.GetRequiredService<ForegroundFpsService>();
         island.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
-        island.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
         island.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
         island.ItemDetailsRequested += (_, target) => Dispatcher.BeginInvoke(() => OpenLifeManagement(target));
         island.ChatRequested += (_, text) => Dispatcher.BeginInvoke(() =>
@@ -201,8 +199,8 @@ public partial class App : System.Windows.Application
 
     public void OpenNaming()
     {
-        var page = services!.GetRequiredService<NamingWindow>();
-        OpenStandalonePage(page);
+        CloseStandalonePage();
+        services!.GetRequiredService<LifeIslandWindow>().OpenNamingTool();
     }
 
     public void OpenLifeManagement(ItemNavigationTarget? target = null)
