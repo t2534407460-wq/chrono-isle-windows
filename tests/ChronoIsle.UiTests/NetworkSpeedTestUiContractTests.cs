@@ -15,7 +15,7 @@ public sealed class NetworkSpeedTestUiContractTests
         var project = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "ChronoIsle.App.csproj"));
         var tab = Element(island, "x:Name=\"NetworkSpeedTestToolTab\"");
-        var namingPanel = Element(island, "x:Name=\"NamingToolPanel\"");
+        var namingPanel = Element(island, "<StackPanel x:Name=\"NamingToolPanel\"", ">");
         var panel = NetworkSpeedTestPanel(island);
         var button = Element(panel, "x:Name=\"NetworkSpeedTestStartButton\"");
         var spinner = Element(panel, "x:Name=\"NetworkSpeedTestSpinnerPath\"");
