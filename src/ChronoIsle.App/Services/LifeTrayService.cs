@@ -12,6 +12,7 @@ public sealed class LifeTrayService : IDisposable
     TrayMenuWindow? menu;
 
     public event EventHandler? OpenRequested;
+    public event EventHandler? RestoreIslandRequested;
     public event EventHandler? SettingsRequested;
     public event EventHandler? ManageRequested;
     public event EventHandler? NamingRequested;
@@ -32,16 +33,20 @@ public sealed class LifeTrayService : IDisposable
             Text = "时屿 ChronoIsle",
             Visible = true
         };
-        icon.MouseClick += (_, args) =>
-        {
-            if (args.Button == Forms.MouseButtons.Left)
-                OpenRequested?.Invoke(this, EventArgs.Empty);
-            else if (args.Button == Forms.MouseButtons.Right)
-            {
-                var trayHost = TrayMenuWindow.CaptureTrayHostAtCursor();
-                ShowMenu(trayHost);
-            }
-        };
+        icon.MouseClick += Icon_MouseClick;
+        icon.MouseDoubleClick += Icon_MouseDoubleClick;
+    }
+
+    void Icon_MouseClick(object? sender, Forms.MouseEventArgs args)
+    {
+        if (args.Button != Forms.MouseButtons.Right) return;
+        ShowMenu(TrayMenuWindow.CaptureTrayHostAtCursor());
+    }
+
+    void Icon_MouseDoubleClick(object? sender, Forms.MouseEventArgs args)
+    {
+        if (args.Button == Forms.MouseButtons.Left)
+            RestoreIslandRequested?.Invoke(this, EventArgs.Empty);
     }
 
     void ShowMenu(nint trayHost)

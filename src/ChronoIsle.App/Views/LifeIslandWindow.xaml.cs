@@ -1781,6 +1781,14 @@ public partial class LifeIslandWindow : Window
 
     public void CollapsePanel() => Collapse();
 
+    public void OpenDefaultExpanded()
+    {
+        ResetToDefaultPlacement();
+        Show();
+        Expand();
+        Touch();
+    }
+
     public void OpenTodayPanel()
     {
         Show();

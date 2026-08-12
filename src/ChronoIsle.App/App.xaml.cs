@@ -128,6 +128,7 @@ public partial class App : System.Windows.Application
             Dispatcher.BeginInvoke(() => island.ShowReminder(item.Kind, item.Id));
         var tray = services.GetRequiredService<LifeTrayService>();
         tray.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
+        tray.RestoreIslandRequested += (_, _) => Dispatcher.BeginInvoke(island.OpenDefaultExpanded);
         tray.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
         tray.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
         tray.NamingRequested += (_, _) => Dispatcher.BeginInvoke(OpenNaming);
