@@ -653,10 +653,12 @@
                                 Fill="{DynamicResource Brush.Accent}" Width="28" Height="28"
                                 Stretch="Uniform" HorizontalAlignment="Center"/>
                           <TextBlock Text="准备好后生成第一组名字" FontSize="15" FontWeight="SemiBold"
-                                     HorizontalAlignment="Center" Margin="0,13,0,0"/>
+                                     HorizontalAlignment="Center" Margin="0,13,0,0"
+                                     Foreground="{DynamicResource Brush.TextPrimary}"/>
                           <TextBlock Text="系统会给出三个候选，并为每个候选生成八种固定格式。"
                                      Style="{StaticResource Text.Secondary}" TextAlignment="Center"
-                                     HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                     HorizontalAlignment="Center" Margin="0,6,0,0"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"/>
                         </StackPanel>
                       </Border>
 

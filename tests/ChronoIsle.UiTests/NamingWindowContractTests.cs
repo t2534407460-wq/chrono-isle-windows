@@ -96,6 +96,32 @@ public sealed class NamingWindowContractTests
     }
 
     [Fact]
+    public void Naming_empty_state_uses_explicit_theme_foregrounds()
+    {
+        var workspace = FindWorkspace();
+        var xaml = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml"));
+        var document = XDocument.Parse(xaml);
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var emptyState = document.Descendants()
+            .Single(element => (string?)element.Attribute(x + "Name") == "EmptyState")
+            .ToString();
+
+        Assert.Contains(
+            "Foreground=\"{DynamicResource Brush.TextPrimary}\"",
+            emptyState,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Foreground=\"{DynamicResource Brush.TextSecondary}\"",
+            emptyState,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Today_dashboard_does_not_repeat_toolbar_or_tools_actions()
     {
         var workspace = FindWorkspace();
