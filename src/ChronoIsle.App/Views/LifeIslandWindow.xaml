@@ -5,6 +5,7 @@
         xmlns:domain="clr-namespace:ChronoIsle.App.Services.Domain"
         Width="294" SizeToContent="Height" Background="Transparent" AllowsTransparency="True"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False"
+        Topmost="True"
         UseLayoutRounding="True" AutomationProperties.AutomationId="LifeIslandWindow"
         SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
         MouseEnter="Island_MouseEnter" MouseLeave="Island_MouseLeave">

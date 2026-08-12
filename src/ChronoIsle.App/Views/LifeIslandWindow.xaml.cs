@@ -4,7 +4,6 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using System.Windows.Interop;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Runtime.InteropServices;
@@ -34,11 +33,6 @@ public partial class LifeIslandWindow : Window
     const double TaskbarIconPadding = 6;
     const double ContextMenuTaskbarProximity = 24;
     const int HeaderDoubleClickMilliseconds = 280;
-    const uint SwpNoSize = 0x0001;
-    const uint SwpNoMove = 0x0002;
-    const uint SwpNoActivate = 0x0010;
-    const uint SwpNoOwnerZOrder = 0x0200;
-    static readonly IntPtr HwndTopmost = new(-1);
     readonly IIslandStateCoordinator islandState;
 
     readonly TaskAttributesService taskAttributes;
@@ -75,7 +69,6 @@ public partial class LifeIslandWindow : Window
     readonly DispatcherTimer collapseTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     readonly DispatcherTimer topDockHoverExitTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
     readonly DispatcherTimer headerSingleClickTimer = new();
-    readonly DispatcherTimer taskbarTopmostTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     DateTime displayedMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     DateTime selectedDate = DateTime.Today;
     DateTime nextArchiveSweep = DateTime.MinValue;
@@ -109,7 +102,6 @@ public partial class LifeIslandWindow : Window
     IslandPlacement placement;
     string? taskbarMonitorDeviceName;
     double taskbarHorizontalRatio = 0.5;
-    IntPtr windowHandle;
     MonitorGeometry? taskbarDragGeometry;
     IReadOnlyList<Rect> taskbarDragOccupiedDips = Array.Empty<Rect>();
     System.Drawing.Point taskbarDragPointerStartPixels;
@@ -144,7 +136,7 @@ public partial class LifeIslandWindow : Window
     double fullscreenOriginalTopDockUnfoldedTop;
 
     enum IslandPlacement { Free, Top, Taskbar }
-    enum ExpandedPinState { Normal, KeepExpanded, Topmost }
+    enum ExpandedPinState { Normal, KeepExpanded }
     enum NetworkSpeedTestDisplayUnit { Mbps, MegabytesPerSecond }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
 
@@ -153,10 +145,6 @@ public partial class LifeIslandWindow : Window
 
     double GetNetworkSpeedTestDisplayRate(double rate) =>
         networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps ? rate : rate / 8d;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
 
     [DllImport("user32.dll")]
     static extern IntPtr GetForegroundWindow();
@@ -259,12 +247,9 @@ public partial class LifeIslandWindow : Window
             new Action(CollapseWhenForegroundMovesToAnotherProcess));
         IslandLayout.LayoutUpdated += (_, _) => MaintainTaskbarHeaderAnchor();
         MainBorder.SizeChanged += (_, _) => UpdateTaskbarClip();
-        taskbarTopmostTimer.Tick += (_, _) => EnsureTaskbarTopmost();
         SourceInitialized += (_, _) =>
         {
-            windowHandle = new WindowInteropHelper(this).Handle;
             IslandWindowStyles.HideFromTaskView(this);
-            EnsureTaskbarTopmost();
         };
         Closed += (_, _) =>
         {
@@ -279,11 +264,9 @@ public partial class LifeIslandWindow : Window
             focusTimer.Stop();
             collapseTimer.Stop();
             headerSingleClickTimer.Stop();
-            taskbarTopmostTimer.Stop();
             topDockHoverExitTimer.Stop();
             theme.ThemeChanged -= Theme_Changed;
             audioSpectrum.SpectrumChanged -= AudioSpectrum_SpectrumChanged;
-            windowHandle = IntPtr.Zero;
         };
         Loaded += (_, _) =>
         {
@@ -497,18 +480,6 @@ public partial class LifeIslandWindow : Window
         }
 
         UpdateTaskbarClip();
-        UpdateTaskbarTopmostTimer();
-    }
-
-    void UpdateTaskbarTopmostTimer()
-    {
-        if (placement == IslandPlacement.Taskbar && expandedPinState == ExpandedPinState.Topmost)
-        {
-            EnsureTaskbarTopmost();
-            if (!taskbarTopmostTimer.IsEnabled) taskbarTopmostTimer.Start();
-        }
-        else
-            taskbarTopmostTimer.Stop();
     }
 
     void UpdateTaskbarClip()
@@ -532,17 +503,6 @@ public partial class LifeIslandWindow : Window
         taskbarClipGeometry.RadiusX = radius;
         taskbarClipGeometry.RadiusY = radius;
         MainBorder.Clip = taskbarClipGeometry;
-    }
-
-    void EnsureTaskbarTopmost()
-    {
-        if (placement != IslandPlacement.Taskbar || expandedPinState != ExpandedPinState.Topmost ||
-            windowHandle == IntPtr.Zero || !IsVisible) return;
-        SetWindowPos(
-            windowHandle,
-            HwndTopmost,
-            0, 0, 0, 0,
-            SwpNoMove | SwpNoSize | SwpNoActivate | SwpNoOwnerZOrder);
     }
 
     static IReadOnlyList<Rect> TaskbarOccupiedRectanglesPixels(System.Windows.Forms.Screen screen)
@@ -3377,36 +3337,28 @@ public partial class LifeIslandWindow : Window
             collapseTimer.Start();
     }
 
-    void ExpandedPin_Click(object sender, RoutedEventArgs e)
-    {
-        var state = expandedPinState switch
-        {
-            ExpandedPinState.Normal => ExpandedPinState.KeepExpanded,
-            ExpandedPinState.KeepExpanded => ExpandedPinState.Topmost,
-            _ => ExpandedPinState.Normal
-        };
-        SetExpandedPinState(state);
-    }
+    void ExpandedPin_Click(object sender, RoutedEventArgs e) =>
+        SetExpandedPinState(expandedPinState == ExpandedPinState.Normal
+            ? ExpandedPinState.KeepExpanded
+            : ExpandedPinState.Normal);
 
     void SetExpandedPinState(ExpandedPinState state)
     {
         expandedPinState = state;
-        Topmost = state == ExpandedPinState.Topmost;
-        var topmost = state == ExpandedPinState.Topmost;
-        ExpandedPinOutline.Visibility = topmost ? Visibility.Collapsed : Visibility.Visible;
-        ExpandedPinSolid.Visibility = topmost ? Visibility.Visible : Visibility.Collapsed;
+        var keepExpanded = state == ExpandedPinState.KeepExpanded;
+        ExpandedPinOutline.Visibility = keepExpanded ? Visibility.Collapsed : Visibility.Visible;
+        ExpandedPinSolid.Visibility = keepExpanded ? Visibility.Visible : Visibility.Collapsed;
         SetThemeResource(
             ExpandedPinOutline,
             System.Windows.Shapes.Path.StrokeProperty,
-            state == ExpandedPinState.Normal ? "Brush.TextSecondary" : "Brush.Accent");
+            keepExpanded ? "Brush.Accent" : "Brush.TextSecondary");
         SetThemeResource(
             ExpandedPinSolid,
             System.Windows.Shapes.Path.FillProperty,
-            state == ExpandedPinState.Normal ? "Brush.TextSecondary" : "Brush.Accent");
-        if (state != ExpandedPinState.Normal)
+            keepExpanded ? "Brush.Accent" : "Brush.TextSecondary");
+        if (keepExpanded)
             collapseTimer.Stop();
         else if (expanded && !pointerHover) ScheduleMouseLeaveCollapse();
-        UpdateTaskbarTopmostTimer();
     }
 
     void AutoCollapse()

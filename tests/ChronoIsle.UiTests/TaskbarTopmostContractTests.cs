@@ -5,7 +5,7 @@ namespace ChronoIsle.UiTests;
 public sealed class TaskbarTopmostContractTests
 {
     [Fact]
-    public void Expanded_pin_controls_when_taskbar_placement_is_topmost()
+    public void Island_is_always_topmost_and_the_expanded_pin_has_only_two_states()
     {
         var workspace = FindWorkspace();
         var xaml = File.ReadAllText(Path.Combine(
@@ -20,39 +20,21 @@ public sealed class TaskbarTopmostContractTests
             "ChronoIsle.App",
             "Views",
             "LifeIslandWindow.xaml.cs"));
+        var click = ExtractMethodBody(source, "void ExpandedPin_Click(");
+        var setState = ExtractMethodBody(source, "void SetExpandedPinState(");
 
-        Assert.DoesNotContain("Topmost=\"True\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"ExpandedPinButton\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("ExpandedPinOutline", xaml, StringComparison.Ordinal);
-        Assert.Contains("ExpandedPinSolid", xaml, StringComparison.Ordinal);
-        Assert.Contains("Click=\"ExpandedPin_Click\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("enum ExpandedPinState", source, StringComparison.Ordinal);
-        var expandedPinClick = ExtractMethodBody(source, "void ExpandedPin_Click(");
-        var setExpandedPinState = ExtractMethodBody(source, "void SetExpandedPinState(");
-        var ensureTaskbarTopmost = ExtractMethodBody(source, "void EnsureTaskbarTopmost()");
-        var collapse = ExtractMethodBody(source, "void Collapse()");
-
-        Assert.Contains(
-            "ExpandedPinState.Normal => ExpandedPinState.KeepExpanded",
-            expandedPinClick,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "ExpandedPinState.KeepExpanded => ExpandedPinState.Topmost",
-            expandedPinClick,
-            StringComparison.Ordinal);
-        Assert.Contains("_ => ExpandedPinState.Normal", expandedPinClick, StringComparison.Ordinal);
-        Assert.Contains("Topmost = state == ExpandedPinState.Topmost", setExpandedPinState, StringComparison.Ordinal);
-        Assert.Contains("ExpandedPinSolid.Visibility", setExpandedPinState, StringComparison.Ordinal);
-        Assert.Contains(
-            "placement != IslandPlacement.Taskbar || expandedPinState != ExpandedPinState.Topmost",
-            ensureTaskbarTopmost,
-            StringComparison.Ordinal);
-        Assert.Contains("SetWindowPos(", ensureTaskbarTopmost, StringComparison.Ordinal);
-        Assert.Contains("SetExpandedPinState(ExpandedPinState.Normal)", collapse, StringComparison.Ordinal);
+        Assert.Contains("Topmost=\"True\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("enum ExpandedPinState { Normal, KeepExpanded }", source, StringComparison.Ordinal);
+        Assert.Contains("expandedPinState == ExpandedPinState.Normal", click, StringComparison.Ordinal);
+        Assert.Contains("? ExpandedPinState.KeepExpanded", click, StringComparison.Ordinal);
+        Assert.Contains(": ExpandedPinState.Normal", click, StringComparison.Ordinal);
+        Assert.Contains("ExpandedPinSolid.Visibility", setState, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExpandedPinState.Topmost", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Topmost = state", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void TaskbarPlacement_ReassertsHighestTopmostWithoutTakingFocus()
+    public void Island_topmost_does_not_depend_on_taskbar_or_periodic_native_reassertion()
     {
         var workspace = FindWorkspace();
         var source = File.ReadAllText(Path.Combine(
@@ -62,51 +44,10 @@ public sealed class TaskbarTopmostContractTests
             "Views",
             "LifeIslandWindow.xaml.cs"));
 
-        Assert.Contains("static extern bool SetWindowPos(", source, StringComparison.Ordinal);
-        Assert.Contains("void EnsureTaskbarTopmost()", source, StringComparison.Ordinal);
-        Assert.Contains("placement != IslandPlacement.Taskbar", source, StringComparison.Ordinal);
-        Assert.Contains("HwndTopmost", source, StringComparison.Ordinal);
-        Assert.Contains("SwpNoActivate", source, StringComparison.Ordinal);
-        Assert.Contains("taskbarTopmostTimer.Tick += (_, _) => EnsureTaskbarTopmost();", source, StringComparison.Ordinal);
-        Assert.Contains("taskbarTopmostTimer.Stop();", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void TaskbarTopmostTimer_OnlyRunsWhileTaskbarTopmostPinIsActive()
-    {
-        var workspace = FindWorkspace();
-        var source = File.ReadAllText(Path.Combine(
-            workspace,
-            "src",
-            "ChronoIsle.App",
-            "Views",
-            "LifeIslandWindow.xaml.cs"));
-        var updateTimer = ExtractMethodBody(source, "void UpdateTaskbarTopmostTimer()");
-
-        Assert.Contains(
-            "placement == IslandPlacement.Taskbar && expandedPinState == ExpandedPinState.Topmost",
-            updateTimer,
-            StringComparison.Ordinal);
-        Assert.Contains("EnsureTaskbarTopmost();", updateTimer, StringComparison.Ordinal);
-        Assert.Contains("taskbarTopmostTimer.Start();", updateTimer, StringComparison.Ordinal);
-        Assert.Contains("taskbarTopmostTimer.Stop();", updateTimer, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void PlacementAndPinState_RefreshTaskbarTopmostTimer()
-    {
-        var workspace = FindWorkspace();
-        var source = File.ReadAllText(Path.Combine(
-            workspace,
-            "src",
-            "ChronoIsle.App",
-            "Views",
-            "LifeIslandWindow.xaml.cs"));
-        var applyPlacementVisuals = ExtractMethodBody(source, "void ApplyPlacementVisuals(");
-        var setExpandedPinState = ExtractMethodBody(source, "void SetExpandedPinState(");
-
-        Assert.Contains("UpdateTaskbarTopmostTimer();", applyPlacementVisuals, StringComparison.Ordinal);
-        Assert.Contains("UpdateTaskbarTopmostTimer();", setExpandedPinState, StringComparison.Ordinal);
+        Assert.DoesNotContain("taskbarTopmostTimer", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("EnsureTaskbarTopmost", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetWindowPos(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HwndTopmost", source, StringComparison.Ordinal);
     }
 
     static string FindWorkspace()

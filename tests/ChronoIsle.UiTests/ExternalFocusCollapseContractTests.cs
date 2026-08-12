@@ -52,7 +52,8 @@ public sealed class ExternalFocusCollapseContractTests
         var setExpandedPinState = ExtractMethodBody(source, "void SetExpandedPinState(");
         var scheduleMouseLeaveCollapse = ExtractMethodBody(source, "void ScheduleMouseLeaveCollapse()");
 
-        Assert.Contains("if (state != ExpandedPinState.Normal)", setExpandedPinState, StringComparison.Ordinal);
+        Assert.Contains("var keepExpanded = state == ExpandedPinState.KeepExpanded;", setExpandedPinState, StringComparison.Ordinal);
+        Assert.Contains("if (keepExpanded)", setExpandedPinState, StringComparison.Ordinal);
         Assert.Contains("collapseTimer.Stop();", setExpandedPinState, StringComparison.Ordinal);
         Assert.Contains(
             "else if (expanded && !pointerHover) ScheduleMouseLeaveCollapse();",
