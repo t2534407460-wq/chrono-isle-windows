@@ -67,7 +67,8 @@ public sealed record ItemNavigationTarget(string Id, string Kind)
 {
     public static ItemNavigationTarget From(AgendaItem item) => new(item.Id, item.Kind);
 
-    public static ItemNavigationTarget From(string id, LifeItemKind kind) => new(id, kind.ToString().ToLowerInvariant());
+    public static ItemNavigationTarget From(string id, LifeItemKind kind) =>
+        new(id, kind == LifeItemKind.LongTerm ? "long_term" : kind.ToString().ToLowerInvariant());
 }
 
 public enum IslandIndicatorState

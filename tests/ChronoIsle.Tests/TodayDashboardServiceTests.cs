@@ -14,6 +14,7 @@ public sealed class TodayDashboardServiceTests
     [InlineData(LifeItemKind.Todo, "todo")]
     [InlineData(LifeItemKind.Reminder, "reminder")]
     [InlineData(LifeItemKind.Event, "event")]
+    [InlineData(LifeItemKind.LongTerm, "long_term")]
     public void NavigationTarget_ConvertsDashboardKindsToManagementKinds(LifeItemKind kind, string expected)
     {
         var item = new TodayDashboardItem("item", kind, "title", 1, null, LifePriority.Normal, false);
@@ -42,6 +43,7 @@ public sealed class TodayDashboardServiceTests
         var now = new DateTimeOffset(2026, 7, 21, 10, 0, 0, TimeSpan.Zero);
         database.Insert("overdue", "Todo", "overdue", due: now.AddMinutes(-30), priority: "High");
         database.Insert("reminder", "Reminder", "upcoming", remind: now.AddMinutes(30));
+        database.Insert("late-reminder", "Reminder", "already notified", remind: now.AddMinutes(-30));
         database.Insert("inbox", "Todo", "unscheduled");
         database.Insert("later", "Event", "later", start: now.AddDays(2), end: now.AddDays(2).AddHours(1));
 
@@ -51,6 +53,7 @@ public sealed class TodayDashboardServiceTests
         Assert.Contains(snapshot.Today, item => item.Id == "overdue");
         Assert.Contains(snapshot.Today, item => item.Id == "reminder");
         Assert.Single(snapshot.Overdue, item => item.Id == "overdue");
+        Assert.DoesNotContain(snapshot.Overdue, item => item.Id == "late-reminder");
         Assert.Single(snapshot.Inbox, item => item.Id == "inbox");
         Assert.Equal("overdue", snapshot.SuggestedItemIds[0]);
     }
@@ -65,6 +68,20 @@ public sealed class TodayDashboardServiceTests
         var snapshot = database.Service.GetSnapshot(now);
 
         Assert.Empty(snapshot.Overdue);
+    }
+
+    [Fact]
+    public void Snapshot_DoesNotTreatLongTermItemsAsOverdueOrInbox()
+    {
+        using var database = new DatabaseScope();
+        var now = new DateTimeOffset(2026, 7, 21, 10, 0, 0, TimeSpan.Zero);
+        database.Insert("long-term", "Todo", "read every day", due: now.AddMinutes(-30), itemType: "LongTerm");
+
+        var snapshot = database.Service.GetSnapshot(now);
+
+        Assert.Empty(snapshot.Overdue);
+        Assert.Empty(snapshot.Inbox);
+        Assert.Contains(snapshot.Today, item => item.Id == "long-term" && item.Kind == LifeItemKind.LongTerm);
     }
 
 
@@ -121,6 +138,9 @@ public sealed class TodayDashboardServiceTests
             {
                 connection.Open();
                 new LifeSchemaMigrator("Etc/UTC").Migrate(connection);
+                using var itemType = connection.CreateCommand();
+                itemType.CommandText = "ALTER TABLE life_items ADD COLUMN item_type TEXT";
+                itemType.ExecuteNonQuery();
             }
             factory = new(path);
             queue = new SqliteDbWriteQueue(factory);
@@ -140,7 +160,8 @@ public sealed class TodayDashboardServiceTests
             DateTimeOffset? end = null,
             string priority = "Normal",
             bool isReadOnly = false,
-            int overdueGrace = 5)
+            int overdueGrace = 5,
+            string? itemType = null)
         {
             queue.Execute(uow =>
             {
@@ -151,11 +172,11 @@ public sealed class TodayDashboardServiceTests
                       id,kind,title,status,row_version,
                       due_utc_instant,due_time_semantics,remind_utc_instant,remind_time_semantics,
                       start_utc_instant,start_time_semantics,end_utc_instant,end_time_semantics,
-                      origin_type,is_readonly,readonly_reason,created_at,updated_at,priority,overdue_grace_minutes)
+                      origin_type,is_readonly,readonly_reason,created_at,updated_at,priority,overdue_grace_minutes,item_type)
                     VALUES($id,$kind,$title,'Pending',1,
                       $due,$dueSemantics,$remind,$remindSemantics,
                       $start,$startSemantics,$end,$endSemantics,
-                      $origin,$readonly,$reason,$now,$now,$priority,$grace)
+                      $origin,$readonly,$reason,$now,$now,$priority,$grace,$itemType)
                     """;
                 command.Parameters.AddWithValue("$id", id);
                 command.Parameters.AddWithValue("$kind", kind);
@@ -170,6 +191,7 @@ public sealed class TodayDashboardServiceTests
                 command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
                 command.Parameters.AddWithValue("$priority", priority);
                 command.Parameters.AddWithValue("$grace", overdueGrace);
+                command.Parameters.AddWithValue("$itemType", (object?)itemType ?? DBNull.Value);
                 command.ExecuteNonQuery();
             });
         }

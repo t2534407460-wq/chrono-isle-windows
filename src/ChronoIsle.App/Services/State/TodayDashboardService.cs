@@ -73,7 +73,7 @@ public sealed class TodayDashboardService
                 TimeZoneInfo.ConvertTime(at, TimeZoneInfo.Local).Date == localDate)
             .OrderBy(item => item.ScheduledAtUtc).ThenBy(item => item.Title, StringComparer.CurrentCulture)
             .ToArray();
-        var overdue = active.Where(item => item.Kind is LifeItemKind.Todo or LifeItemKind.Reminder &&
+        var overdue = active.Where(item => item.Kind == LifeItemKind.Todo &&
                                            item.ScheduledAtUtc < nowUtc.Subtract(TimeSpan.FromMinutes(item.OverdueGraceMinutes)))
             .OrderBy(item => item.ScheduledAtUtc).ThenByDescending(item => item.Priority)
             .ToArray();
@@ -182,9 +182,10 @@ public sealed class TodayDashboardService
     {
         using var connection = connections.OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = """
+        var itemType = HasColumn(connection, "life_items", "item_type") ? "item_type" : "NULL";
+        command.CommandText = $"""
             SELECT id,kind,title,row_version,due_utc_instant,remind_utc_instant,start_utc_instant,
-                   COALESCE(priority,'Normal'),is_readonly,COALESCE(overdue_grace_minutes,5)
+                   COALESCE(priority,'Normal'),is_readonly,COALESCE(overdue_grace_minutes,5),{itemType}
             FROM life_items
             WHERE deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored')
             """;
@@ -192,13 +193,16 @@ public sealed class TodayDashboardService
         var items = new List<TodayDashboardItem>();
         while (reader.Read())
         {
-            var kind = Enum.Parse<LifeItemKind>(reader.GetString(1));
-            var scheduled = kind switch
+            var storedKind = Enum.Parse<LifeItemKind>(reader.GetString(1));
+            var scheduled = storedKind switch
             {
                 LifeItemKind.Event => Parse(reader, 6),
                 LifeItemKind.Reminder => Parse(reader, 5),
                 _ => Parse(reader, 4) ?? Parse(reader, 5)
             };
+            var kind = !reader.IsDBNull(10) && reader.GetString(10) == "LongTerm"
+                ? LifeItemKind.LongTerm
+                : storedKind;
             items.Add(new(reader.GetString(0), kind, reader.GetString(2), reader.GetInt64(3), scheduled,
                 Enum.TryParse<LifePriority>(reader.GetString(7), out var priority) ? priority : LifePriority.Normal,
                 reader.GetInt64(8) != 0, Math.Max(0, reader.GetInt32(9))));
@@ -216,16 +220,17 @@ public sealed class TodayDashboardService
 
     static (bool IsInbox, bool IsReadOnly, long RowVersion)? ReadMutationState(IUnitOfWork uow, string id)
     {
-        using var command = Command(uow, """
-            SELECT kind,due_utc_instant,remind_utc_instant,start_utc_instant,end_utc_instant,is_readonly,row_version
+        var itemType = HasColumn(uow.Connection, "life_items", "item_type") ? "item_type" : "NULL";
+        using var command = Command(uow, $"""
+            SELECT kind,{itemType},due_utc_instant,remind_utc_instant,start_utc_instant,end_utc_instant,is_readonly,row_version
             FROM life_items WHERE id=$id AND deleted_at IS NULL
             """);
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
         if (!reader.Read()) return null;
-        var inbox = reader.GetString(0) == "Todo" && reader.IsDBNull(1) && reader.IsDBNull(2) &&
-                    reader.IsDBNull(3) && reader.IsDBNull(4);
-        return (inbox, reader.GetInt64(5) != 0, reader.GetInt64(6));
+        var inbox = reader.GetString(0) == "Todo" && (reader.IsDBNull(1) || reader.GetString(1) != "LongTerm") &&
+                    reader.IsDBNull(2) && reader.IsDBNull(3) && reader.IsDBNull(4) && reader.IsDBNull(5);
+        return (inbox, reader.GetInt64(6) != 0, reader.GetInt64(7));
     }
 
     static SqliteCommand Command(IUnitOfWork uow, string sql)
@@ -257,6 +262,16 @@ public sealed class TodayDashboardService
     static DateTimeOffset? Parse(SqliteDataReader reader, int index) => reader.IsDBNull(index)
         ? null
         : DateTimeOffset.Parse(reader.GetString(index), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+
+    static bool HasColumn(SqliteConnection connection, string table, string column)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({table})";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
 
     static object Db(object? value) => value ?? DBNull.Value;
 }

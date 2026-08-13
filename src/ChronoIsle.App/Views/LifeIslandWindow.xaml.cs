@@ -168,10 +168,6 @@ public partial class LifeIslandWindow : Window
     public event EventHandler? ManageRequested;
     public event EventHandler<ItemNavigationTarget>? ItemDetailsRequested;
     public event EventHandler<string>? ChatRequested;
-    int recommendationMinutes = 30;
-    int recommendationDurationValue = 30;
-    int recommendationDurationUnitMinutes = 1;
-    EnergyLevel recommendationEnergy = EnergyLevel.Medium;
     DateOnly? automaticWeeklyReportDate;
     bool nextWeekPlanVisible;
 
@@ -1126,7 +1122,7 @@ public partial class LifeIslandWindow : Window
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
-        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus })
+        foreach (var action in new[] { IslandQuickAction.AddTodo, IslandQuickAction.StartFocus, IslandQuickAction.ManageItems })
         {
             var button = new Button { Content = QuickActionLabel(action), Style = (Style)FindResource("IslandQuick") };
             button.Click += (_, _) => RunQuickAction(action);
@@ -1156,64 +1152,10 @@ public partial class LifeIslandWindow : Window
         todayDashboardContent.Children.Add(quickRow);
 
         var counts = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 13) };
-        counts.Children.Add(DashboardCount("今日", snapshot.Today.Count, Color.FromRgb(174, 174, 178)));
-        counts.Children.Add(DashboardCount("逾期", snapshot.Overdue.Count, Color.FromRgb(255, 69, 58)));
-        counts.Children.Add(DashboardCount("待整理", snapshot.Inbox.Count, Color.FromRgb(255, 159, 10)));
+        counts.Children.Add(DashboardCount("今日", snapshot.Today, snapshot.GeneratedAtUtc, Color.FromRgb(174, 174, 178)));
+        counts.Children.Add(DashboardCount("逾期", snapshot.Overdue, snapshot.GeneratedAtUtc, Color.FromRgb(255, 69, 58)));
+        counts.Children.Add(DashboardCount("待整理", snapshot.Inbox, snapshot.GeneratedAtUtc, Color.FromRgb(255, 159, 10)));
         todayDashboardContent.Children.Add(counts);
-        var recommendationRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 5) };
-        recommendationRow.Children.Add(SetThemeResource(
-            new TextBlock { Text = "可用时间", Width = 64, FontSize = 11, VerticalAlignment = VerticalAlignment.Center },
-            TextBlock.ForegroundProperty,
-            "Brush.TextSecondary"));
-        var duration = PositiveNumberStepper(recommendationDurationValue, value =>
-        {
-            recommendationDurationValue = value;
-            UpdateRecommendationMinutes();
-            Touch();
-        });
-        recommendationRow.Children.Add(duration);
-        var durationUnitOptions = new[]
-        {
-            new ComboBoxItem { Content = "分钟", Tag = 1 },
-            new ComboBoxItem { Content = "小时", Tag = 60 }
-        };
-        var durationUnit = new System.Windows.Controls.ComboBox { Width = 72, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = durationUnitOptions, SelectedIndex = recommendationDurationUnitMinutes == 60 ? 1 : 0, Margin = new Thickness(0, 0, 10, 0) };
-        durationUnit.SelectionChanged += (_, _) =>
-        {
-            if (durationUnit.SelectedItem is ComboBoxItem { Tag: int unitMinutes }) recommendationDurationUnitMinutes = unitMinutes;
-            UpdateRecommendationMinutes();
-            Touch();
-        };
-        recommendationRow.Children.Add(durationUnit);
-        recommendationRow.Children.Add(SetThemeResource(
-            new TextBlock { Text = "能量", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) },
-            TextBlock.ForegroundProperty,
-            "Brush.TextSecondary"));
-        var energyOptions = Enum.GetValues<EnergyLevel>().Select(value => new ComboBoxItem { Content = TaskDisplayLabels.Energy(value), Tag = value }).ToArray();
-        var energy = new System.Windows.Controls.ComboBox { Width = 110, Height = 28, Style = (Style)FindResource("IslandSelect"), ItemsSource = energyOptions, SelectedItem = energyOptions.Single(item => (EnergyLevel)item.Tag == recommendationEnergy), Margin = new Thickness(0, 0, 10, 0) };
-        energy.SelectionChanged += (_, _) =>
-        {
-            if (energy.SelectedItem is ComboBoxItem { Tag: EnergyLevel value }) recommendationEnergy = value;
-            Touch();
-        };
-        recommendationRow.Children.Add(energy);
-        var recommend = new Button { Content = "给我推荐", Style = (Style)FindResource("IslandType"), Padding = new Thickness(7, 2, 7, 2), FontSize = 10 };
-        recommend.Click += (_, _) =>
-        {
-            if (energy.SelectedItem is ComboBoxItem { Tag: EnergyLevel selectedEnergy }) recommendationEnergy = selectedEnergy;
-            BuildTodayDashboard();
-        };
-        recommendationRow.Children.Add(recommend);
-        todayDashboardContent.Children.Add(recommendationRow);
-        var executable = taskAttributes.Recommend(recommendationMinutes, recommendationEnergy, DateTimeOffset.UtcNow);
-        todayDashboardContent.Children.Add(SetThemeResource(new TextBlock
-        {
-            Text = executable.Count == 0
-                ? "可执行推荐：还没有匹配当前时长与能量的待办。"
-                : $"可执行推荐：{string.Join("、", executable.Select(item => $"{item.Title}（{item.EstimatedMinutes}分钟）"))}",
-            TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 0, 0, 6)
-        }, TextBlock.ForegroundProperty, "Brush.Success"));
-
         var overview = new Grid { Margin = new Thickness(0, 3, 0, 10) };
         overview.ColumnDefinitions.Add(new ColumnDefinition());
         overview.ColumnDefinitions.Add(new ColumnDefinition());
@@ -1233,7 +1175,7 @@ public partial class LifeIslandWindow : Window
         var weekPeriod = new ReportPeriod(ReportPeriodKind.Weekly,
             new DateTimeOffset(weekStart, TimeZoneInfo.Local.GetUtcOffset(weekStart)),
             new DateTimeOffset(weekStart.AddDays(7), TimeZoneInfo.Local.GetUtcOffset(weekStart.AddDays(7))));
-        var weeklyFacts = reports.Generate(weekPeriod, "facts-v1").Facts;
+        var weeklyFacts = reports.Generate(weekPeriod, "facts-v2").Facts;
         todayDashboardContent.Children.Add(SetThemeResource(
             new TextBlock { Text = $"本周复盘：完成 {weeklyFacts.CompletedCount} · 逾期 {weeklyFacts.OverdueCount} · 高优先级 {weeklyFacts.HighPriorityCount}", Margin = new Thickness(0, 8, 0, 0), FontSize = 11 },
             TextBlock.ForegroundProperty,
@@ -1405,7 +1347,7 @@ public partial class LifeIslandWindow : Window
     {
         IslandQuickAction.AddTodo => "＋ 新建事项",
         IslandQuickAction.StartFocus => "◎ 专注模式",
-        IslandQuickAction.ManageItems => "☰ 事项管理",
+        IslandQuickAction.ManageItems => "☰ 事项工作台",
         IslandQuickAction.Settings => "⚙ 设置",
         IslandQuickAction.PauseReminders => "Ⅱ 暂停提醒",
         IslandQuickAction.ToggleDoNotDisturb => "◐ 勿扰模式",
@@ -1679,7 +1621,7 @@ public partial class LifeIslandWindow : Window
         return null;
     }
 
-    Border DashboardCount(string label, int count, Color color)
+    Border DashboardCount(string label, IReadOnlyList<TodayDashboardItem> items, DateTimeOffset nowUtc, Color color)
     {
         var labelText = SetThemeResource(
             new TextBlock
@@ -1695,56 +1637,150 @@ public partial class LifeIslandWindow : Window
             CornerRadius = new CornerRadius(7),
             Padding = new Thickness(8, 6, 8, 6),
             Margin = new Thickness(0, 0, 5, 0),
+            Cursor = System.Windows.Input.Cursors.Hand,
             Child = new StackPanel
             {
                 Children =
                 {
-                    new TextBlock { Text = count.ToString(), Foreground = new SolidColorBrush(color), FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center },
+                    new TextBlock { Text = items.Count.ToString(), Foreground = new SolidColorBrush(color), FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center },
                     labelText
                 }
             }
         };
         SetThemeResource(countCard, Border.BackgroundProperty, "Brush.Surface");
+        countCard.MouseLeftButtonUp += (_, _) => ShowDashboardDetails(label, items, nowUtc);
         return countCard;
     }
 
-    Grid PositiveNumberStepper(int initialValue, Action<int> valueChanged)
+    void ShowDashboardDetails(string label, IReadOnlyList<TodayDashboardItem> items, DateTimeOffset nowUtc)
     {
-        var value = Math.Max(1, initialValue);
-        var box = new TextBox
+        var dialog = new Window
         {
-            Width = 56,
-            Height = 28,
-            Text = value.ToString(),
-            IsReadOnly = true,
-            IsTabStop = false,
-            TextAlignment = TextAlignment.Center,
-            VerticalContentAlignment = VerticalAlignment.Center,
-            Style = (Style)FindResource("IslandTextInput")
+            Title = $"{label}详情",
+            Width = 500,
+            Height = 520,
+            MinWidth = 400,
+            MinHeight = 300,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.None,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
-        var arrows = new StackPanel { Orientation = System.Windows.Controls.Orientation.Vertical, Margin = new Thickness(4, 0, 8, 0) };
-        void SetValue(int next)
+        if (IsVisible) dialog.Owner = this;
+        SetThemeResource(dialog, ForegroundProperty, "Brush.TextPrimary");
+
+        var shell = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16) };
+        SetThemeResource(shell, Border.BackgroundProperty, "Brush.Window");
+        SetThemeResource(shell, Border.BorderBrushProperty, "Brush.Stroke");
+        var layout = new Grid();
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
+        layout.RowDefinitions.Add(new RowDefinition());
+        var titleBar = new Grid { Margin = new Thickness(18, 0, 10, 0) };
+        titleBar.ColumnDefinitions.Add(new ColumnDefinition());
+        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        titleBar.Children.Add(new TextBlock { Text = $"{label}事项", FontWeight = FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
+        var titleClose = new Button { Content = "×", Style = (Style)FindResource("IslandType"), Width = 32, Height = 28, Padding = new Thickness(0), ToolTip = "关闭" };
+        titleClose.Click += (_, _) => dialog.Close();
+        Grid.SetColumn(titleClose, 1);
+        titleBar.Children.Add(titleClose);
+        layout.Children.Add(titleBar);
+
+        var body = new Grid { Margin = new Thickness(18, 0, 18, 18) };
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        body.RowDefinitions.Add(new RowDefinition());
+        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var content = new StackPanel();
+        content.Children.Add(SetThemeResource(
+            new TextBlock { Text = $"{label}事项（{items.Count}）", FontWeight = FontWeights.SemiBold, FontSize = 16 },
+            TextBlock.ForegroundProperty,
+            "Brush.TextPrimary"));
+        content.Children.Add(SetThemeResource(
+            new TextBlock { Text = DashboardDetailEmptyText(label), FontSize = 11, Margin = new Thickness(0, 5, 0, 10), TextWrapping = TextWrapping.Wrap },
+            TextBlock.ForegroundProperty,
+            "Brush.TextSecondary"));
+
+        var rows = new StackPanel();
+        if (items.Count == 0)
         {
-            value = Math.Max(1, next);
-            box.Text = value.ToString();
-            valueChanged(value);
+            rows.Children.Add(SetThemeResource(
+                new TextBlock { Text = DashboardEmptyState(label), FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                TextBlock.ForegroundProperty,
+                "Brush.TextTertiary"));
         }
-        var up = new Button { Content = "▲", Width = 18, Height = 13, MinHeight = 13, Padding = new Thickness(0), FontSize = 8, Style = (Style)FindResource("IslandPrimary") };
-        var down = new Button { Content = "▼", Width = 18, Height = 13, MinHeight = 13, Padding = new Thickness(0), FontSize = 8, Style = (Style)FindResource("IslandPrimary") };
-        up.Click += (_, _) => SetValue(value + 1);
-        down.Click += (_, _) => SetValue(value - 1);
-        arrows.Children.Add(up);
-        arrows.Children.Add(down);
-        var stepper = new Grid { Margin = new Thickness(0, 0, 10, 0) };
-        stepper.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        stepper.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        stepper.Children.Add(box);
-        Grid.SetColumn(arrows, 1);
-        stepper.Children.Add(arrows);
-        return stepper;
+        else
+        {
+            foreach (var item in items)
+            {
+                var itemButton = new Button
+                {
+                    Style = (Style)FindResource("IslandType"),
+                    HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Content = new TextBlock { Text = DashboardDetailText(label, item, nowUtc), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Left }
+                };
+                itemButton.Click += (_, _) =>
+                {
+                    dialog.Close();
+                    OpenItemDetails(ItemNavigationTarget.From(item.Id, item.Kind));
+                };
+                rows.Children.Add(itemButton);
+            }
+        }
+        Grid.SetRow(content, 0);
+        body.Children.Add(content);
+        var scroller = new ScrollViewer { Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 2, 0, 10) };
+        Grid.SetRow(scroller, 1);
+        body.Children.Add(scroller);
+        var close = new Button { Content = "关闭", Style = (Style)FindResource("IslandType"), Width = 70, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        close.Click += (_, _) => dialog.Close();
+        Grid.SetRow(close, 2);
+        body.Children.Add(close);
+        Grid.SetRow(body, 1);
+        layout.Children.Add(body);
+        shell.Child = layout;
+        dialog.Content = shell;
+        dialog.ShowDialog();
     }
 
-    void UpdateRecommendationMinutes() => recommendationMinutes = checked(recommendationDurationValue * recommendationDurationUnitMinutes);
+    static string DashboardDetailEmptyText(string label) => label switch
+    {
+        "逾期" => "逾期只统计超过截止时间及宽限期仍未完成的普通待办；提醒和长期事项不计入。",
+        "待整理" => "待整理仅包含尚未安排时间的普通待办。",
+        _ => "点击任一事项可进入详情。"
+    };
+
+    static string DashboardEmptyState(string label) => label switch
+    {
+        "逾期" => "当前没有逾期待办。提醒即使已经触发，也不会显示为逾期。",
+        "待整理" => "当前没有未安排时间的普通待办。",
+        _ => "今天没有已安排事项。"
+    };
+
+    static string DashboardDetailText(string label, TodayDashboardItem item, DateTimeOffset nowUtc)
+    {
+        var schedule = item.ScheduledAtUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "未安排时间";
+        if (label != "逾期" || item.ScheduledAtUtc is null)
+            return $"{item.Title}\n{DashboardKind(item.Kind)} · {schedule} · {TaskDisplayLabels.Priority(item.Priority)}";
+
+        var overdueAt = item.ScheduledAtUtc.Value.AddMinutes(item.OverdueGraceMinutes);
+        var overdueFor = nowUtc - overdueAt;
+        return $"{item.Title}\n原因：未完成待办超过截止时间及 {item.OverdueGraceMinutes} 分钟宽限期\n截止：{schedule}\n自 {overdueAt.ToLocalTime():yyyy-MM-dd HH:mm} 起逾期 · 已逾期 {DashboardElapsed(overdueFor)}";
+    }
+
+    static string DashboardKind(LifeItemKind kind) => kind switch
+    {
+        LifeItemKind.Reminder => "提醒",
+        LifeItemKind.Event => "日程",
+        LifeItemKind.LongTerm => "长期事项",
+        _ => "待办"
+    };
+
+    static string DashboardElapsed(TimeSpan value) => value.TotalDays >= 1
+        ? $"{(int)value.TotalDays} 天 {value.Hours} 小时"
+        : value.TotalHours >= 1 ? $"{(int)value.TotalHours} 小时 {value.Minutes} 分钟" : $"{Math.Max(0, value.Minutes)} 分钟";
 
     Border DashboardOverviewCard(string title, IReadOnlyList<TodayDashboardItem> items, string emptyText, Color accent)
     {

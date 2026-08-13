@@ -28,6 +28,9 @@ public partial class LifeManagementWindow : Window
     ItemNavigationTarget? itemToLocate;
     bool awaitingConfirmation;
     bool showingArchive;
+    bool showingRecommendations = true;
+    int recommendationMinutes = 30;
+    EnergyLevel recommendationEnergy = EnergyLevel.Medium;
 
     public LifeManagementWindow(LifeDataService data, ReminderService reminders, FocusService focus, TaskAttributesService taskAttributes, MarkdownItemTransferService markdownTransfer)
     {
@@ -133,7 +136,13 @@ public partial class LifeManagementWindow : Window
     }
 
     void Close_Click(object sender, RoutedEventArgs e) => Close();
-    public void OpenItem(ItemNavigationTarget target) => itemToLocate = target;
+    public void OpenItem(ItemNavigationTarget target)
+    {
+        itemToLocate = target;
+        showingArchive = false;
+        showingRecommendations = false;
+        if (IsLoaded) RefreshItems();
+    }
 
     void RefreshItems()
     {
@@ -145,16 +154,38 @@ public partial class LifeManagementWindow : Window
             return;
         }
         var managed = data.ManagedItems().ToList();
+        var recommendedIds = showingRecommendations
+            ? taskAttributes.Recommend(recommendationMinutes, recommendationEnergy, DateTimeOffset.UtcNow)
+                .Select(item => item.ItemId)
+                .ToHashSet(StringComparer.Ordinal)
+            : [];
+        var visibleItems = showingRecommendations
+            ? managed.Where(item => recommendedIds.Contains(item.Id)).ToList()
+            : managed;
         var itemIndicators = data.GetManagedItemIndicatorStates(managed, DateTime.Now);
-        selected.RemoveWhere(key => !managed.Any(item => Key(item.Id, item.Kind) == key));
+        selected.RemoveWhere(key => !visibleItems.Any(item => Key(item.Id, item.Kind) == key));
         Items.Children.Clear();
         itemRows.Clear();
         itemRowsById.Clear();
 
-        foreach (var item in managed)
+        if (showingRecommendations)
+        {
+            RecommendationSummary.Text = visibleItems.Count == 0
+                ? $"没有符合当前条件的待办。可切换到“全部事项”补充预计时长和精力。"
+                : $"已为你挑出 {visibleItems.Count} 件：预计不超过 {recommendationMinutes} 分钟，所需精力不高于{TaskDisplayLabels.Energy(recommendationEnergy)}。";
+        }
+
+        if (showingRecommendations && visibleItems.Count == 0)
+        {
+            Items.Children.Add(CreateRecommendationEmptyState());
+        }
+
+        foreach (var item in visibleItems)
         {
             var agenda = new AgendaItem(item.Id, item.Kind, item.Title, item.Notes, item.ScheduledAt ?? DateTime.Now, null, item.ScheduledAt, item.IsCompleted, item.Kind == "recurring");
-            var row = new Border { Background = new SolidColorBrush(Color.FromRgb(36, 36, 38)), CornerRadius = new CornerRadius(10), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 8), Tag = agenda };
+            var row = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 8), Tag = agenda };
+            SetThemeResource(row, Border.BackgroundProperty, "Brush.Card");
+            SetThemeResource(row, Border.BorderBrushProperty, "Brush.Stroke");
             var panel = new Grid();
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -173,19 +204,21 @@ public partial class LifeManagementWindow : Window
             title.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = LifeIslandWindow.IndicatorBrush(indicator), ToolTip = LifeIslandWindow.IndicatorDescription(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
             title.Children.Add(new TextBlock { Text = item.Title, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             text.Children.Add(title);
-            text.Children.Add(new TextBlock { Text = ItemDetails(item), Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
+            text.Children.Add(SetThemeResource(new TextBlock { Text = ItemDetails(item), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
             Grid.SetColumn(text, 1);
             panel.Children.Add(text);
 
             if (agenda.Kind == "todo" && !agenda.IsCompleted)
             {
-                var startFocus = new Button { Content = "开始专注", Height = 32, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(30, 82, 120)), Tag = agenda, ToolTip = "开始 25 分钟专注" };
+                var startFocus = new Button { Content = "开始专注", Height = 32, Style = (Style)FindResource("Action"), Tag = agenda, ToolTip = "开始 25 分钟专注" };
+                SetThemeResource(startFocus, Button.BackgroundProperty, "Brush.AccentSoft");
+                SetThemeResource(startFocus, Button.ForegroundProperty, "Brush.Accent");
                 startFocus.Click += (sender, _) => StartFocus((AgendaItem)((FrameworkElement)sender).Tag);
                 Grid.SetColumn(startFocus, 2);
                 panel.Children.Add(startFocus);
             }
 
-            var archive = new Button { Content = "归档", Width = 54, Height = 32, FontWeight = FontWeights.SemiBold, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(62, 62, 66)), Foreground = new SolidColorBrush(Color.FromRgb(210, 210, 216)), Tag = agenda, ToolTip = agenda.Kind == "recurring" ? "归档整个周期计划" : "归档事项" };
+            var archive = new Button { Content = "归档", Width = 54, Height = 32, FontWeight = FontWeights.SemiBold, Style = (Style)FindResource("Action"), Tag = agenda, ToolTip = agenda.Kind == "recurring" ? "归档整个周期计划" : "归档事项" };
             archive.Click += (sender, _) => ArchiveOne((AgendaItem)((FrameworkElement)sender).Tag);
             Grid.SetColumn(archive, 3);
             panel.Children.Add(archive);
@@ -202,20 +235,84 @@ public partial class LifeManagementWindow : Window
     void ActiveTab_Click(object sender, RoutedEventArgs e)
     {
         showingArchive = false;
+        showingRecommendations = false;
+        selected.Clear();
+        RefreshItems();
+    }
+
+    void NowTab_Click(object sender, RoutedEventArgs e)
+    {
+        showingArchive = false;
+        showingRecommendations = true;
+        selected.Clear();
         RefreshItems();
     }
 
     void ArchiveTab_Click(object sender, RoutedEventArgs e)
     {
         showingArchive = true;
+        showingRecommendations = false;
+        selected.Clear();
+        RefreshItems();
+    }
+
+    void RecommendationContext_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        UpdateRecommendationContext();
+    }
+
+    void RefreshRecommendation_Click(object sender, RoutedEventArgs e) => UpdateRecommendationContext();
+
+    void UpdateRecommendationContext()
+    {
+        if (RecommendationMinutes.SelectedItem is ComboBoxItem { Tag: string minutes } && int.TryParse(minutes, out var parsedMinutes))
+            recommendationMinutes = parsedMinutes;
+        if (RecommendationEnergy.SelectedItem is ComboBoxItem { Tag: string energy } && Enum.TryParse<EnergyLevel>(energy, out var parsedEnergy))
+            recommendationEnergy = parsedEnergy;
+        showingArchive = false;
+        showingRecommendations = true;
+        selected.Clear();
         RefreshItems();
     }
 
     void UpdatePageTabs()
     {
-        ActiveTab.Background = new SolidColorBrush(showingArchive ? Color.FromRgb(44, 44, 46) : Color.FromRgb(70, 70, 74));
-        ArchiveTab.Background = new SolidColorBrush(showingArchive ? Color.FromRgb(70, 70, 74) : Color.FromRgb(44, 44, 46));
+        SetTabState(NowTab, showingRecommendations && !showingArchive);
+        SetTabState(ActiveTab, !showingArchive && !showingRecommendations);
+        SetTabState(ArchiveTab, showingArchive);
+        RecommendationContext.Visibility = showingRecommendations && !showingArchive ? Visibility.Visible : Visibility.Collapsed;
         ArchiveSelected.Visibility = showingArchive ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    void SetTabState(Button tab, bool isSelected)
+    {
+        SetThemeResource(tab, Button.BackgroundProperty, isSelected ? "Brush.AccentSoft" : "Brush.Surface");
+        SetThemeResource(tab, Button.ForegroundProperty, isSelected ? "Brush.Accent" : "Brush.TextPrimary");
+    }
+
+    Border CreateRecommendationEmptyState()
+    {
+        var content = new StackPanel();
+        content.Children.Add(new TextBlock { Text = "还没有适合现在完成的事项", FontWeight = FontWeights.SemiBold, FontSize = 14 });
+        content.Children.Add(SetThemeResource(new TextBlock
+        {
+            Text = $"系统只会选普通、未完成、可编辑，预计不超过 {recommendationMinutes} 分钟且所需精力不高于{TaskDisplayLabels.Energy(recommendationEnergy)}的待办。到“全部事项”补充属性后，它会自动出现在这里。",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12,
+            Margin = new Thickness(0, 6, 0, 0)
+        }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
+        var card = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(16), Margin = new Thickness(0, 0, 0, 8), Child = content };
+        SetThemeResource(card, Border.BackgroundProperty, "Brush.Surface");
+        SetThemeResource(card, Border.BorderBrushProperty, "Brush.Stroke");
+        return card;
+    }
+
+    static T SetThemeResource<T>(T element, DependencyProperty property, string resourceKey)
+        where T : FrameworkElement
+    {
+        element.SetResourceReference(property, resourceKey);
+        return element;
     }
 
     void RefreshArchivedItems()
@@ -226,35 +323,38 @@ public partial class LifeManagementWindow : Window
         {
             var row = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(36, 36, 38)),
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(14),
                 Margin = new Thickness(0, 0, 0, 8)
             };
+            SetThemeResource(row, Border.BackgroundProperty, "Brush.Card");
+            SetThemeResource(row, Border.BorderBrushProperty, "Brush.Stroke");
             var panel = new StackPanel();
             panel.Children.Add(new TextBlock { Text = $"{item.Title} · {ArchivedKindLabel(item.Kind)}", FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-            panel.Children.Add(new TextBlock
+            panel.Children.Add(SetThemeResource(new TextBlock
             {
                 Text = $"{item.Reason} · 归档于 {item.ArchivedAt:yyyy-MM-dd HH:mm} · 将于 {item.ArchivedAt.AddDays(7):MM-dd HH:mm} 自动删除",
-                Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)),
                 FontSize = 12,
                 Margin = new Thickness(0, 4, 0, 10)
-            });
+            }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
             var controls = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
-            var restore = new Button { Content = "恢复", Height = 30, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(30, 82, 120)), Padding = new Thickness(12, 4, 12, 4) };
+            var restore = new Button { Content = "恢复", Height = 30, Style = (Style)FindResource("Action"), Padding = new Thickness(12, 4, 12, 4) };
+            SetThemeResource(restore, Button.BackgroundProperty, "Brush.AccentSoft");
+            SetThemeResource(restore, Button.ForegroundProperty, "Brush.Accent");
             if (item.Kind == "recurring")
             {
                 restore.Click += (_, _) => RestoreArchivedItem(item, null);
             }
             else
             {
-                controls.Children.Add(new TextBlock { Text = "恢复日期", Foreground = new SolidColorBrush(Color.FromRgb(184, 184, 191)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+                controls.Children.Add(SetThemeResource(new TextBlock { Text = "恢复日期", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
                 var date = ArchiveDateSelector(DateTime.Today.AddDays(1));
                 restore.Click += (_, _) => RestoreArchivedItem(item, date.Tag is DateTime selectedDate ? selectedDate : null);
                 controls.Children.Add(date);
             }
             controls.Children.Add(restore);
-            var delete = new Button { Content = "删除", Height = 30, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(74, 37, 40)), Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120)), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
+            var delete = new Button { Content = "删除", Height = 30, Style = (Style)FindResource("Button.Danger"), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
             delete.Click += (_, _) => DeleteArchivedItem(item);
             controls.Children.Add(delete);
             panel.Children.Add(controls);
@@ -262,7 +362,7 @@ public partial class LifeManagementWindow : Window
             Items.Children.Add(row);
         }
         if (Items.Children.Count == 0)
-            Items.Children.Add(new TextBlock { Text = "暂无归档事项。", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), Margin = new Thickness(0, 8, 0, 0) });
+            Items.Children.Add(SetThemeResource(new TextBlock { Text = "暂无归档事项。", Margin = new Thickness(0, 8, 0, 0) }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
     }
 
     Button ArchiveDateSelector(DateTime initialDate)
@@ -424,32 +524,41 @@ public partial class LifeManagementWindow : Window
             details.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
             more.Content = expanded ? "收起设置 ▴" : "更多设置 ▾";
         };
-        var save = new Button { Content = "保存", Height = 27, Style = (Style)FindResource("Action"), Background = new SolidColorBrush(Color.FromRgb(30, 82, 120)), Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 0, 4) };
+        var save = new Button { Content = "保存", Height = 27, Style = (Style)FindResource("Action"), Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 0, 4) };
+        SetThemeResource(save, Button.BackgroundProperty, "Brush.AccentSoft");
+        SetThemeResource(save, Button.ForegroundProperty, "Brush.Accent");
         save.Click += (_, _) => SaveTaskAttributes(attributes, priority, category, estimateValue, estimateUnit, energy, overdueGrace);
-        editor.Children.Add(new TextBlock { Text = "优先级", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 4) });
+        editor.Children.Add(SecondaryLabel("优先级", new Thickness(0, 0, 5, 4)));
         editor.Children.Add(priority);
-        editor.Children.Add(new TextBlock { Text = "超时宽限", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 3, 4) });
+        editor.Children.Add(SecondaryLabel("超时宽限", new Thickness(0, 0, 3, 4)));
         editor.Children.Add(overdueGraceStepper);
-        editor.Children.Add(new TextBlock { Text = "分钟", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 4) });
+        editor.Children.Add(SecondaryLabel("分钟", new Thickness(0, 0, 8, 4)));
         editor.Children.Add(more);
         editor.Children.Add(save);
-        details.Children.Add(new TextBlock { Text = "分类", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 4) });
+        details.Children.Add(SecondaryLabel("分类", new Thickness(0, 0, 4, 4)));
         details.Children.Add(category);
-        details.Children.Add(new TextBlock { Text = "预计", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 4) });
+        details.Children.Add(SecondaryLabel("预计", new Thickness(0, 0, 4, 4)));
         details.Children.Add(estimateStepper);
         details.Children.Add(estimateUnit);
-        details.Children.Add(new TextBlock { Text = "能量", Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 4) });
+        details.Children.Add(SecondaryLabel("能量", new Thickness(0, 0, 4, 4)));
         details.Children.Add(energy);
         var completed = attributes.CompletedAtUtc is null ? "未完成" : attributes.CompletedAtUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
-        details.Children.Add(new TextBlock
+        details.Children.Add(SetThemeResource(new TextBlock
         {
             Text = $"完成：{completed} · 已延期 {attributes.DeferredCount} 次",
-            Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), FontSize = 11, Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis
-        });
+            FontSize = 11, Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis
+        }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
         container.Children.Add(editor);
         container.Children.Add(details);
         return container;
     }
+
+    TextBlock SecondaryLabel(string text, Thickness margin) => SetThemeResource(new TextBlock
+    {
+        Text = text,
+        VerticalAlignment = VerticalAlignment.Center,
+        Margin = margin
+    }, TextBlock.ForegroundProperty, "Brush.TextSecondary");
 
     TextBox EditableTextBox(double width, string text, string toolTip) => new()
     {

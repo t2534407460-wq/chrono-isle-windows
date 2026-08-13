@@ -11,7 +11,7 @@ public sealed class WeeklyReportScheduler
     public WeeklyReportScheduler(IReportService reports) =>
         this.reports = reports ?? throw new ArgumentNullException(nameof(reports));
 
-    public ReportSnapshot? GenerateIfDue(DateTimeOffset localNow, string queryVersion = "facts-v1")
+    public ReportSnapshot? GenerateIfDue(DateTimeOffset localNow, string queryVersion = "facts-v2")
     {
         if (localNow.DayOfWeek != DayOfWeek.Sunday) return null;
         var localDay = localNow.Date;

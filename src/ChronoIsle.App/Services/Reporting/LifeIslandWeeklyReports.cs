@@ -103,7 +103,7 @@ public partial class LifeIslandWindow
         var current = reports.Generate(new ReportPeriod(
             ReportPeriodKind.Weekly,
             new DateTimeOffset(localStart, offset),
-            new DateTimeOffset(localStart.AddDays(7), offset)), "facts-v1");
+            new DateTimeOffset(localStart.AddDays(7), offset)), "facts-v2");
         var history = reports.ListSnapshots(ReportPeriodKind.Weekly, 3);
         weeklyReportText.Text = $"完成 {current.Facts.CompletedCount} · 逾期 {current.Facts.OverdueCount} · 高优先级 {current.Facts.HighPriorityCount}" +
             (history.Count > 1 ? $"\n历史周报 {history.Count - 1} 份可查看" : "");
@@ -113,7 +113,7 @@ public partial class LifeIslandWindow
         var monthly = reports.Generate(new ReportPeriod(
             ReportPeriodKind.Monthly,
             new DateTimeOffset(monthStart, monthOffset),
-            new DateTimeOffset(monthStart.AddMonths(1), monthOffset)), "facts-v1");
+            new DateTimeOffset(monthStart.AddMonths(1), monthOffset)), "facts-v2");
         monthlyReportText.Text = $"本月复盘：完成 {monthly.Facts.CompletedCount} · 逾期 {monthly.Facts.OverdueCount} · 高优先级 {monthly.Facts.HighPriorityCount}";
 
         nextWeekPlanText.Visibility = nextWeekPlanVisible ? Visibility.Visible : Visibility.Collapsed;

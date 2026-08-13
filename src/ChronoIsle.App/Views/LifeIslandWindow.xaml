@@ -442,7 +442,7 @@
                     </Grid>
                   </Viewbox>
                 </Button>
-                <Button x:Name="IslandManagementButton" Content="☰ 事项管理"
+                <Button x:Name="IslandManagementButton" Content="☰ 事项工作台"
                         Click="ManageItems_Click" Style="{StaticResource IslandTab}"
                         AutomationProperties.AutomationId="IslandManagementButton"
                         Margin="0,0,7,0"/>

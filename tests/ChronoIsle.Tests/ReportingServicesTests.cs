@@ -73,6 +73,25 @@ public sealed class ReportingServicesTests
     }
 
     [Fact]
+    public void Facts_CountRecentlyArchivedCompletedTodos()
+    {
+        using var scope = new DatabaseScope();
+        scope.Execute("""
+            CREATE TABLE archived_todos(
+                id TEXT PRIMARY KEY,
+                archived_at TEXT NOT NULL,
+                reason TEXT NOT NULL);
+            INSERT INTO archived_todos(id,archived_at,reason)
+            VALUES('finished','2026-07-16T09:00:00.0000000+00:00','已完成');
+            """);
+        var service = new ReportService(scope.Queue, () => Now);
+
+        var snapshot = service.Generate(new(ReportPeriodKind.Daily, Now.Date, Now.Date.AddDays(1)), "facts-v1");
+
+        Assert.Equal(1, snapshot.Facts.CompletedCount);
+    }
+
+    [Fact]
     public void AiStatistics_AreOffByDefaultAndContainNoPrivateFields()
     {
         using var scope = new DatabaseScope();

@@ -136,8 +136,10 @@ public sealed class ReportService : IReportService
             ? "COALESCE(start_utc_instant,due_utc_instant,remind_utc_instant,created_at)" : "created_at";
 
         var created = Scalar(u, "SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND created_at >= $start AND created_at < $end", period);
-        var completed = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND status='Completed' AND {completedAt} >= $start AND {completedAt} < $end", period);
-        var overdue = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored') AND due_utc_instant IS NOT NULL AND julianday(due_utc_instant) + {overdueGrace} / 1440.0 < julianday($end)", period);
+        var completed = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND status='Completed' AND {completedAt} >= $start AND {completedAt} < $end", period) +
+            CountCompletedArchives(u, period);
+        var longTermFilter = columns.Contains("item_type") ? "AND COALESCE(item_type,'') <> 'LongTerm'" : "";
+        var overdue = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE kind='Todo' {longTermFilter} AND deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored') AND due_utc_instant IS NOT NULL AND julianday(due_utc_instant) + {overdueGrace} / 1440.0 < julianday($end)", period);
         var deferred = Scalar(u, $"SELECT COALESCE(SUM({deferredExpression}),0) FROM life_items WHERE deleted_at IS NULL AND updated_at >= $start AND updated_at < $end", period);
         var high = Scalar(u, $"SELECT COUNT(*) FROM life_items WHERE deleted_at IS NULL AND {priority} IN ('High','Urgent') AND updated_at >= $start AND updated_at < $end", period);
 
@@ -160,6 +162,15 @@ public sealed class ReportService : IReportService
         !TableExists(u, "deferred_notifications") ? 0 :
         Scalar(u, "SELECT COUNT(*) FROM deferred_notifications WHERE created_at_utc >= $start AND created_at_utc < $end", period);
 
+    static int CountCompletedArchives(IUnitOfWork u, ReportPeriod period)
+    {
+        if (!TableExists(u, "archived_todos")) return 0;
+        using var command = Command(u, "SELECT COUNT(*) FROM archived_todos WHERE reason='已完成' AND archived_at >= $start AND archived_at < $end");
+        command.Parameters.AddWithValue("$start", ArchiveBoundary(period.StartUtc));
+        command.Parameters.AddWithValue("$end", ArchiveBoundary(period.EndUtc));
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
     static void Insert(IUnitOfWork u, ReportSnapshot snapshot)
     {
         using var command = Command(u, "INSERT INTO report_snapshots(id,period_kind,period_start_utc,period_end_utc,query_version,facts_json,created_at_utc) VALUES($id,$kind,$start,$end,$version,$facts,$created)");
@@ -180,6 +191,7 @@ public sealed class ReportService : IReportService
     { command.Parameters.AddWithValue("$start", Format(period.StartUtc)); command.Parameters.AddWithValue("$end", Format(period.EndUtc)); }
     static void AddPeriod(SqliteCommand command, ReportPeriod period, string version)
     { command.Parameters.AddWithValue("$kind", period.Kind.ToString()); AddBounds(command, period); command.Parameters.AddWithValue("$version", version); }
+    static string ArchiveBoundary(DateTimeOffset value) => value.ToLocalTime().DateTime.ToString("O", CultureInfo.InvariantCulture);
     static string Format(DateTimeOffset value) => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
     static DateTimeOffset Parse(string value) => DateTimeOffset.ParseExact(value, "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 }
