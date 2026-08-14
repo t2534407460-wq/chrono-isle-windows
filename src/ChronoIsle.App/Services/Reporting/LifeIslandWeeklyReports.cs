@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
 using ChronoIsle.App.Services.Reporting;
 
@@ -21,25 +20,25 @@ public partial class LifeIslandWindow
 
         weeklyReportText = new TextBlock
         {
-            Foreground = new SolidColorBrush(Color.FromRgb(188, 233, 192)),
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap
         };
+        SetThemeResource(weeklyReportText, TextBlock.ForegroundProperty, "Brush.Success");
         monthlyReportText = new TextBlock
         {
-            Foreground = new SolidColorBrush(Color.FromRgb(188, 205, 233)),
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 5, 0, 0)
         };
+        SetThemeResource(monthlyReportText, TextBlock.ForegroundProperty, "Brush.TextSecondary");
         nextWeekPlanText = new TextBlock
         {
-            Foreground = new SolidColorBrush(Color.FromRgb(152, 196, 255)),
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 5, 0, 0),
             Visibility = Visibility.Collapsed
         };
+        SetThemeResource(nextWeekPlanText, TextBlock.ForegroundProperty, "Brush.Accent");
         var plan = new Button
         {
             Content = "生成下周计划",
@@ -56,13 +55,14 @@ public partial class LifeIslandWindow
         var heading = new DockPanel();
         DockPanel.SetDock(plan, Dock.Right);
         heading.Children.Add(plan);
-        heading.Children.Add(new TextBlock
+        var headingText = new TextBlock
         {
             Text = "本周复盘",
-            Foreground = Brushes.White,
             FontWeight = FontWeights.SemiBold,
             FontSize = 12
-        });
+        };
+        SetThemeResource(headingText, TextBlock.ForegroundProperty, "Brush.TextPrimary");
+        heading.Children.Add(headingText);
         var content = new StackPanel();
         content.Children.Add(heading);
         content.Children.Add(weeklyReportText);
@@ -70,8 +70,6 @@ public partial class LifeIslandWindow
         content.Children.Add(monthlyReportText);
         weeklyReportPanel = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(25, 30, 39)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(61, 79, 113)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(9),
             Padding = new Thickness(10),
@@ -79,6 +77,8 @@ public partial class LifeIslandWindow
             Visibility = Visibility.Collapsed,
             Child = content
         };
+        SetThemeResource(weeklyReportPanel, Border.BackgroundProperty, "Brush.Card");
+        SetThemeResource(weeklyReportPanel, Border.BorderBrushProperty, "Brush.Stroke");
         ExpandedContent.Children.Insert(Math.Min(3, ExpandedContent.Children.Count), weeklyReportPanel);
         weeklyReportTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         weeklyReportTimer.Tick += (_, _) => RenderWeeklyReports();

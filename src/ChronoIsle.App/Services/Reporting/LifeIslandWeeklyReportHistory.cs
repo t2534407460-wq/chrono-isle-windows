@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
 using ChronoIsle.App.Views;
 using ChronoIsle.App.Services.Reporting;
@@ -22,14 +21,22 @@ public partial class LifeIslandWindow
 
         weeklyHistoryText = new TextBlock
         {
-            Foreground = new SolidColorBrush(Color.FromRgb(177, 190, 214)),
             FontSize = 10,
             TextWrapping = TextWrapping.Wrap
         };
+        SetThemeResource(weeklyHistoryText, TextBlock.ForegroundProperty, "Brush.TextSecondary");
+
+        var historyHeading = new TextBlock
+        {
+            Text = "历史周报",
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+        SetThemeResource(historyHeading, TextBlock.ForegroundProperty, "Brush.TextPrimary");
+
         weeklyHistoryPanel = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(21, 25, 33)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(50, 61, 80)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(9),
@@ -39,18 +46,13 @@ public partial class LifeIslandWindow
             {
                 Children =
                 {
-                    new TextBlock
-                    {
-                        Text = "历史周报",
-                        Foreground = Brushes.White,
-                        FontWeight = FontWeights.SemiBold,
-                        FontSize = 11,
-                        Margin = new Thickness(0, 0, 0, 4)
-                    },
+                    historyHeading,
                     weeklyHistoryText
                 }
             }
         };
+        SetThemeResource(weeklyHistoryPanel, Border.BackgroundProperty, "Brush.Card");
+        SetThemeResource(weeklyHistoryPanel, Border.BorderBrushProperty, "Brush.Stroke");
         ExpandedContent.Children.Insert(Math.Min(4, ExpandedContent.Children.Count), weeklyHistoryPanel);
         weeklyHistoryTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         weeklyHistoryTimer.Tick += (_, _) => RenderWeeklyReportHistory();
