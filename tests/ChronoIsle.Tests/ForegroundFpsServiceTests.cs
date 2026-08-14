@@ -1,9 +1,24 @@
 using ChronoIsle.App.Services;
+using System.Reflection;
 
 namespace ChronoIsle.Tests;
 
 public sealed class ForegroundFpsServiceTests
 {
+    [Fact]
+    public void LegacySessionCleanup_SelectsOnlyPresentMonSessionNames()
+    {
+        var method = typeof(ForegroundFpsService).GetMethod(
+            "GetLegacyPresentMonSessionNames",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        var names = Assert.IsAssignableFrom<IEnumerable<string>>(method!.Invoke(null,
+            new object?[] { new[] { "ChronoIsleFps-25036", "ChronoIsleFps90160", "Eventlog-Security" } })!);
+
+        Assert.Equal(["ChronoIsleFps-25036"], names);
+    }
+
     [Fact]
     public void FrameRate_UsesTheLatestEventSecondInsteadOfWallClockTime()
     {

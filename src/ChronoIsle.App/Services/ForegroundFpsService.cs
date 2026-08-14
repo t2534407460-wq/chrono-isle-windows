@@ -134,6 +134,7 @@ public sealed class ForegroundFpsService : IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         Volatile.Write(ref started, 1);
+        StopLegacyPresentMonSessions();
         StartTraceCapture();
         focusTimer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
     }
@@ -190,6 +191,25 @@ public sealed class ForegroundFpsService : IDisposable
             }
         });
     }
+
+    static void StopLegacyPresentMonSessions()
+    {
+        foreach (var sessionName in GetLegacyPresentMonSessionNames(TraceEventSession.GetActiveSessionNames()))
+            try
+            {
+                using var session = new TraceEventSession(sessionName)
+                {
+                    StopOnDispose = true
+                };
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Foreground FPS legacy session cleanup failed: {exception.Message}");
+            }
+    }
+
+    static IEnumerable<string> GetLegacyPresentMonSessionNames(IEnumerable<string> sessionNames) =>
+        sessionNames.Where(name => name.StartsWith("ChronoIsleFps-", StringComparison.Ordinal));
 
     void StopTraceCapture()
     {
