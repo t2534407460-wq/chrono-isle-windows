@@ -1956,8 +1956,15 @@ public partial class LifeIslandWindow : Window
     {
         NamingToolPanel.Visibility = Visibility.Visible;
         NetworkSpeedTestToolPanel.Visibility = Visibility.Collapsed;
+          CaseConverterToolPanel.Visibility = Visibility.Collapsed;
         SelectToolTab(NamingToolTab);
+        MeaningInputCharCount.Text = $"{MeaningInput.Text.Length}/30";
         Touch();
+    }
+
+    void MeaningInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        MeaningInputCharCount.Text = $"{MeaningInput.Text.Length}/30";
     }
 
     async void Generate_Click(object sender, RoutedEventArgs e)
@@ -2047,11 +2054,25 @@ public partial class LifeIslandWindow : Window
         try
         {
             System.Windows.Clipboard.SetText(value);
-            ShowStatus($"已复制“{label}”：{value}", StatusKind.Success);
+            if (CaseConverterToolPanel.Visibility != Visibility.Visible)
+                  ShowStatus($"已复制“{label}”：{value}", StatusKind.Success);
+              if (CaseConverterToolPanel.Visibility == Visibility.Visible)
+              {
+                    CaseConverterStatus.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Success");
+                  CaseConverterStatus.Text = $"已复制“{label}”：{value}";
+                  CaseConverterStatus.Visibility = Visibility.Visible;
+              }
         }
         catch
         {
-            ShowStatus("剪贴板暂时被其他程序占用，请稍后重试。", StatusKind.Error);
+            if (CaseConverterToolPanel.Visibility != Visibility.Visible)
+                  ShowStatus("剪贴板暂时被其他程序占用，请稍后重试。", StatusKind.Error);
+              if (CaseConverterToolPanel.Visibility == Visibility.Visible)
+              {
+                    CaseConverterStatus.SetResourceReference(TextBlock.ForegroundProperty, "Brush.Danger");
+                  CaseConverterStatus.Text = "剪贴板暂时被其他程序占用，请稍后重试。";
+                  CaseConverterStatus.Visibility = Visibility.Visible;
+              }
         }
     }
 
@@ -2129,6 +2150,7 @@ public partial class LifeIslandWindow : Window
     void ShowNetworkSpeedTestTool()
     {
         NamingToolPanel.Visibility = Visibility.Collapsed;
+          CaseConverterToolPanel.Visibility = Visibility.Collapsed;
         NetworkSpeedTestToolPanel.Visibility = Visibility.Visible;
         SelectToolTab(NetworkSpeedTestToolTab);
         UpdateNetworkSpeedTestView(networkSpeedTest.Current);
@@ -2137,7 +2159,7 @@ public partial class LifeIslandWindow : Window
 
     void SelectToolTab(Button selected)
     {
-        foreach (var tab in new[] { NamingToolTab, NetworkSpeedTestToolTab })
+        foreach (var tab in new[] { NamingToolTab, CaseConverterToolTab, NetworkSpeedTestToolTab })
         {
             var active = ReferenceEquals(tab, selected);
             tab.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, active ? "Brush.AccentSoft" : "Brush.Control");
@@ -2146,6 +2168,162 @@ public partial class LifeIslandWindow : Window
         }
         ResizeExpandedToContent();
     }
+
+      void CaseConverterToolTab_Click(object sender, RoutedEventArgs e) => ShowCaseConverterTool();
+
+      void ShowCaseConverterTool()
+      {
+          NamingToolPanel.Visibility = Visibility.Collapsed;
+          NetworkSpeedTestToolPanel.Visibility = Visibility.Collapsed;
+          CaseConverterToolPanel.Visibility = Visibility.Visible;
+          SelectToolTab(CaseConverterToolTab);
+            ShowCaseConverterPage(CasePageBasicPanel, CasePageBasic);
+          UpdateCaseConverter();
+            if (CaseConverterStatus is not null) CaseConverterStatus.Visibility = Visibility.Collapsed;
+          Touch();
+            CaseConverterInput.Focus();
+      }
+
+      void CaseConverterInput_TextChanged(object sender, TextChangedEventArgs e)
+      {
+          if (CaseConverterCharCount is not null)
+                CaseConverterCharCount.Text = $"{CaseConverterInput.Text.Length}/200";
+          UpdateCaseConverter();
+            if (CaseConverterStatus is not null) CaseConverterStatus.Visibility = Visibility.Collapsed;
+          Touch();
+      }
+
+        void CaseConverterClear_Click(object sender, RoutedEventArgs e)
+        {
+            CaseConverterInput.Clear();
+            if (CaseConverterStatus is not null) CaseConverterStatus.Visibility = Visibility.Collapsed;
+            CaseConverterInput.Focus();
+              Touch();
+        }
+
+      void CasePageBasic_Click(object sender, RoutedEventArgs e) =>
+          ShowCaseConverterPage(CasePageBasicPanel, CasePageBasic);
+
+      void CasePageCamel_Click(object sender, RoutedEventArgs e) =>
+          ShowCaseConverterPage(CasePageCamelPanel, CasePageCamel);
+
+      void CasePageSeparator_Click(object sender, RoutedEventArgs e) =>
+          ShowCaseConverterPage(CasePageSeparatorPanel, CasePageSeparator);
+
+      void ShowCaseConverterPage(StackPanel panel, Button selected)
+      {
+          CasePageBasicPanel.Visibility = ReferenceEquals(panel, CasePageBasicPanel) ? Visibility.Visible : Visibility.Collapsed;
+          CasePageCamelPanel.Visibility = ReferenceEquals(panel, CasePageCamelPanel) ? Visibility.Visible : Visibility.Collapsed;
+          CasePageSeparatorPanel.Visibility = ReferenceEquals(panel, CasePageSeparatorPanel) ? Visibility.Visible : Visibility.Collapsed;
+
+          foreach (var page in new[] { CasePageBasic, CasePageCamel, CasePageSeparator })
+          {
+              var active = ReferenceEquals(page, selected);
+              page.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, active ? "Brush.AccentSoft" : "Brush.Control");
+              page.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, active ? "Brush.TextPrimary" : "Brush.TextSecondary");
+              page.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, active ? "Brush.Accent" : "Brush.Stroke");
+          }
+
+          ResizeExpandedToContent();
+            Touch();
+      }
+
+      void UpdateCaseConverter()
+      {
+            if (CaseUppercaseValue is null) return;
+          var text = CaseConverterInput.Text;
+          var words = CaseConverterWords(text);
+
+          CaseUppercaseValue.Text = text.ToUpperInvariant();
+          CaseLowercaseValue.Text = text.ToLowerInvariant();
+          CaseCapitalizeFirstValue.Text = CapitalizeFirst(text.ToLowerInvariant());
+          CaseTitleCaseValue.Text = string.Join(' ', text.Split(
+                new[] { ' ', '_', '-', '.', '/', '\\', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => CapitalizeFirst(word.ToLowerInvariant())));
+          CaseToggleValue.Text = ToggleCase(text);
+          CaseReverseValue.Text = new string(text.Reverse().ToArray());
+
+          CaseCamelValue.Text = JoinCase(words, firstLower: true);
+          CasePascalValue.Text = JoinCase(words, firstLower: false);
+
+          CaseSnakeValue.Text = string.Join('_', words.Select(word => word.ToLowerInvariant()));
+          CaseUpperSnakeValue.Text = string.Join('_', words.Select(word => word.ToUpperInvariant()));
+          CaseKebabValue.Text = string.Join('-', words.Select(word => word.ToLowerInvariant()));
+          CaseUpperKebabValue.Text = string.Join('-', words.Select(word => word.ToUpperInvariant()));
+          CaseDotValue.Text = string.Join('.', words.Select(word => word.ToLowerInvariant()));
+          CasePathValue.Text = string.Join('/', words.Select(word => word.ToLowerInvariant()));
+      }
+
+      static IReadOnlyList<string> CaseConverterWords(string text)
+      {
+          var words = new List<string>();
+          var current = new System.Text.StringBuilder();
+
+          void Flush()
+          {
+              if (current.Length == 0) return;
+              words.Add(current.ToString());
+              current.Clear();
+          }
+
+          for (var index = 0; index < text.Length; index++)
+          {
+              var ch = text[index];
+              if (!char.IsLetterOrDigit(ch))
+              {
+                  Flush();
+                  continue;
+              }
+
+              if (current.Length > 0)
+              {
+                  var previous = current[current.Length - 1];
+                  var next = index + 1 < text.Length ? text[index + 1] : '\0';
+
+                  if (char.IsUpper(ch) && (char.IsLower(previous) || char.IsDigit(previous)))
+                  {
+                      Flush();
+                  }
+                  else if (char.IsUpper(ch) && char.IsUpper(previous) && char.IsLower(next))
+                  {
+                      Flush();
+                  }
+              }
+
+              current.Append(ch);
+          }
+
+          Flush();
+          return words;
+      }
+
+      static string CapitalizeFirst(string word) =>
+          string.IsNullOrEmpty(word) ? word : char.ToUpperInvariant(word[0]) + word[1..];
+
+      static string JoinCase(IReadOnlyList<string> words, bool firstLower)
+      {
+          if (words.Count == 0) return string.Empty;
+          var parts = words.Select(word => CapitalizeFirst(word.ToLowerInvariant())).ToArray();
+          if (firstLower) parts[0] = parts[0].ToLowerInvariant();
+          return string.Concat(parts);
+      }
+
+      static string ToggleCase(string text) =>
+          new string(text.Select(ch =>
+              char.IsUpper(ch) ? char.ToLowerInvariant(ch) :
+              char.IsLower(ch) ? char.ToUpperInvariant(ch) :
+              ch).ToArray());
+
+      void CopyCaseConverter_Click(object sender, RoutedEventArgs e)
+      {
+          if (sender is Button { Tag: string textBlockName } button &&
+              FindName(textBlockName) is TextBlock textBlock)
+          {
+              Copy(button.ToolTip?.ToString() ?? textBlockName, textBlock.Text);
+          }
+      }
+
 
     void SelectDashboardTab(Button selected)
     {

@@ -571,11 +571,14 @@
                           Background="{DynamicResource Brush.AccentSoft}"
                           BorderBrush="{DynamicResource Brush.Accent}" Margin="0,0,8,0"
                           Click="NamingToolTab_Click"/>
+                    <Button x:Name="CaseConverterToolTab" Content="大小写转换"
+                            Style="{StaticResource IslandTab}"
+                            Click="CaseConverterToolTab_Click" Margin="0,0,8,0"/>
                   <Button x:Name="NetworkSpeedTestToolTab" Content="网络测速"
                           Style="{StaticResource IslandTab}"
                           Click="NetworkSpeedTestToolTab_Click"/>
                 </StackPanel>
-                <StackPanel x:Name="NamingToolPanel" MaxHeight="480">
+                <Grid x:Name="NamingToolPanel" MaxHeight="480">
                   <ScrollViewer x:Name="NamingContentScroller" VerticalScrollBarVisibility="Auto"
                                 HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,0,10,0">
@@ -586,8 +589,14 @@
                                      Style="{StaticResource Text.Secondary}" Margin="0,5,0,10"/>
                           <TextBox x:Name="MeaningInput" Height="40" MaxLength="30"
                                    AcceptsReturn="False" TextWrapping="NoWrap"
-                                   VerticalContentAlignment="Center" Padding="12,0"
+
+  
+                                   VerticalContentAlignment="Center" Padding="8,0"
+                                   TextChanged="MeaningInput_TextChanged"
                                    AutomationProperties.AutomationId="NamingMeaningInput"/>
+                          <TextBlock x:Name="MeaningInputCharCount" Text="0/30"
+                                     FontSize="11" Foreground="{DynamicResource Brush.TextTertiary}"
+                                     HorizontalAlignment="Right" Margin="0,4,0,0"/>
 
                           <Grid Margin="0,16,0,0">
                             <Grid.ColumnDefinitions>
@@ -775,7 +784,159 @@
                       </Border>
                     </StackPanel>
                   </ScrollViewer>
-                </StackPanel>
+                </Grid>
+                  <StackPanel x:Name="CaseConverterToolPanel" Visibility="Collapsed">
+                    <Border Style="{StaticResource Card.Standard}" Padding="14" Margin="0,0,0,12">
+                      <StackPanel>
+                        <TextBlock Text="文本大小写 / 命名格式转换" Style="{StaticResource Text.SectionTitle}"/>
+                        <TextBlock Text="本地实时转换，不调用 AI；支持大小写、驼峰、下划线和短横线。" Style="{StaticResource Text.Secondary}" Margin="0,5,0,10"/>
+                        <TextBox x:Name="CaseConverterInput" Height="72" MinHeight="42" MaxHeight="120" MaxLength="200"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 VerticalContentAlignment="Top" Padding="8,6"
+                                 TextChanged="CaseConverterInput_TextChanged"
+                                 AutomationProperties.AutomationId="CaseConverterInput"/>
+                        <TextBlock x:Name="CaseConverterCharCount" Text="0/200"
+                                   FontSize="11" Foreground="{DynamicResource Brush.TextTertiary}"
+                                   HorizontalAlignment="Right" Margin="0,4,0,0"/>
+                          <Button x:Name="CaseConverterClearButton" Content="清空"
+                                  Click="CaseConverterClear_Click" Style="{StaticResource IslandType}"
+                                  Height="26" Padding="10,2" HorizontalAlignment="Right" Margin="0,4,0,0"/>
+                          <TextBlock x:Name="CaseConverterStatus" Text="" FontSize="11"
+                                     Foreground="{DynamicResource Brush.Success}"
+                                     Margin="0,2,0,0" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+                      </StackPanel>
+                    </Border>
+
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                      <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button x:Name="CasePageBasic" Content="大小写" Click="CasePageBasic_Click" Style="{StaticResource IslandTab}" Background="{DynamicResource Brush.AccentSoft}" BorderBrush="{DynamicResource Brush.Accent}" Margin="0,0,6,0"/>
+                        <Button x:Name="CasePageCamel" Content="驼峰 / 帕斯卡" Click="CasePageCamel_Click" Style="{StaticResource IslandTab}" Margin="0,0,6,0"/>
+                        <Button x:Name="CasePageSeparator" Content="下划线 / 短横线" Click="CasePageSeparator_Click" Style="{StaticResource IslandTab}"/>
+                      </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel x:Name="CasePageBasicPanel">
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="全部大写" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseUppercaseValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseUppercaseValue" ToolTip="全部大写" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制全部大写"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="全部小写" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseLowercaseValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseLowercaseValue" ToolTip="全部小写" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制全部小写"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="首字母大写" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseCapitalizeFirstValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseCapitalizeFirstValue" ToolTip="首字母大写" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制首字母大写"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="每个单词首字母大写" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseTitleCaseValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseTitleCaseValue" ToolTip="每个单词首字母大写" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制每个单词首字母大写"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="切换大小写" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseToggleValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseToggleValue" ToolTip="切换大小写" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制切换大小写"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="颠倒顺序" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseReverseValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseReverseValue" ToolTip="颠倒顺序" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制颠倒顺序"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="CasePageCamelPanel" Visibility="Collapsed">
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="小驼峰" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseCamelValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseCamelValue" ToolTip="小驼峰" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制小驼峰"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="大驼峰" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CasePascalValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CasePascalValue" ToolTip="大驼峰" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制大驼峰"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                    </StackPanel>
+
+                    <StackPanel x:Name="CasePageSeparatorPanel" Visibility="Collapsed">
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="下划线" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseSnakeValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseSnakeValue" ToolTip="下划线" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制下划线"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="大写下划线" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseUpperSnakeValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseUpperSnakeValue" ToolTip="大写下划线" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制大写下划线"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="短横线" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseKebabValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseKebabValue" ToolTip="短横线" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制短横线"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="大写短横线" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseUpperKebabValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseUpperKebabValue" ToolTip="大写短横线" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制大写短横线"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="点分隔" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CaseDotValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CaseDotValue" ToolTip="点分隔" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制点分隔"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                      <Border Style="{StaticResource ResultRow}">
+                        <Grid>
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <TextBlock Text="路径风格" Foreground="{DynamicResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                          <TextBlock x:Name="CasePathValue" Grid.Column="1" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{DynamicResource Brush.TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0,10,0"/>
+                          <Button Grid.Column="2" Click="CopyCaseConverter_Click" Tag="CasePathValue" ToolTip="路径风格" Style="{StaticResource CopyButton}" AutomationProperties.Name="复制路径风格"><StackPanel Orientation="Horizontal"><Path Data="M4,1 L12,1 L12,9 M2,4 L9,4 L9,12 L2,12 Z" Stroke="{DynamicResource Brush.TextSecondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="13" Height="13" Stretch="Uniform"/><TextBlock Text="复制" Margin="6,0,0,0" VerticalAlignment="Center"/></StackPanel></Button>
+                        </Grid>
+                      </Border>
+                    </StackPanel>
+                  </StackPanel>
                 <StackPanel x:Name="NetworkSpeedTestToolPanel" Visibility="Collapsed">
                   <Grid Height="154" Margin="0,0,0,12">
                     <Canvas Width="236" Height="154" HorizontalAlignment="Center">
