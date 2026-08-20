@@ -53,11 +53,43 @@
   <Style x:Key="Button.Segmented" TargetType="Button" BasedOn="{StaticResource Button.Base}">
     <Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="12,6"/>
   </Style>
+  <Style x:Key="TextBox.ContextMenu" TargetType="ContextMenu">
+    <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/>
+    <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="HasDropShadow" Value="False"/>
+    <Setter Property="OverridesDefaultStyle" Value="True"/><Setter Property="FontFamily" Value="{StaticResource Font.UI}"/><Setter Property="FontSize" Value="12"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
+      <Border Background="{DynamicResource Brush.Island}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="12" Padding="5" SnapsToDevicePixels="True">
+        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+      </Border>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="TextBox.ContextMenuItem" TargetType="MenuItem">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/><Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Height" Value="32"/><Setter Property="MinWidth" Value="170"/><Setter Property="Padding" Value="10,0"/><Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
+      <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" Foreground="{DynamicResource Brush.TextTertiary}" Margin="16,0,0,0" VerticalAlignment="Center"/>
+        </Grid>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Control}"/></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value=".42"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="TextBox">
     <Setter Property="Background" Value="{DynamicResource Brush.Surface}"/><Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/>
     <Setter Property="CaretBrush" Value="{DynamicResource Brush.TextPrimary}"/><Setter Property="BorderBrush" Value="{DynamicResource Brush.Stroke}"/>
     <Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="12,8"/><Setter Property="FontSize" Value="13"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="ContextMenu"><Setter.Value><ContextMenu Style="{StaticResource TextBox.ContextMenu}">
+      <MenuItem Header="剪切" InputGestureText="Ctrl+X" Style="{StaticResource TextBox.ContextMenuItem}" Command="ApplicationCommands.Cut" CommandTarget="{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+      <MenuItem Header="复制" InputGestureText="Ctrl+C" Style="{StaticResource TextBox.ContextMenuItem}" Command="ApplicationCommands.Copy" CommandTarget="{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+      <MenuItem Header="粘贴" InputGestureText="Ctrl+V" Style="{StaticResource TextBox.ContextMenuItem}" Command="ApplicationCommands.Paste" CommandTarget="{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+    </ContextMenu></Setter.Value></Setter>
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
       <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource Radius.Control}" Padding="{TemplateBinding Padding}">
         <ScrollViewer x:Name="PART_ContentHost"/>

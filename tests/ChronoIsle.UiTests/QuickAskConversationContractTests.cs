@@ -54,6 +54,8 @@ public sealed class QuickAskConversationContractTests
         Assert.Contains("Style=\"{StaticResource IslandContextMenuItem}\"", answer, StringComparison.Ordinal);
         Assert.Contains("Command=\"ApplicationCommands.Copy\"", answer, StringComparison.Ordinal);
         Assert.Contains("CommandTarget=\"{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}\"", answer, StringComparison.Ordinal);
+        Assert.DoesNotContain("Command=\"ApplicationCommands.Cut\"", answer, StringComparison.Ordinal);
+        Assert.DoesNotContain("Command=\"ApplicationCommands.Paste\"", answer, StringComparison.Ordinal);
     }
 
     [Fact]

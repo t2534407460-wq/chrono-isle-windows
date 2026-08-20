@@ -115,7 +115,7 @@
         </Setter.Value>
       </Setter>
     </Style>
-    <Style x:Key="IslandTextInput" TargetType="TextBox">
+    <Style x:Key="IslandTextInput" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
       <Setter Property="Background" Value="{DynamicResource Brush.Control}"/><Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/><Setter Property="CaretBrush" Value="{DynamicResource Brush.TextPrimary}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource Brush.Stroke}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="8,0"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
