@@ -56,6 +56,25 @@ public sealed class QuickAskConversationContractTests
         Assert.Contains("CommandTarget=\"{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}\"", answer, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void QuickAskInput_uses_themed_editing_context_menu()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml"));
+        var start = source.IndexOf("<TextBox x:Name=\"QuickAskInput\"", StringComparison.Ordinal);
+        var end = source.IndexOf("<StackPanel Orientation=\"Horizontal\" HorizontalAlignment=\"Right\">", start, StringComparison.Ordinal);
+        var input = source[start..end];
+
+        Assert.Contains("<ContextMenu Style=\"{StaticResource IslandContextMenu}\">", input, StringComparison.Ordinal);
+        Assert.Contains("Header=\"剪切\"", input, StringComparison.Ordinal);
+        Assert.Contains("Header=\"复制\"", input, StringComparison.Ordinal);
+        Assert.Contains("Header=\"粘贴\"", input, StringComparison.Ordinal);
+        Assert.Contains("Command=\"ApplicationCommands.Cut\"", input, StringComparison.Ordinal);
+        Assert.Contains("Command=\"ApplicationCommands.Copy\"", input, StringComparison.Ordinal);
+        Assert.Contains("Command=\"ApplicationCommands.Paste\"", input, StringComparison.Ordinal);
+        Assert.Equal(3, input.Split("CommandTarget=\"{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}\"", StringSplitOptions.None).Length - 1);
+    }
+
     static string QuickAskHandler(string source)
     {
         var start = source.IndexOf("async void QuickAskSend_Click", StringComparison.Ordinal);
