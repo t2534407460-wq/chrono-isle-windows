@@ -104,6 +104,7 @@ internal static class ForegroundApplicationProcessTree
 public sealed class ForegroundFpsService : IDisposable
 {
     const string DxgKrnlProvider = "Microsoft-Windows-DxgKrnl";
+    static readonly Guid DxgKrnlProviderGuid = new("802ec45a-1e99-4b83-9920-87c98277ba9d");
     const ulong DxgKrnlPresentKeyword = 0x0000000008000000;
     const int DxgKrnlPresentTask = 107;
     const int DxgKrnlPresentEventId = 184;
@@ -164,7 +165,7 @@ public sealed class ForegroundFpsService : IDisposable
                     StopOnDispose = true
                 };
                 session.Source.Dynamic.All += OnTraceEvent;
-                session.EnableProvider(DxgKrnlProvider, TraceEventLevel.Always, DxgKrnlPresentKeyword);
+                session.EnableProvider(DxgKrnlProviderGuid, TraceEventLevel.Always, DxgKrnlPresentKeyword);
                 lock (gate)
                 {
                     if (disposed || Volatile.Read(ref started) == 0)
@@ -209,7 +210,7 @@ public sealed class ForegroundFpsService : IDisposable
     }
 
     static IEnumerable<string> GetLegacyPresentMonSessionNames(IEnumerable<string> sessionNames) =>
-        sessionNames.Where(name => name.StartsWith("ChronoIsleFps-", StringComparison.Ordinal));
+        sessionNames.Where(name => name.StartsWith("ChronoIsleFps", StringComparison.Ordinal));
 
     void StopTraceCapture()
     {
@@ -254,9 +255,13 @@ public sealed class ForegroundFpsService : IDisposable
     void TrackForegroundApplication(int processId)
     {
         var processIds = ForegroundApplicationProcessTree.GetProcessIds(processId);
+        // DxgKrnl Present 事件来自 DWM 进程，需要一起跟踪
+        var dwmPid = GetDwmProcessId();
+        if (dwmPid > 0) processIds.Add(dwmPid);
+
         lock (gate)
         {
-            if (capturedProcessId != processId && !trackedProcessIds.Overlaps(processIds))
+            if (IsForegroundApplicationChanged(capturedProcessId, processId, trackedProcessIds, processIds, dwmPid))
             {
                 capturedProcessId = processId;
                 frameSamples.Clear();
@@ -265,6 +270,21 @@ public sealed class ForegroundFpsService : IDisposable
                 capturedProcessId = processId;
             trackedProcessIds = processIds;
         }
+    }
+
+    static bool IsForegroundApplicationChanged(int? capturedProcessId, int processId,
+        HashSet<int> trackedProcessIds, HashSet<int> processIds, int dwmPid) =>
+        capturedProcessId is not null && capturedProcessId != processId &&
+        !trackedProcessIds.Any(id => id != dwmPid && processIds.Contains(id));
+
+    static int GetDwmProcessId()
+    {
+        try
+        {
+            var dwm = Process.GetProcessesByName("dwm").FirstOrDefault();
+            return dwm?.Id ?? 0;
+        }
+        catch { return 0; }
     }
 
     void ClearTrackedApplication()

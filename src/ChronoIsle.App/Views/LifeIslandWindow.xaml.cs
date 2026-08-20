@@ -229,7 +229,7 @@ public partial class LifeIslandWindow : Window
         assistant.PropertyChanged += (_, _) => Dispatcher.BeginInvoke(UpdateQuickAskView);
         Header.ContextMenuOpening += Header_ContextMenuOpening;
         Header.ContextMenu = CreateQuickActionMenu();
-        clockTimer.Tick += (_, _) => Refresh();
+        clockTimer.Tick += (_, _) => RefreshClockAndState();
         this.taskAttributes = taskAttributes;
         collapseTimer.Tick += (_, _) => AutoCollapse();
         topDockHoverExitTimer.Tick += (_, _) => ConfirmTopDockHoverExit();
@@ -271,7 +271,7 @@ public partial class LifeIslandWindow : Window
             InitializeTodayDashboard();
             ConfigureGlowBorder();
             RestoreInitialPlacement();
-            Refresh();
+            RefreshClockAndState();
             clockTimer.Start();
             focusTimer.Start();
         };
@@ -655,6 +655,16 @@ public partial class LifeIslandWindow : Window
         }
     }
 
+    void RefreshClockAndState()
+    {
+        Clock.Text = DateTime.Now.ToString("HH:mm:ss");
+        try { Refresh(); }
+        catch (ObjectDisposedException exception)
+        {
+            System.Diagnostics.Debug.WriteLine($"Unable to refresh island state: {exception.Message}");
+        }
+    }
+
     void Refresh()
     {
         if (isClosed) return;
@@ -675,7 +685,6 @@ public partial class LifeIslandWindow : Window
             reminderBannerItem = null;
         }
 
-        Clock.Text = DateTime.Now.ToString("HH:mm:ss");
         if (!TryRenderFocusSummary())
         {
             var indicator = data.GetIslandIndicatorState(DateTime.Now);
@@ -2630,7 +2639,7 @@ public partial class LifeIslandWindow : Window
         QuickAskSend.IsEnabled = !assistant.IsSending && !string.IsNullOrWhiteSpace(QuickAskInput.Text);
         QuickAskStop.Visibility = assistant.IsSending ? Visibility.Visible : Visibility.Collapsed;
         var latest = assistant.Messages.LastOrDefault(message => message.Role == "assistant");
-        if (latest is not null) QuickAskAnswer.Markdown = latest.Content;
+        if (latest is not null) QuickAskAnswer.Text = latest.Content;
         ResizeExpandedToContent();
     }
 
@@ -2639,7 +2648,7 @@ public partial class LifeIslandWindow : Window
         var text = QuickAskInput.Text.Trim();
         if (text.Length == 0 || assistant.IsSending) return;
         QuickAskInput.Clear();
-        QuickAskAnswer.Markdown = string.Empty;
+        QuickAskAnswer.Text = string.Empty;
         UpdateQuickAskView();
         await assistant.SubmitQuickAskAsync(text);
         UpdateQuickAskView();
@@ -2653,6 +2662,8 @@ public partial class LifeIslandWindow : Window
 
     void QuickAskInput_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (!pointerHover && expanded) ScheduleMouseLeaveCollapse();
+        else Touch();
         if (QuickAskSend is not null) UpdateQuickAskView();
     }
 

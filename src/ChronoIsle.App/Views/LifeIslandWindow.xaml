@@ -550,7 +550,13 @@
                 <TextBlock x:Name="QuickAskStatus" Text="准备就绪" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="0,5,0,10"/>
                 <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="10" Padding="12" MinHeight="72" MaxHeight="180">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <local:MarkdownTextBlock x:Name="QuickAskAnswer" Markdown="输入一个问题，回答会在这里流式显示。" Foreground="{DynamicResource Brush.TextPrimary}"/>
+                    <TextBox x:Name="QuickAskAnswer" Text="输入一个问题，回答会在这里流式显示。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{DynamicResource Brush.TextPrimary}">
+                      <TextBox.ContextMenu>
+                        <ContextMenu Style="{StaticResource IslandContextMenu}">
+                          <MenuItem Header="复制" Style="{StaticResource IslandContextMenuItem}" Command="ApplicationCommands.Copy" CommandTarget="{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                        </ContextMenu>
+                      </TextBox.ContextMenu>
+                    </TextBox>
                   </ScrollViewer>
                 </Border>
                 <TextBox x:Name="QuickAskInput" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="38" MaxHeight="82" Margin="0,12,0,8" Style="{StaticResource IslandTextInput}" TextChanged="QuickAskInput_TextChanged" KeyDown="QuickAskInput_KeyDown"/>

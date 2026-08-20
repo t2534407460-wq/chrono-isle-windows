@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.12" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="App.xaml.cs;GlobalAliases.cs;LifeModels.cs;MarkdownTextBlock.cs" />

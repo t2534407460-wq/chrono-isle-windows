@@ -16,7 +16,28 @@ public sealed class ForegroundFpsServiceTests
         var names = Assert.IsAssignableFrom<IEnumerable<string>>(method!.Invoke(null,
             new object?[] { new[] { "ChronoIsleFps-25036", "ChronoIsleFps90160", "Eventlog-Security" } })!);
 
-        Assert.Equal(["ChronoIsleFps-25036"], names);
+        Assert.Equal(["ChronoIsleFps-25036", "ChronoIsleFps90160"], names.OrderBy(n => n));
+    }
+
+    [Fact]
+    public void ForegroundSwitch_IgnoresSharedDwmProcess()
+    {
+        var method = typeof(ForegroundFpsService).GetMethod(
+            "IsForegroundApplicationChanged",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+        var changed = Assert.IsType<bool>(method!.Invoke(null,
+            new object?[]
+            {
+                10,
+                20,
+                new HashSet<int> { 10, 100 },
+                new HashSet<int> { 20, 100 },
+                100
+            }));
+
+        Assert.True(changed);
     }
 
     [Fact]
