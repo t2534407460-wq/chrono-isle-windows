@@ -52,6 +52,27 @@ public sealed class TaskbarTopmostContractTests
         Assert.Contains("SwpNoMove | SwpNoSize | SwpNoActivate", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Taskbar_foreground_reassertion_is_event_driven_and_scoped_to_shell_taskbars()
+    {
+        var workspace = FindWorkspace();
+        var source = File.ReadAllText(Path.Combine(
+            workspace,
+            "src",
+            "ChronoIsle.App",
+            "Views",
+            "LifeIslandWindow.xaml.cs"));
+        var foregroundChanged = ExtractMethodBody(source, "void TaskbarForegroundChanged(");
+
+        Assert.Contains("SetWinEventHook(EventSystemForeground, EventSystemForeground", source, StringComparison.Ordinal);
+        Assert.Contains("UnhookWinEvent(taskbarForegroundEventHook)", source, StringComparison.Ordinal);
+        Assert.Contains("placement != IslandPlacement.Taskbar", foregroundChanged, StringComparison.Ordinal);
+        Assert.Contains("IsTaskbarWindow(window)", foregroundChanged, StringComparison.Ordinal);
+        Assert.Contains("EnsureTaskbarTopmost", foregroundChanged, StringComparison.Ordinal);
+        Assert.Contains("Shell_TrayWnd", source, StringComparison.Ordinal);
+        Assert.Contains("Shell_SecondaryTrayWnd", source, StringComparison.Ordinal);
+    }
+
     static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

@@ -49,6 +49,7 @@ public partial class LifeIslandWindow : Window
     readonly SystemTelemetryService telemetry;
     readonly ForegroundFpsService foregroundFps;
     readonly Action<ForegroundFpsSnapshot> foregroundFpsSnapshotChanged;
+    readonly WinEventDelegate taskbarForegroundChanged;
     readonly NetworkSpeedTestService networkSpeedTest;
     readonly Action<NetworkSpeedTestSnapshot> networkSpeedTestSnapshotChanged;
     readonly LifeViewModel assistant;
@@ -135,6 +136,7 @@ public partial class LifeIslandWindow : Window
     double fullscreenOriginalTaskbarRatio;
     bool fullscreenOriginalTopDockFolded;
     double fullscreenOriginalTopDockUnfoldedTop;
+    IntPtr taskbarForegroundEventHook;
 
     enum IslandPlacement { Free, Top, Taskbar }
     enum ExpandedPinState { Normal, KeepExpanded }
@@ -144,6 +146,11 @@ public partial class LifeIslandWindow : Window
     const uint SwpNoSize = 0x0001;
     const uint SwpNoMove = 0x0002;
     const uint SwpNoActivate = 0x0010;
+    const uint EventSystemForeground = 0x0003;
+    const uint WinEventOutOfContext = 0;
+    const uint WinEventSkipOwnProcess = 0x0002;
+
+    delegate void WinEventDelegate(IntPtr hook, uint eventType, IntPtr window, int objectId, int childId, uint eventThread, uint eventTime);
 
     string NetworkSpeedTestRateUnit => networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps
         ? "Mbps" : "MB/s";
@@ -159,6 +166,15 @@ public partial class LifeIslandWindow : Window
 
     [DllImport("user32.dll")]
     static extern bool SetWindowPos(IntPtr handle, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr module, WinEventDelegate callback, uint processId, uint threadId, uint flags);
+
+    [DllImport("user32.dll")]
+    static extern bool UnhookWinEvent(IntPtr hook);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetClassName(IntPtr window, System.Text.StringBuilder className, int maxCount);
 
     enum IslandQuickAction
     {
@@ -205,6 +221,7 @@ public partial class LifeIslandWindow : Window
         audioSpectrum.SpectrumChanged += AudioSpectrum_SpectrumChanged;
         this.telemetry = telemetry;
         this.foregroundFps = foregroundFps;
+        taskbarForegroundChanged = TaskbarForegroundChanged;
         foregroundFpsSnapshotChanged = snapshot =>
         {
             if (isClosed || Dispatcher.HasShutdownStarted) return;
@@ -254,10 +271,16 @@ public partial class LifeIslandWindow : Window
         SourceInitialized += (_, _) =>
         {
             IslandWindowStyles.HideFromTaskView(this);
+            taskbarForegroundEventHook = SetWinEventHook(EventSystemForeground, EventSystemForeground, IntPtr.Zero, taskbarForegroundChanged, 0, 0, WinEventOutOfContext | WinEventSkipOwnProcess);
         };
         Closed += (_, _) =>
         {
             isClosed = true;
+            if (taskbarForegroundEventHook != IntPtr.Zero)
+            {
+                UnhookWinEvent(taskbarForegroundEventHook);
+                taskbarForegroundEventHook = IntPtr.Zero;
+            }
             namingRequestCancellation?.Cancel();
             foregroundFps.SnapshotChanged -= foregroundFpsSnapshotChanged;
             foregroundFps.Stop();
@@ -621,6 +644,24 @@ public partial class LifeIslandWindow : Window
         var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero) return;
         SetWindowPos(handle, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
+    void TaskbarForegroundChanged(IntPtr hook, uint eventType, IntPtr window, int objectId, int childId, uint eventThread, uint eventTime)
+    {
+        if (isClosed || Dispatcher.HasShutdownStarted || !IsTaskbarWindow(window)) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
+        {
+            if (isClosed || placement != IslandPlacement.Taskbar) return;
+            EnsureTaskbarTopmost();
+        }));
+    }
+
+    static bool IsTaskbarWindow(IntPtr window)
+    {
+        if (window == IntPtr.Zero) return false;
+        var className = new System.Text.StringBuilder(32);
+        if (GetClassName(window, className, className.Capacity) == 0) return false;
+        return className.ToString() is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
     }
 
     void AlignTaskbarAfterLayout()
