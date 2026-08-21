@@ -140,6 +140,10 @@ public partial class LifeIslandWindow : Window
     enum ExpandedPinState { Normal, KeepExpanded }
     enum NetworkSpeedTestDisplayUnit { Mbps, MegabytesPerSecond }
     readonly record struct MonitorGeometry(System.Windows.Forms.Screen Screen, Rect Bounds, Rect WorkArea, Rect? Taskbar);
+    static readonly IntPtr HwndTopmost = new(-1);
+    const uint SwpNoSize = 0x0001;
+    const uint SwpNoMove = 0x0002;
+    const uint SwpNoActivate = 0x0010;
 
     string NetworkSpeedTestRateUnit => networkSpeedTestDisplayUnit == NetworkSpeedTestDisplayUnit.Mbps
         ? "Mbps" : "MB/s";
@@ -152,6 +156,9 @@ public partial class LifeIslandWindow : Window
 
     [DllImport("user32.dll")]
     static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [DllImport("user32.dll")]
+    static extern bool SetWindowPos(IntPtr handle, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
 
     enum IslandQuickAction
     {
@@ -606,6 +613,14 @@ public partial class LifeIslandWindow : Window
         var headerOffset = Header.TranslatePoint(new System.Windows.Point(0, 0), this).Y;
         var targetHeaderTop = IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight);
         Top = IslandPlacementGeometry.WindowTopForHeaderAnchor(targetHeaderTop, headerOffset);
+        EnsureTaskbarTopmost();
+    }
+
+    void EnsureTaskbarTopmost()
+    {
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+        SetWindowPos(handle, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
     void AlignTaskbarAfterLayout()

@@ -34,7 +34,7 @@ public sealed class TaskbarTopmostContractTests
     }
 
     [Fact]
-    public void Island_topmost_does_not_depend_on_taskbar_or_periodic_native_reassertion()
+    public void Taskbar_docked_island_reasserts_native_topmost_without_a_periodic_timer()
     {
         var workspace = FindWorkspace();
         var source = File.ReadAllText(Path.Combine(
@@ -43,11 +43,13 @@ public sealed class TaskbarTopmostContractTests
             "ChronoIsle.App",
             "Views",
             "LifeIslandWindow.xaml.cs"));
+        var positionAtTaskbar = ExtractMethodBody(source, "void PositionAtTaskbar(");
 
         Assert.DoesNotContain("taskbarTopmostTimer", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("EnsureTaskbarTopmost", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("SetWindowPos(", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("HwndTopmost", source, StringComparison.Ordinal);
+        Assert.Contains("void EnsureTaskbarTopmost()", source, StringComparison.Ordinal);
+        Assert.Contains("EnsureTaskbarTopmost();", positionAtTaskbar, StringComparison.Ordinal);
+        Assert.Contains("SetWindowPos(handle, HwndTopmost", source, StringComparison.Ordinal);
+        Assert.Contains("SwpNoMove | SwpNoSize | SwpNoActivate", source, StringComparison.Ordinal);
     }
 
     static string FindWorkspace()
