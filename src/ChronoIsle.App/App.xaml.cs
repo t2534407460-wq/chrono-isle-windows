@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,8 @@ namespace ChronoIsle.App;
 
 public partial class App : System.Windows.Application
 {
+    const string InstanceMutexName = @"Local\ChronoIsle.App";
+    static Mutex? instanceMutex;
     ServiceProvider? services;
     LifeMainWindow? main;
     Window? standalonePage;
@@ -26,6 +29,15 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        instanceMutex = new Mutex(true, InstanceMutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            instanceMutex.Dispose();
+            instanceMutex = null;
+            Shutdown();
+            return;
+        }
+
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         base.OnStartup(e);
 
@@ -254,9 +266,17 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        (services?.GetService<ReminderService>() as IDisposable)?.Dispose();
-        (services?.GetService<LifeTrayService>() as IDisposable)?.Dispose();
-        (services as IDisposable)?.Dispose();
-        base.OnExit(e);
+        try
+        {
+            (services?.GetService<ReminderService>() as IDisposable)?.Dispose();
+            (services?.GetService<LifeTrayService>() as IDisposable)?.Dispose();
+            (services as IDisposable)?.Dispose();
+        }
+        finally
+        {
+            instanceMutex?.Dispose();
+            instanceMutex = null;
+            base.OnExit(e);
+        }
     }
 }
