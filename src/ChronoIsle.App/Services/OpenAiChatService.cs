@@ -10,6 +10,12 @@ public interface IChatCompletionClient
 {
     Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input);
     Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false);
+    Task<string> Complete(
+        ProviderSettings provider,
+        IEnumerable<ModelMessage> messages,
+        bool jsonObject,
+        CancellationToken cancellationToken) =>
+        Complete(provider, messages, jsonObject).WaitAsync(cancellationToken);
     async IAsyncEnumerable<string> StreamComplete(
         ProviderSettings provider,
         IEnumerable<ModelMessage> messages,
@@ -31,7 +37,14 @@ public sealed class OpenAiChatService : IChatCompletionClient
     public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) =>
         Complete(provider, history.Select(x => new ModelMessage(x.Role, x.Content)).Append(new ModelMessage("user", input)));
 
-    public async Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false)
+    public Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false) =>
+        Complete(provider, messages, jsonObject, CancellationToken.None);
+
+    public async Task<string> Complete(
+        ProviderSettings provider,
+        IEnumerable<ModelMessage> messages,
+        bool jsonObject,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(provider.ApiKey))
             throw new InvalidOperationException("请先在设置中填写 API Key。");
@@ -48,8 +61,8 @@ public sealed class OpenAiChatService : IChatCompletionClient
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
-        using var response = await http.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
+        using var response = await http.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException($"模型请求失败：{(int)response.StatusCode} {body}");
 

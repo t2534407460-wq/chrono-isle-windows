@@ -121,6 +121,7 @@ public sealed class NamingSuggestionService(
     ProviderSettingsService providerSettings)
 {
     const int CandidateCount = 3;
+    const int RequestTimeoutSeconds = 30;
     static readonly Regex WordPattern = new(
         "^[a-z][a-z0-9]*$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -140,19 +141,33 @@ public sealed class NamingSuggestionService(
         6. 不要无依据添加 I 前缀、类型后缀或单复数变化。
         """;
 
-    public async Task<NamingResult> GenerateAsync(NamingKind kind, string chineseMeaning)
+    public async Task<NamingResult> GenerateAsync(
+        NamingKind kind,
+        string chineseMeaning,
+        CancellationToken cancellationToken = default)
     {
         var meaning = chineseMeaning.Trim();
         if (meaning.Length == 0) throw new ArgumentException("请输入想表达的中文含义。", nameof(chineseMeaning));
         if (meaning.Length > 500) throw new ArgumentException("中文含义不能超过 500 个字符。", nameof(chineseMeaning));
 
-        var response = await chat.Complete(
-            providerSettings.Load(),
-            [
-                new ModelMessage("system", SystemPrompt),
-                new ModelMessage("user", $"名称类型：{KindLabel(kind)}\n中文含义：{meaning}")
-            ],
-            jsonObject: true);
+        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        requestCancellation.CancelAfter(TimeSpan.FromSeconds(RequestTimeoutSeconds));
+        string response;
+        try
+        {
+            response = await chat.Complete(
+                providerSettings.Load(),
+                [
+                    new ModelMessage("system", SystemPrompt),
+                    new ModelMessage("user", $"名称类型：{KindLabel(kind)}\n中文含义：{meaning}")
+                ],
+                jsonObject: true,
+                requestCancellation.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new NamingServiceException("生成命名超时，请检查网络和模型设置后重试。");
+        }
 
         return Parse(kind, response);
     }

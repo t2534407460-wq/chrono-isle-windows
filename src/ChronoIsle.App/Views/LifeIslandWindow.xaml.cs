@@ -54,6 +54,7 @@ public partial class LifeIslandWindow : Window
     readonly LifeViewModel assistant;
     readonly NamingSuggestionService naming;
     readonly ObservableCollection<FormatRow> formatRows = [];
+    CancellationTokenSource? namingRequestCancellation;
     NamingResult? result;
     NamingKind? resultKind;
     NamingFormatValue? recommendation;
@@ -250,6 +251,7 @@ public partial class LifeIslandWindow : Window
         Closed += (_, _) =>
         {
             isClosed = true;
+            namingRequestCancellation?.Cancel();
             foregroundFps.SnapshotChanged -= foregroundFpsSnapshotChanged;
             foregroundFps.Stop();
             networkSpeedTest.SnapshotChanged -= networkSpeedTestSnapshotChanged;
@@ -1978,6 +1980,12 @@ public partial class LifeIslandWindow : Window
 
     async void Generate_Click(object sender, RoutedEventArgs e)
     {
+        if (namingRequestCancellation is not null)
+        {
+            namingRequestCancellation.Cancel();
+            return;
+        }
+
         var meaning = MeaningInput.Text.Trim();
         if (meaning.Length == 0)
         {
@@ -1986,12 +1994,14 @@ public partial class LifeIslandWindow : Window
             return;
         }
 
+        using var cancellation = new CancellationTokenSource();
+        namingRequestCancellation = cancellation;
         SetBusy(true);
         HideStatus();
         try
         {
             var kind = SelectedKind();
-            result = await naming.GenerateAsync(kind, meaning);
+            result = await naming.GenerateAsync(kind, meaning, cancellation.Token);
             resultKind = kind;
             candidateIndex = 0;
             RenderCandidate();
@@ -2006,6 +2016,10 @@ public partial class LifeIslandWindow : Window
         catch (NamingServiceException exception)
         {
             ShowStatus(exception.Message, StatusKind.Error);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            ShowStatus("已取消生成，可修改内容后重新生成。", StatusKind.Success);
         }
         catch (TaskCanceledException)
         {
@@ -2028,6 +2042,7 @@ public partial class LifeIslandWindow : Window
         }
         finally
         {
+            if (ReferenceEquals(namingRequestCancellation, cancellation)) namingRequestCancellation = null;
             SetBusy(false);
         }
     }
@@ -2116,7 +2131,8 @@ public partial class LifeIslandWindow : Window
     {
         MeaningInput.IsEnabled = !busy;
         KindSelector.IsEnabled = !busy;
-        GenerateButton.IsEnabled = !busy;
+        GenerateButton.IsEnabled = true;
+        GenerateButton.Content = busy ? "取消生成" : "生成命名";
         PreviousButton.IsEnabled = !busy;
         NextButton.IsEnabled = !busy;
         LoadingPanel.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;

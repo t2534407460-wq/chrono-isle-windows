@@ -144,6 +144,57 @@ public sealed class NamingSuggestionServiceTests
             message.Content.Contains("JSON", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Generate_cancels_the_underlying_model_request()
+    {
+        var chat = new CancellableChatClient();
+        var service = new NamingSuggestionService(chat, new ProviderSettingsService());
+        using var cancellation = new CancellationTokenSource();
+
+        var generation = GenerateWithCancellation(service, cancellation.Token);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => generation);
+        Assert.True(chat.CancellationToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task Generate_translates_its_own_timeout_into_a_retryable_message()
+    {
+        var service = new NamingSuggestionService(new TimeoutChatClient(), new ProviderSettingsService());
+
+        var error = await Assert.ThrowsAsync<NamingServiceException>(() =>
+            GenerateWithCancellation(service, CancellationToken.None));
+
+        Assert.Equal("生成命名超时，请检查网络和模型设置后重试。", error.Message);
+    }
+
+    [Fact]
+    public async Task Generate_cancels_when_legacy_client_ignores_cancellation()
+    {
+        var service = new NamingSuggestionService(new BlockingLegacyChatClient(), new ProviderSettingsService());
+        using var cancellation = new CancellationTokenSource();
+
+        var generation = GenerateWithCancellation(service, cancellation.Token);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            generation.WaitAsync(TimeSpan.FromSeconds(1)));
+    }
+
+    static Task<NamingResult> GenerateWithCancellation(
+        NamingSuggestionService service,
+        CancellationToken cancellationToken)
+    {
+        var method = typeof(NamingSuggestionService).GetMethod(
+            "GenerateAsync",
+            [typeof(NamingKind), typeof(string), typeof(CancellationToken)]);
+        Assert.NotNull(method);
+        var generation = method!.Invoke(service, [NamingKind.Variable, "获取关键料", cancellationToken]) as Task<NamingResult>;
+        Assert.NotNull(generation);
+        return generation!;
+    }
+
     sealed class RecordingChatClient : IChatCompletionClient
     {
         public string Response { get; init; } = "";
@@ -165,6 +216,59 @@ public sealed class NamingSuggestionServiceTests
             Messages = messages.ToArray();
             return Task.FromResult(Response);
         }
+
+        public Task Test(ProviderSettings provider) => throw new NotSupportedException();
+    }
+
+    sealed class CancellableChatClient : IChatCompletionClient
+    {
+        public CancellationToken CancellationToken { get; private set; }
+
+        public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) =>
+            throw new NotSupportedException();
+
+        public Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false) =>
+            throw new NotSupportedException();
+
+        public async Task<string> Complete(
+            ProviderSettings provider,
+            IEnumerable<ModelMessage> messages,
+            bool jsonObject,
+            CancellationToken cancellationToken)
+        {
+            CancellationToken = cancellationToken;
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return "";
+        }
+
+        public Task Test(ProviderSettings provider) => throw new NotSupportedException();
+    }
+
+    sealed class TimeoutChatClient : IChatCompletionClient
+    {
+        public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) =>
+            throw new NotSupportedException();
+
+        public Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false) =>
+            throw new NotSupportedException();
+
+        public Task<string> Complete(
+            ProviderSettings provider,
+            IEnumerable<ModelMessage> messages,
+            bool jsonObject,
+            CancellationToken cancellationToken) =>
+            Task.FromCanceled<string>(new CancellationToken(canceled: true));
+
+        public Task Test(ProviderSettings provider) => throw new NotSupportedException();
+    }
+
+    sealed class BlockingLegacyChatClient : IChatCompletionClient
+    {
+        public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) =>
+            throw new NotSupportedException();
+
+        public Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false) =>
+            new TaskCompletionSource<string>().Task;
 
         public Task Test(ProviderSettings provider) => throw new NotSupportedException();
     }
