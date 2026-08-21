@@ -154,6 +154,7 @@ public sealed class IslandMediaAndStreamingTests
 
     [Theory]
     [InlineData("cloudmusic.exe", true)]
+    [InlineData("网易云音乐", true)]
     [InlineData("QQMusic.exe", true)]
     [InlineData("Spotify.exe", false)]
     public void MediaControl_PrefersGlobalMediaKeyForDesktopPlayers(string sourceAppId, bool expected)
@@ -167,36 +168,20 @@ public sealed class IslandMediaAndStreamingTests
     }
 
     [Theory]
-    [InlineData(0, true, 0x25)]
-    [InlineData(1, false, 0)]
-    [InlineData(2, true, 0x27)]
-    public void NetEaseControl_UsesItsConfiguredGlobalShortcutOnlyForTrackChanges(
+    [InlineData(0, 0xB1)]
+    [InlineData(2, 0xB0)]
+    public void NetEaseControl_UsesWindowsMediaKeysForTrackChanges(
         int commandValue,
-        bool expectedShortcut,
         ushort expectedKey)
     {
         var detectorType = typeof(DesktopMusicSessionDetector);
-        var useShortcut = detectorType.GetMethod(
-            "ShouldUseNetEaseShortcut",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        var shortcutKey = detectorType.GetMethod(
-            "NetEaseShortcutKey",
+        var mediaKey = detectorType.GetMethod(
+            "MediaKey",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
-        Assert.NotNull(useShortcut);
+        Assert.NotNull(mediaKey);
         var command = Enum.ToObject(typeof(DesktopMediaCommand), commandValue);
-        Assert.Equal(2, useShortcut!.GetParameters().Length);
-        Assert.Equal(expectedShortcut, (bool)useShortcut.Invoke(null, ["cloudmusic", command])!);
-        Assert.Equal(expectedShortcut, (bool)useShortcut.Invoke(null, ["cloudmusic.exe", command])!);
-        Assert.Equal(expectedShortcut, (bool)useShortcut.Invoke(null, ["网易云音乐", command])!);
-        Assert.False((bool)useShortcut.Invoke(null, ["QQMusic", command])!);
-        Assert.NotNull(shortcutKey);
-        if (expectedShortcut)
-            Assert.Equal(
-                expectedKey,
-                (ushort)shortcutKey!.Invoke(
-                    null,
-                    [command])!);
+        Assert.Equal(expectedKey, (ushort)mediaKey!.Invoke(null, [command])!);
     }
 
     [Fact]

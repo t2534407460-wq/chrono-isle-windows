@@ -622,7 +622,7 @@ internal sealed class DesktopMusicSessionDetector
         nowUtc - sampledAtUtc >= TimeSpan.FromMinutes(-1) &&
         sampledAtUtc >= processStartedAtUtc - TimeSpan.FromSeconds(5);
 
-    public void Control(DesktopMediaCommand command, string? sourceAppId = null)
+    public void Control(DesktopMediaCommand command)
     {
         if (string.Equals(cachedSourceAppId, "Mineradio", StringComparison.OrdinalIgnoreCase))
         {
@@ -631,31 +631,16 @@ internal sealed class DesktopMusicSessionDetector
             lastCaptureAt = DateTimeOffset.MinValue;
             return;
         }
-        if (ShouldUseNetEaseShortcut(sourceAppId, command) ||
-            ShouldUseNetEaseShortcut(cachedPlayerProcessName, command))
-            SendNetEaseShortcut(command);
-        else
-            SendMediaKey(command switch
-            {
-                DesktopMediaCommand.Previous => MediaPreviousTrack,
-                DesktopMediaCommand.Next => MediaNextTrack,
-                _ => MediaPlayPause
-            });
+        SendMediaKey(MediaKey(command));
         if (command == DesktopMediaCommand.TogglePlayPause) cachedIsPlaying = !cachedIsPlaying;
         lastCaptureAt = DateTimeOffset.MinValue;
     }
 
-    static bool ShouldUseNetEaseShortcut(string? sourceAppId, DesktopMediaCommand command) =>
-        command != DesktopMediaCommand.TogglePlayPause &&
-        !string.IsNullOrWhiteSpace(sourceAppId) &&
-        (sourceAppId.Contains("cloudmusic", StringComparison.OrdinalIgnoreCase) ||
-         sourceAppId.Contains(Profiles[0].DisplayName, StringComparison.OrdinalIgnoreCase));
-
-    static ushort NetEaseShortcutKey(DesktopMediaCommand command) => command switch
+    static ushort MediaKey(DesktopMediaCommand command) => command switch
     {
-        DesktopMediaCommand.Previous => LeftKey,
-        DesktopMediaCommand.Next => RightKey,
-        _ => throw new ArgumentOutOfRangeException(nameof(command))
+        DesktopMediaCommand.Previous => MediaPreviousTrack,
+        DesktopMediaCommand.Next => MediaNextTrack,
+        _ => MediaPlayPause
     };
 
     static IReadOnlyList<PlayerWindow> FindPlayerWindows(
@@ -1026,9 +1011,6 @@ internal sealed class DesktopMusicSessionDetector
         };
         SendShortcut(key);
     }
-
-    static void SendNetEaseShortcut(DesktopMediaCommand command) =>
-        SendShortcut(NetEaseShortcutKey(command));
 
     static void SendShortcut(ushort virtualKey)
     {

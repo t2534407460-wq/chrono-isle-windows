@@ -104,7 +104,7 @@ public sealed class MediaSessionService : IDisposable
     {
         if (ShouldPreferDesktopMediaKey(Current?.SourceAppId))
         {
-            desktop.Control(desktopCommand, Current?.SourceAppId);
+            desktop.Control(desktopCommand);
             PublishOptimisticPlaybackToggle(desktopCommand);
             await RefreshAsync();
             return;
@@ -115,7 +115,7 @@ public sealed class MediaSessionService : IDisposable
         try
         {
             var handled = session is not null && await operation(session);
-            if (!handled) desktop.Control(desktopCommand, Current?.SourceAppId);
+            if (!handled) desktop.Control(desktopCommand);
             commandDispatched = true;
         }
         catch (Exception exception)
@@ -124,7 +124,7 @@ public sealed class MediaSessionService : IDisposable
             System.Diagnostics.Debug.WriteLine($"Media session control failed: {exception.Message}");
             try
             {
-                desktop.Control(desktopCommand, Current?.SourceAppId);
+                desktop.Control(desktopCommand);
                 commandDispatched = true;
             }
             catch (Exception fallbackException)
@@ -148,6 +148,7 @@ public sealed class MediaSessionService : IDisposable
     static bool ShouldPreferDesktopMediaKey(string? sourceAppId) =>
         !string.IsNullOrWhiteSpace(sourceAppId) &&
         (sourceAppId.Contains("cloudmusic", StringComparison.OrdinalIgnoreCase) ||
+         sourceAppId.Contains("网易云音乐", StringComparison.OrdinalIgnoreCase) ||
          sourceAppId.Contains("qqmusic", StringComparison.OrdinalIgnoreCase));
 
     async Task RefreshAsync()
