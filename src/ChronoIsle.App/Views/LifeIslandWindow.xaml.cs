@@ -2398,10 +2398,10 @@ public partial class LifeIslandWindow : Window
 
       void CopyCaseConverter_Click(object sender, RoutedEventArgs e)
       {
-          if (sender is Button { Tag: string textBlockName } button &&
-              FindName(textBlockName) is TextBlock textBlock)
+          if (sender is Button { Tag: string textBoxName } button &&
+              FindName(textBoxName) is TextBox textBox)
           {
-              Copy(button.ToolTip?.ToString() ?? textBlockName, textBlock.Text);
+              Copy(button.ToolTip?.ToString() ?? textBoxName, textBox.Text);
           }
       }
 
