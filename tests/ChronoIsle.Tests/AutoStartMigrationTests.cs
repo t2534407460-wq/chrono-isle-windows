@@ -4,37 +4,58 @@ namespace ChronoIsle.Tests;
 
 public sealed class AutoStartMigrationTests : IDisposable
 {
-    readonly string directory = Path.Combine(Path.GetTempPath(), "chronoisle-autostart-" + Guid.NewGuid().ToString("N"));
+    private readonly AutoStartTestContext context = new();
+
+    [Theory]
+    [InlineData(AutoStartService.ValueName)]
+    [InlineData(AutoStartService.LegacyValueName)]
+    public void Initialize_moves_existing_Run_entry_to_current_executable_task(string valueName)
+    {
+        context.Registry.Write(valueName, "\"C:\\Old\\OpenIsland.exe\"");
+
+        context.Service.Initialize();
+
+        Assert.True(context.Service.IsEnabled);
+        Assert.Null(context.Registry.Read(AutoStartService.LegacyValueName));
+        Assert.Null(context.Registry.Read(AutoStartService.ValueName));
+        Assert.Contains("ChronoIsle.exe", context.Task.Definition);
+    }
 
     [Fact]
-    public void Constructor_moves_legacy_autostart_to_current_executable()
+    public void Failed_migration_preserves_original_setting_and_allows_application_to_open()
     {
-        Directory.CreateDirectory(directory);
-        var executable = Path.Combine(directory, "ChronoIsle.exe");
-        File.WriteAllText(executable, "");
-        var registry = new MemoryRegistry();
-        registry.Write(AutoStartService.LegacyValueName, "\"C:\\Old\\OpenIsland.exe\"");
+        context.Registry.Write(AutoStartService.LegacyValueName, "legacy");
+        context.Task.RegisterError = new UnauthorizedAccessException("access denied");
 
-        var service = new AutoStartService(registry, () => executable);
+        context.Service.Initialize();
 
-        Assert.True(service.IsEnabled);
-        Assert.Null(registry.Read(AutoStartService.LegacyValueName));
-        Assert.Equal($"\"{executable}\"", registry.Read(AutoStartService.ValueName));
+        Assert.Equal("legacy", context.Registry.Read(AutoStartService.LegacyValueName));
+        Assert.Contains("无法迁移", context.Service.Status);
+        Assert.Contains("access denied", context.Service.Status);
+        Assert.False(context.Service.IsEnabled);
     }
 
-    public void Dispose()
+    [Fact]
+    public void Initialize_does_not_enable_startup_when_previously_disabled()
     {
-        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        context.Service.Initialize();
+
+        Assert.Null(context.Task.Definition);
+        Assert.False(context.Service.IsEnabled);
     }
 
-    sealed class MemoryRegistry : IAutoStartRegistry
+    [Fact]
+    public void Initialize_does_not_overwrite_task_after_Run_migration_is_complete()
     {
-        readonly Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+        context.Service.SetEnabled(true);
+        var definition = context.Task.Definition!.Replace("<Enabled>true</Enabled>", "<Enabled>false</Enabled>");
+        context.Task.Definition = definition;
 
-        public string? Read(string name) => values.TryGetValue(name, out var value) ? value : null;
+        context.Service.Initialize();
 
-        public void Write(string name, string command) => values[name] = command;
-
-        public void Remove(string name) => values.Remove(name);
+        Assert.Equal(definition, context.Task.Definition);
+        Assert.False(context.Service.IsEnabled);
     }
+
+    public void Dispose() => context.Dispose();
 }

@@ -106,6 +106,7 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<ReminderService>();
         collection.AddSingleton<LifeTrayService>();
         collection.AddSingleton<IAutoStartRegistry, CurrentUserRunRegistry>();
+        collection.AddSingleton<IAutoStartTask, CurrentUserLogonTask>();
         collection.AddSingleton<AutoStartService>();
         collection.AddSingleton<NamingSuggestionService>();
         collection.AddSingleton<LifeViewModel>();
@@ -117,6 +118,8 @@ public partial class App : System.Windows.Application
         services.GetRequiredService<ThemeService>().Start();
 
         var uiTestMode = string.Equals(Environment.GetEnvironmentVariable("CHRONOISLE_UI_TEST_MODE"), "1", StringComparison.Ordinal);
+        if (!uiTestMode)
+            services.GetRequiredService<AutoStartService>().Initialize();
         var notifications = services.GetRequiredService<WindowsNotificationService>();
         if (!uiTestMode)
             notifications.Register();
