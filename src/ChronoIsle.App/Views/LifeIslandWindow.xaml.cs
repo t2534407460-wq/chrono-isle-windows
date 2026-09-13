@@ -100,6 +100,7 @@ public partial class LifeIslandWindow : Window
     bool networkSpeedTestGaugeSyncRendering;
     NetworkSpeedTestDisplayUnit networkSpeedTestDisplayUnit;
     bool isClosed;
+    IslandNotificationWindow? notificationWindow;
     bool musicModeActive;
     IslandPlacement placement;
     string? taskbarMonitorDeviceName;
@@ -268,6 +269,8 @@ public partial class LifeIslandWindow : Window
             new Action(CollapseWhenForegroundMovesToAnotherProcess));
         IslandLayout.LayoutUpdated += (_, _) => MaintainTaskbarHeaderAnchor();
         MainBorder.SizeChanged += (_, _) => UpdateTaskbarClip();
+        LocationChanged += (_, _) => PositionNotificationWindow();
+        SizeChanged += (_, _) => PositionNotificationWindow();
         SourceInitialized += (_, _) =>
         {
             IslandWindowStyles.HideFromTaskView(this);
@@ -276,6 +279,7 @@ public partial class LifeIslandWindow : Window
         Closed += (_, _) =>
         {
             isClosed = true;
+            notificationWindow?.Close();
             if (taskbarForegroundEventHook != IntPtr.Zero)
             {
                 UnhookWinEvent(taskbarForegroundEventHook);
@@ -408,6 +412,30 @@ public partial class LifeIslandWindow : Window
         var initialScreen = System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.AllScreens[0];
         PositionAtTopCenter(initialScreen);
         PersistTaskbarPlacement(false);
+    }
+
+    public void ShowSystemToast(SystemToastMessage message, SystemToastInboxService inbox)
+    {
+        var currentPreferences = preferences.Load();
+        if (isClosed || !IsVisible || !inbox.IsRunning || !currentPreferences.ToastInboxEnabled ||
+            currentPreferences.DoNotDisturbEnabled ||
+            (currentPreferences.FullScreenSilentEnabled && fullscreenAvoiding)) return;
+        notificationWindow ??= new IslandNotificationWindow();
+        notificationWindow.ShowMessage(message, inbox);
+        PositionNotificationWindow();
+    }
+
+    public void HideSystemToast() => notificationWindow?.HideMessage();
+
+    void PositionNotificationWindow()
+    {
+        if (isClosed || !IsLoaded || notificationWindow?.IsVisible != true) return;
+        var anchor = HeaderScreenRect();
+        if (expanded)
+            anchor = new Rect(Left, Top, ActualWidth, ActualHeight);
+        var area = TryGetMonitorGeometry(ScreenForHeader(), out var geometry)
+            ? geometry.WorkArea : SystemParameters.WorkArea;
+        notificationWindow.PositionNextTo(anchor, area, placement == IslandPlacement.Taskbar);
     }
 
     System.Windows.Forms.Screen ScreenForHeader()

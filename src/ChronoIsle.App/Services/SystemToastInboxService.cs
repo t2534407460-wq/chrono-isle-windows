@@ -1,5 +1,8 @@
 using Windows.UI.Notifications;
 using Windows.UI.Notifications.Management;
+using System.Windows.Media.Imaging;
+using Windows.Storage.Streams;
+using System.Windows.Threading;
 
 namespace ChronoIsle.App.Services;
 
@@ -17,30 +20,8 @@ public sealed record SystemToastMessage(
     string Title,
     string Body,
     string AppUserModelId,
-    DateTimeOffset CreatedAt);
-
-internal static class ToastInboxThreading
-{
-    internal static Task RunAsync(Action action)
-    {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-                completion.SetResult(true);
-            }
-            catch (Exception exception)
-            {
-                completion.SetException(exception);
-            }
-        });
-        thread.SetApartmentState(ApartmentState.MTA);
-        thread.Start();
-        return completion.Task;
-    }
-}
+    DateTimeOffset CreatedAt,
+    BitmapSource? Icon = null);
 
 internal static class ToastInboxDiagnostics
 {
@@ -106,177 +87,173 @@ internal static class ToastTextComposer
 
 public sealed class SystemToastInboxService : IDisposable
 {
-    const int NotificationReadRetryCount = 3;
-    static readonly TimeSpan NotificationReadRetryDelay = TimeSpan.FromMilliseconds(75);
-    readonly System.Threading.Timer timer;
+    readonly DispatcherTimer timer;
+    readonly NativeToastBannerService banners;
     readonly HashSet<uint> knownIds = [];
-    readonly object knownIdsGate = new();
-    readonly object listenerGate = new();
-    readonly SemaphoreSlim startGate = new(1, 1);
+    readonly object stateGate = new();
+    readonly SemaphoreSlim operationGate = new(1, 1);
     UserNotificationListener? listener;
-    bool initialized;
-    bool listening;
     bool disposed;
-    int polling;
+    bool enabled;
+    bool initialized;
+    int generation;
 
-    public SystemToastInboxService() =>
-        timer = new System.Threading.Timer(_ => _ = PollAsync(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    public SystemToastInboxService() : this(new NativeToastBannerService()) { }
+
+    public SystemToastInboxService(NativeToastBannerService banners)
+    {
+        this.banners = banners;
+        // Keep the WinRT listener on its originating dispatcher. On Windows 11
+        // desktop apps, NotificationChanged registration can break the COM proxy.
+        timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
+        timer.Tick += (_, _) => _ = PollAsync();
+    }
 
     public event Action<SystemToastMessage>? ToastReceived;
     public event Action<ToastInboxAccess>? AccessChanged;
     public ToastInboxAccess Access { get; private set; } = ToastInboxAccess.Unknown;
+    public bool IsRunning { get { lock (stateGate) return !disposed && enabled && initialized && Access == ToastInboxAccess.Allowed; } }
+    public bool ReplacesBanners => IsRunning && banners.IsActive;
 
+    // Called on the WPF dispatcher: Windows requires the consent request on the UI thread.
     public async Task StartAsync()
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        await startGate.WaitAsync();
-        try
+        int version;
+        lock (stateGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            if (IsRunning) return;
+            enabled = true;
+            version = generation;
+        }
+        await operationGate.WaitAsync();
+        try
+        {
+            if (!IsCurrent(version) || IsRunning) return;
             listener ??= UserNotificationListener.Current;
             var status = await listener.RequestAccessAsync();
+            if (!IsCurrent(version)) return;
             ToastInboxDiagnostics.Write("access-request", 0, $"status={status}");
-            SetAccess(status == UserNotificationListenerAccessStatus.Allowed
-                ? ToastInboxAccess.Allowed
-                : ToastInboxAccess.Denied);
-            if (Access != ToastInboxAccess.Allowed) return;
-            if (!listening)
+            if (status != UserNotificationListenerAccessStatus.Allowed)
             {
-                await PollAsync();
-                var currentListener = listener!;
-                await ToastInboxThreading.RunAsync(() =>
-                {
-                    lock (listenerGate)
-                    {
-                        if (disposed || listening) return;
-                        ToastInboxDiagnostics.Write(
-                            "listener-subscribe-attempt",
-                            0,
-                            $"notification-changed=true; apartment={Thread.CurrentThread.GetApartmentState()}");
-                        currentListener.NotificationChanged += Listener_NotificationChanged;
-                        listening = true;
-                        ToastInboxDiagnostics.Write("listener-subscribed", 0, "notification-changed=true");
-                    }
-                });
-                await PollAsync();
+                banners.Restore();
+                SetAccess(status == UserNotificationListenerAccessStatus.Denied ? ToastInboxAccess.Denied : ToastInboxAccess.Unknown);
+                return;
             }
-            lock (listenerGate)
+
+            // Start a fresh session without replaying the existing notification center.
+            var baseline = await listener.GetNotificationsAsync(NotificationKinds.Toast);
+            lock (stateGate)
             {
-                if (disposed) return;
-                timer.Change(TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(2.5));
+                if (!IsCurrent(version)) return;
+                knownIds.Clear();
+                foreach (var notification in baseline) knownIds.Add(notification.Id);
+                initialized = true;
+            }
+            ToastInboxDiagnostics.Write("poll-baseline", 0, $"messages={baseline.Count}");
+            lock (stateGate)
+            {
+                if (!IsCurrent(version)) return;
+                banners.Start();
+                SetAccess(ToastInboxAccess.Allowed);
+                timer.Start();
+                ToastInboxDiagnostics.Write("listener-started", 0, "mode=dispatcher-poll; interval-ms=500");
             }
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Toast inbox unavailable: {exception.Message}");
+            if (!IsCurrent(version)) return;
             ToastInboxDiagnostics.Write("start-failed", 0, ToastInboxDiagnostics.Failure(exception));
+            Stop();
             SetAccess(ToastInboxAccess.Unavailable);
         }
-        finally
-        {
-            startGate.Release();
-        }
+        finally { operationGate.Release(); }
     }
 
     async Task PollAsync()
     {
-        if (disposed || listener is null || Access != ToastInboxAccess.Allowed ||
-            Interlocked.Exchange(ref polling, 1) != 0)
-            return;
+        if (!IsRunning || !await operationGate.WaitAsync(0)) return;
+        var version = generation;
         try
         {
-            var notifications = await listener.GetNotificationsAsync(NotificationKinds.Toast);
-            var messages = notifications
-                .OrderBy(item => item.CreationTime)
-                .Select(ToMessage)
-                .Where(item => item is not null)
-                .Cast<SystemToastMessage>()
-                .ToArray();
-
-            if (!initialized)
+            if (!IsCurrent(version)) return;
+            if (listener!.GetAccessStatus() != UserNotificationListenerAccessStatus.Allowed)
             {
-                lock (knownIdsGate)
-                    foreach (var message in messages) knownIds.Add(message.Id);
-                initialized = true;
-                ToastInboxDiagnostics.Write("poll-baseline", 0, $"messages={messages.Length}");
+                Stop();
+                SetAccess(ToastInboxAccess.Denied);
                 return;
             }
-
-            foreach (var message in messages)
+            var notifications = await listener.GetNotificationsAsync(NotificationKinds.Toast);
+            var messages = notifications.OrderBy(item => item.CreationTime)
+                .Select(ToMessage).Where(item => item is not null).Cast<SystemToastMessage>().ToArray();
+            lock (stateGate)
             {
-                if (!TryRemember(message.Id)) continue;
-                ToastInboxDiagnostics.Write("poll-published", message.Id, ToastInboxDiagnostics.Source(message));
-                ToastReceived?.Invoke(message);
-            }
-
-            lock (knownIdsGate)
-            {
-                if (knownIds.Count > 512)
+                if (!IsCurrent(version)) return;
+                banners.RefreshRegisteredApps();
+                foreach (var message in messages)
                 {
-                    var activeIds = messages.Select(item => item.Id).ToHashSet();
-                    knownIds.IntersectWith(activeIds);
+                    if (!knownIds.Add(message.Id)) continue;
+                    banners.SuppressApp(message.AppUserModelId);
+                    ToastInboxDiagnostics.Write("toast-published", message.Id, ToastInboxDiagnostics.Source(message));
+                    ToastReceived?.Invoke(message);
                 }
+                if (knownIds.Count > 512)
+                    knownIds.IntersectWith(notifications.Select(item => item.Id));
             }
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Toast inbox poll failed: {exception.Message}");
+            if (!IsCurrent(version)) return;
             ToastInboxDiagnostics.Write("poll-failed", 0, ToastInboxDiagnostics.Failure(exception));
+            Stop();
+            SetAccess(ToastInboxAccess.Unavailable);
         }
-        finally
-        {
-            Volatile.Write(ref polling, 0);
-        }
+        finally { operationGate.Release(); }
     }
 
-    void Listener_NotificationChanged(
-        UserNotificationListener sender,
-        UserNotificationChangedEventArgs args)
+    bool IsCurrent(int version)
     {
-        if (disposed) return;
-        ToastInboxDiagnostics.Write("listener-event", args.UserNotificationId, $"kind={args.ChangeKind}");
-        if (args.ChangeKind != UserNotificationChangedKind.Added) return;
-        _ = PublishChangedNotificationAsync(sender, args.UserNotificationId);
+        lock (stateGate) return !disposed && enabled && generation == version;
     }
 
-    async Task PublishChangedNotificationAsync(UserNotificationListener sender, uint notificationId)
+    public async Task<BitmapSource?> LoadIconAsync(uint id)
     {
         try
         {
-            for (var attempt = 0; attempt < NotificationReadRetryCount; attempt++)
-            {
-                var notification = sender.GetNotification(notificationId);
-                var message = notification is null ? null : ToMessage(notification);
-                if (message is not null)
-                {
-                    if (!TryRemember(message.Id))
-                    {
-                        ToastInboxDiagnostics.Write("event-known", message.Id, ToastInboxDiagnostics.Source(message));
-                        return;
-                    }
-                    ToastInboxDiagnostics.Write("event-published", message.Id, ToastInboxDiagnostics.Source(message));
-                    ToastReceived?.Invoke(message);
-                    return;
-                }
+            if (!IsRunning || listener?.GetAccessStatus() != UserNotificationListenerAccessStatus.Allowed) return null;
+            var logo = listener.GetNotification(id)?.AppInfo.DisplayInfo.GetLogo(new Windows.Foundation.Size(48, 48));
+            if (logo is null) return null;
+            using var stream = await logo.OpenReadAsync();
+            if (stream.Size > 2 * 1024 * 1024) return null;
+            using var reader = new DataReader(stream);
+            await reader.LoadAsync((uint)stream.Size);
+            var bytes = new byte[(int)stream.Size];
+            reader.ReadBytes(bytes);
+            using var memory = new MemoryStream(bytes);
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.StreamSource = memory;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch { return null; }
+    }
 
-                ToastInboxDiagnostics.Write(
-                    notification is null ? "event-not-found" : "event-unreadable",
-                    notificationId,
-                    $"attempt={attempt + 1}");
-                if (attempt < NotificationReadRetryCount - 1)
-                    await Task.Delay(NotificationReadRetryDelay);
-            }
+    public bool Dismiss(uint id)
+    {
+        try
+        {
+            if (!IsRunning || listener?.GetAccessStatus() != UserNotificationListenerAccessStatus.Allowed) return false;
+            listener.RemoveNotification(id);
+            return true;
         }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Toast inbox event failed: {exception.Message}");
-            ToastInboxDiagnostics.Write("event-failed", notificationId, ToastInboxDiagnostics.Failure(exception));
+            ToastInboxDiagnostics.Write("dismiss-failed", id, ToastInboxDiagnostics.Failure(exception));
+            return false;
         }
-    }
-
-    bool TryRemember(uint id)
-    {
-        lock (knownIdsGate) return knownIds.Add(id);
     }
 
     static SystemToastMessage? ToMessage(UserNotification notification)
@@ -285,41 +262,46 @@ public sealed class SystemToastInboxService : IDisposable
         {
             var visual = notification.Notification.Visual;
             var binding = visual.GetBinding(KnownNotificationBindings.ToastGeneric);
-            var text = ToastTextComposer.Compose(
-                binding?.GetTextElements().Select(item => item.Text),
-                notification.Notification.Visual.Bindings.Select(item =>
-                    item.GetTextElements().Select(element => element.Text)));
+            var text = ToastTextComposer.Compose(binding?.GetTextElements().Select(item => item.Text),
+                visual.Bindings.Select(item => item.GetTextElements().Select(element => element.Text)));
             var appName = notification.AppInfo.DisplayInfo.DisplayName;
-            var appId = notification.AppInfo.AppUserModelId;
-            return new SystemToastMessage(
-                notification.Id,
+            return new SystemToastMessage(notification.Id,
                 string.IsNullOrWhiteSpace(appName) ? "Windows" : appName.Trim(),
-                text.Title,
-                text.Body,
-                appId ?? string.Empty,
-                notification.CreationTime);
+                text.Title, text.Body, notification.AppInfo.AppUserModelId ?? string.Empty, notification.CreationTime);
         }
         catch { return null; }
     }
 
     void SetAccess(ToastInboxAccess value)
     {
-        if (Access == value) return;
         Access = value;
         ToastInboxDiagnostics.Write("access-changed", 0, $"value={value}");
         AccessChanged?.Invoke(value);
     }
 
-    public void Dispose()
+    public void Stop()
     {
-        lock (listenerGate)
+        lock (stateGate)
         {
             if (disposed) return;
-            disposed = true;
-            if (listener is not null && listening)
-                listener.NotificationChanged -= Listener_NotificationChanged;
-            listening = false;
+            enabled = false;
+            generation++;
+            initialized = false;
+            knownIds.Clear();
+            timer.Stop();
+            banners.Restore();
+            SetAccess(ToastInboxAccess.Unknown);
         }
-        timer.Dispose();
+    }
+
+    public void Dispose()
+    {
+        lock (stateGate)
+        {
+            if (disposed) return;
+            Stop();
+            disposed = true;
+
+        }
     }
 }

@@ -43,20 +43,31 @@ public sealed class SystemToastInboxTests
     }
 
     [Fact]
-    public async Task ToastInboxThreading_RunsSubscriptionWorkOnMtaThread()
+    public async Task ToastInboxPolling_UsesItsOwningDispatcherAndStartsDisabled()
     {
-        var type = typeof(SystemToastInboxService).Assembly.GetType(
-            "ChronoIsle.App.Services.ToastInboxThreading");
-
-        Assert.NotNull(type);
-        var run = type.GetMethod("RunAsync", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(run);
-        var apartment = ApartmentState.Unknown;
-        var task = (Task?)run.Invoke(null, [new Action(() => apartment = Thread.CurrentThread.GetApartmentState())]);
-
-        Assert.NotNull(task);
-        await task;
-        Assert.Equal(ApartmentState.MTA, apartment);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                using var banners = new NativeToastBannerService(
+                    @"Software\ChronoIsle.Tests\" + Guid.NewGuid().ToString("N"),
+                    Path.Combine(Path.GetTempPath(), "ChronoIslePollingTests", Guid.NewGuid().ToString("N"), "backup.json"));
+                using var service = new SystemToastInboxService(banners);
+                var field = typeof(SystemToastInboxService).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic);
+                var timer = Assert.IsType<System.Windows.Threading.DispatcherTimer>(field!.GetValue(service));
+                Assert.True(timer.Dispatcher.CheckAccess());
+                Assert.False(timer.IsEnabled);
+                Assert.Equal(TimeSpan.FromMilliseconds(500), timer.Interval);
+                Assert.False(service.IsRunning);
+                completion.SetResult();
+            }
+            catch (Exception exception) { completion.SetException(exception); }
+            finally { System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown(); }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        await completion.Task;
     }
 
     [Fact]

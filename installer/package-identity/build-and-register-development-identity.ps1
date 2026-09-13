@@ -39,6 +39,30 @@ $packagePath = Join-Path $outputDirectory 'ChronoIsle.Identity.msix'
 New-Item -ItemType Directory -Force -Path $layoutDirectory | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Package.appxmanifest') -Destination (Join-Path $layoutDirectory 'AppxManifest.xml') -Force
 
+# A fresh checkout must contain valid package logos, not depend on an old layout.
+Add-Type -AssemblyName System.Drawing
+$assetsDirectory = Join-Path $layoutDirectory 'Assets'
+New-Item -ItemType Directory -Force -Path $assetsDirectory | Out-Null
+$logoSource = [Drawing.Image]::FromFile((Join-Path $root 'src\ChronoIsle.App\Assets\island-mascot.png'))
+try {
+    foreach ($logo in @(@{ Name = 'storelogo.png'; Size = 50 }, @{ Name = 'Square44x44Logo.png'; Size = 44 }, @{ Name = 'Square150x150Logo.png'; Size = 150 })) {
+        $bitmap = [Drawing.Bitmap]::new($logo.Size, $logo.Size)
+        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.Clear([Drawing.Color]::Transparent)
+            $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $ratio = [Math]::Min($logo.Size / $logoSource.Width, $logo.Size / $logoSource.Height)
+            $width = [int]($logoSource.Width * $ratio)
+            $height = [int]($logoSource.Height * $ratio)
+            $graphics.DrawImage($logoSource, [int](($logo.Size - $width) / 2), [int](($logo.Size - $height) / 2), $width, $height)
+            $bitmap.Save((Join-Path $assetsDirectory $logo.Name), [Drawing.Imaging.ImageFormat]::Png)
+        }
+        finally { $graphics.Dispose(); $bitmap.Dispose() }
+    }
+}
+finally { $logoSource.Dispose() }
+
+
 & $makeAppx pack /o /d $layoutDirectory /nv /p $packagePath
 if ($LASTEXITCODE -ne 0) { throw 'MakeAppx did not create the external-location package.' }
 
@@ -52,8 +76,9 @@ if (-not $certificate) {
 
 $certificatePath = Join-Path $outputDirectory 'ChronoIsle.Development.cer'
 Export-Certificate -Cert $certificate -FilePath $certificatePath -Force | Out-Null
-if (-not (Get-ChildItem -Path 'Cert:\CurrentUser\TrustedPeople' | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
-    Import-Certificate -FilePath $certificatePath -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+# MSIX validates the local-machine Trusted People store. This step needs an elevated shell.
+if (-not (Get-ChildItem -Path 'Cert:\LocalMachine\TrustedPeople' | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
+    Import-Certificate -FilePath $certificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
 }
 
 & $signTool sign /fd SHA256 /s My /sha1 $certificate.Thumbprint $packagePath
@@ -61,10 +86,12 @@ if ($LASTEXITCODE -ne 0) { throw 'SignTool did not sign the external-location pa
 
 $existingPackage = Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue
 if ($existingPackage) {
-    throw "Package identity $packageName is already registered for this user. Remove it before registering this development package again."
+    Add-AppxPackage -Path $packagePath -ExternalLocation $PublishDirectory -ForceUpdateFromAnyVersion
+}
+else {
+    Add-AppxPackage -Path $packagePath -ExternalLocation $PublishDirectory
 }
 
-Add-AppxPackage -Path $packagePath -ExternalLocation $PublishDirectory
 $registeredPackage = Get-AppxPackage -Name $packageName -ErrorAction Stop
 if (-not $registeredPackage) { throw "Package identity $packageName was not registered." }
 

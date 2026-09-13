@@ -54,27 +54,16 @@ public sealed class SystemStatusUiContractTests
     }
 
     [Fact]
-    public void ToastInbox_IsNotWiredIntoTheApplicationOrIsland()
+    public void ToastInbox_RunsInItsOwnWindowWithoutTakingOverTheIslandHeader()
     {
         var (xaml, source) = IslandFiles();
-        var workspace = FindWorkspace();
-        var appSource = File.ReadAllText(Path.Combine(
-            workspace, "src", "ChronoIsle.App", "App.xaml.cs"));
-
-        Assert.DoesNotContain("toastInbox.ToastReceived += message", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("ShowSystemToast", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("PositionNotificationWindow", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("SystemToastInboxService", appSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("StartToastInboxAsync", appSource, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Island_DoesNotRetainTheRetiredNotificationWindow()
-    {
-        var (xaml, source) = IslandFiles();
+        var appSource = File.ReadAllText(Path.Combine(FindWorkspace(), "src", "ChronoIsle.App", "App.xaml.cs"));
+        Assert.Contains("collection.AddSingleton<SystemToastInboxService>();", appSource, StringComparison.Ordinal);
+        Assert.Contains("toastInbox.ToastReceived +=", appSource, StringComparison.Ordinal);
+        Assert.Contains("ShowSystemToast(message, toastInbox)", appSource, StringComparison.Ordinal);
+        Assert.Contains("notificationWindow.ShowMessage(message, inbox);", source, StringComparison.Ordinal);
+        Assert.Contains("notificationWindow?.Close();", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SystemToastHeader", xaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("notificationWindow", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("IslandNotificationWindow", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,11 +80,18 @@ public sealed class SystemStatusUiContractTests
     }
 
     [Fact]
-    public void Island_DoesNotPositionTheRetiredNotificationWindow()
+    public void NotificationWindow_FollowsTheIslandAndRespectsTaskbarPlacement()
     {
         var (_, source) = IslandFiles();
-        Assert.DoesNotContain("PositionNotificationWindow", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("ShowSystemToast", source, StringComparison.Ordinal);
+        Assert.Contains("LocationChanged += (_, _) => PositionNotificationWindow();", source, StringComparison.Ordinal);
+        Assert.Contains("placement == IslandPlacement.Taskbar", source, StringComparison.Ordinal);
+        Assert.Contains("notificationWindow.PositionNextTo(anchor, area", source, StringComparison.Ordinal);
+        var start = source.IndexOf("public void ShowSystemToast", StringComparison.Ordinal);
+        var end = source.IndexOf("public void HideSystemToast", start, StringComparison.Ordinal);
+        var display = source[start..end];
+        Assert.DoesNotContain("Expand();", display, StringComparison.Ordinal);
+        Assert.DoesNotContain("musicModeActive =", display, StringComparison.Ordinal);
+        Assert.DoesNotContain("Width =", display, StringComparison.Ordinal);
     }
 
     [Fact]

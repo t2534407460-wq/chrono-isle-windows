@@ -1,4 +1,5 @@
 using System.IO;
+using System.Xml.Linq;
 
 namespace ChronoIsle.UiTests;
 
@@ -32,6 +33,7 @@ public sealed class PackageIdentityContractTests
         Assert.Contains("<uap10:AllowExternalContent>true</uap10:AllowExternalContent>", packageManifest, StringComparison.Ordinal);
         Assert.Contains("<rescap:Capability Name=\"runFullTrust\" />", packageManifest, StringComparison.Ordinal);
         Assert.Contains("<rescap:Capability Name=\"unvirtualizedResources\" />", packageManifest, StringComparison.Ordinal);
+        Assert.Contains("<uap3:Capability Name=\"userNotificationListener\" />", packageManifest, StringComparison.Ordinal);
         Assert.DoesNotContain("graphicsCaptureWithoutBorder", packageManifest, StringComparison.Ordinal);
         Assert.Contains("publisher=\"CN=ChronoIsle Development\"", applicationManifest, StringComparison.Ordinal);
         Assert.Contains("packageName=\"Tr11111.ChronoIsle\"", applicationManifest, StringComparison.Ordinal);
@@ -42,9 +44,21 @@ public sealed class PackageIdentityContractTests
             buildToolsProject,
             StringComparison.Ordinal);
         Assert.Contains("New-SelfSignedCertificate", registrationScript, StringComparison.Ordinal);
-        Assert.Contains("Cert:\\CurrentUser\\TrustedPeople", registrationScript, StringComparison.Ordinal);
+        Assert.Contains("Cert:\\LocalMachine\\TrustedPeople", registrationScript, StringComparison.Ordinal);
         Assert.Contains("Add-AppxPackage -Path $packagePath -ExternalLocation $PublishDirectory", registrationScript, StringComparison.Ordinal);
         Assert.Contains("Get-AppxPackage -Name $packageName", registrationScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PackageIdentity_OnlySharesNotificationRegistrySettings()
+    {
+        var manifest = XDocument.Load(Path.Combine(FindWorkspace(), "installer", "package-identity", "Package.appxmanifest"));
+        XNamespace virtualization = "http://schemas.microsoft.com/appx/manifest/virtualization/windows10";
+        var configuration = Assert.Single(manifest.Descendants(virtualization + "RegistryWriteVirtualization"));
+        var excluded = Assert.Single(configuration.Descendants(virtualization + "ExcludedKey"));
+        Assert.Equal(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings", excluded.Value);
+        Assert.DoesNotContain(manifest.Descendants(), node =>
+            node.Name.LocalName == "RegistryWriteVirtualization" && node.Value.Trim() == "disabled");
     }
 
     static string FindWorkspace()

@@ -20,6 +20,7 @@ public partial class LifeSettingsWindow : Window
     readonly OpenAiChatService ai;
     readonly AutoStartService autoStart;
     readonly ThemeService theme;
+    readonly SystemToastInboxService? toastInbox;
     readonly SqliteOnlineBackupService backups;
     readonly IcsExportService icsExport;
     readonly IcsImportService icsImport;
@@ -32,7 +33,7 @@ public partial class LifeSettingsWindow : Window
 
     public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders,
         OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline,
-        ThemeService theme)
+        ThemeService theme, SystemToastInboxService? toastInbox = null)
     {
         InitializeComponent();
         this.settings = settings;
@@ -41,6 +42,12 @@ public partial class LifeSettingsWindow : Window
         this.ai = ai;
         this.autoStart = autoStart;
         this.theme = theme;
+        this.toastInbox = toastInbox;
+        if (toastInbox is not null) toastInbox.AccessChanged += ToastInbox_AccessChanged;
+        Closed += (_, _) =>
+        {
+            if (toastInbox is not null) toastInbox.AccessChanged -= ToastInbox_AccessChanged;
+        };
         var provider = settings.Load();
         var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
         backups = new SqliteOnlineBackupService(runtime.ConnectionFactory, runtime.WriteQueue);
@@ -56,6 +63,8 @@ public partial class LifeSettingsWindow : Window
         var savedPreferences = preferences.Load();
         committedPreferences = savedPreferences;
         WindowsNotifications.IsChecked = savedPreferences.WindowsNotifications;
+        ToastInboxEnabled.IsChecked = savedPreferences.ToastInboxEnabled;
+        RefreshToastInboxStatus();
         MediaAutoTakeover.IsChecked = savedPreferences.MediaAutoTakeover;
         ThemeModeSelector.SelectedValue = ThemeService.Parse(savedPreferences.ThemeMode).ToString();
         AccentSchemeSelector.SelectedValue = ThemeService.ParseAccent(savedPreferences.AccentScheme).ToString();
@@ -78,6 +87,50 @@ public partial class LifeSettingsWindow : Window
         AutoStartStatus.Text = autoStart.Status;
         loading = false;
         RefreshAuditEntries();
+    }
+
+    void ToastInbox_AccessChanged(ToastInboxAccess _) => Dispatcher.BeginInvoke(RefreshToastInboxStatus);
+
+    void RefreshToastInboxStatus()
+    {
+        ToastInboxStatus.Text = !preferences.Load().ToastInboxEnabled
+            ? "未启用，保存设置后生效。"
+            : toastInbox?.Access switch
+            {
+                ToastInboxAccess.Allowed when toastInbox.ReplacesBanners => "已连接，新的应用通知将在灵动岛显示。",
+                ToastInboxAccess.Allowed => "已连接；横幅替换未生效，可在 Windows 通知设置中关闭应用横幅。",
+                ToastInboxAccess.Denied => "尚未获得通知访问权限，请在 Windows 设置中允许时屿读取通知，再重新连接。",
+                ToastInboxAccess.Unavailable => "暂时无法接入。请确认已安装时屿通知组件，并开启通知访问权限。",
+                _ => "等待连接，首次接入需要允许 Windows 通知访问。"
+            };
+    }
+
+    async void RetryToastAccess_Click(object sender, RoutedEventArgs e)
+    {
+        if (toastInbox is null || !preferences.Load().ToastInboxEnabled)
+        {
+            ToastInboxStatus.Text = "请先启用 Windows 通知并保存设置。";
+            return;
+        }
+        RetryToastAccessButton.IsEnabled = false;
+        try { await toastInbox.StartAsync(); }
+        finally
+        {
+            RetryToastAccessButton.IsEnabled = true;
+            RefreshToastInboxStatus();
+        }
+    }
+
+    void ToastAccessSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:privacy-notifications")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch { ToastInboxStatus.Text = "请手动打开 Windows 设置 → 隐私和安全性 → 通知。"; }
     }
 
     void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
@@ -132,6 +185,7 @@ public partial class LifeSettingsWindow : Window
         var updated = current with
         {
             WindowsNotifications = WindowsNotifications.IsChecked == true,
+            ToastInboxEnabled = ToastInboxEnabled.IsChecked == true,
             AssistantPersona = Persona.SelectedValue as string ?? "Direct",
             MediaAutoTakeover = MediaAutoTakeover.IsChecked == true,
             ThemeMode = ThemeModeSelector.SelectedValue as string ?? "System",

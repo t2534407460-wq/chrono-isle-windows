@@ -11,6 +11,10 @@ public partial class IslandNotificationWindow : Window
     const double Gap = 6;
     readonly DispatcherTimer retractTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     int animationVersion;
+    SystemToastMessage? currentMessage;
+    SystemToastInboxService? inbox;
+
+    internal SystemToastMessage? CurrentMessage => currentMessage;
 
     public IslandNotificationWindow()
     {
@@ -19,8 +23,16 @@ public partial class IslandNotificationWindow : Window
         SourceInitialized += (_, _) => IslandWindowStyles.HideFromTaskView(this);
     }
 
-    public void ShowMessage(SystemToastMessage message)
+    public void ShowMessage(SystemToastMessage message, SystemToastInboxService? inbox = null)
     {
+        currentMessage = message;
+        this.inbox = inbox;
+        NotificationActionStatus.Visibility = Visibility.Collapsed;
+        OpenAppButton.IsEnabled = NativeToastBannerService.IsValidAppId(message.AppUserModelId);
+        NotificationTime.Text = message.CreatedAt.LocalDateTime.ToString("HH:mm");
+        NotificationAppIcon.Source = message.Icon;
+        NotificationAppIcon.Visibility = message.Icon is null ? Visibility.Collapsed : Visibility.Visible;
+        NotificationAppBadge.Visibility = message.Icon is null ? Visibility.Visible : Visibility.Collapsed;
         var appName = string.IsNullOrWhiteSpace(message.AppName) ? "系统通知" : message.AppName.Trim();
         var title = string.IsNullOrWhiteSpace(message.Title) ? "新消息" : message.Title.Trim();
         var body = message.Body?.Trim() ?? string.Empty;
@@ -66,11 +78,59 @@ public partial class IslandNotificationWindow : Window
             Opacity = 1;
             NotificationTranslate.Y = 0;
         }));
-        retractTimer.Start();
+        if (!IsMouseOver) retractTimer.Start();
+        if (inbox is not null && message.Icon is null) _ = LoadIconAsync(message, inbox);
+    }
+
+    async Task LoadIconAsync(SystemToastMessage message, SystemToastInboxService source)
+    {
+        var icon = await source.LoadIconAsync(message.Id);
+        if (!ReferenceEquals(currentMessage, message) || icon is null) return;
+        NotificationAppIcon.Source = icon;
+        NotificationAppIcon.Visibility = Visibility.Visible;
+        NotificationAppBadge.Visibility = Visibility.Collapsed;
+    }
+
+    void Notification_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e) => retractTimer.Stop();
+
+    void Notification_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (IsVisible) retractTimer.Start();
+    }
+
+    void OpenApp_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentMessage is not { } message || !NativeToastBannerService.IsValidAppId(message.AppUserModelId)) return;
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("explorer.exe") { UseShellExecute = false };
+            start.ArgumentList.Add(@"shell:AppsFolder\" + message.AppUserModelId);
+            System.Diagnostics.Process.Start(start)?.Dispose();
+            HideMessage();
+        }
+        catch (Exception exception)
+        {
+            ToastInboxDiagnostics.Write("open-app-failed", message.Id, ToastInboxDiagnostics.Failure(exception));
+            ShowActionFailure("无法打开应用，可在 Windows 通知中心查看。");
+        }
+    }
+
+    void Dismiss_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentMessage is not { } message) return;
+        if (inbox?.Dismiss(message.Id) == true) HideMessage();
+        else ShowActionFailure("未能清除，请检查通知访问权限。");
+    }
+
+    void ShowActionFailure(string text)
+    {
+        NotificationActionStatus.Text = text;
+        NotificationActionStatus.Visibility = Visibility.Visible;
     }
 
     public void PositionNextTo(Rect anchor, Rect workArea, bool placeAbove)
     {
+        UpdateLayout();
         NotificationCard.Measure(new System.Windows.Size(Width, double.PositiveInfinity));
         var height = Math.Max(1, Math.Max(ActualHeight, NotificationCard.DesiredSize.Height));
         var targetLeft = anchor.Left + (anchor.Width - Width) / 2;
@@ -83,9 +143,10 @@ public partial class IslandNotificationWindow : Window
         Top = Math.Clamp(targetTop, workArea.Top, maximumTop);
     }
 
-    void HideMessage()
+    public void HideMessage()
     {
         retractTimer.Stop();
+        currentMessage = null;
         if (!IsVisible) return;
         var version = ++animationVersion;
         var animation = new DoubleAnimation
@@ -111,6 +172,8 @@ public partial class IslandNotificationWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         retractTimer.Stop();
+        currentMessage = null;
+        animationVersion++;
         base.OnClosed(e);
     }
 }

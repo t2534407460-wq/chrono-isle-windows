@@ -100,6 +100,8 @@ public partial class App : System.Windows.Application
             planner: provider.GetRequiredService<IConversationPlanner>(),
             argumentParser: provider.GetRequiredService<IOperationArgumentParser>(),
             assistantPlanPipeline: provider.GetRequiredService<AssistantPlanPipeline>()));
+        collection.AddSingleton<NativeToastBannerService>();
+        collection.AddSingleton<SystemToastInboxService>();
         collection.AddSingleton<WindowsNotificationService>();
         collection.AddSingleton<ReminderService>();
         collection.AddSingleton<LifeTrayService>();
@@ -127,6 +129,12 @@ public partial class App : System.Windows.Application
 
         var island = services.GetRequiredService<LifeIslandWindow>();
         var foregroundFps = services.GetRequiredService<ForegroundFpsService>();
+        var toastInbox = services.GetRequiredService<SystemToastInboxService>();
+        toastInbox.ToastReceived += message => Dispatcher.BeginInvoke(() => island.ShowSystemToast(message, toastInbox));
+        toastInbox.AccessChanged += _ => Dispatcher.BeginInvoke(() =>
+        {
+            if (!toastInbox.IsRunning) island.HideSystemToast();
+        });
         island.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
         island.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
@@ -149,6 +157,9 @@ public partial class App : System.Windows.Application
         island.Show();
         if (!uiTestMode)
         {
+            // Recover an interrupted previous session even if notification access is now disabled.
+            services.GetRequiredService<NativeToastBannerService>().Restore();
+            _ = StartToastInboxAsync();
             var media = services.GetRequiredService<MediaSessionService>();
             _ = media.StartAsync().ContinueWith(task =>
             {
@@ -164,6 +175,7 @@ public partial class App : System.Windows.Application
                 Dispatcher.BeginInvoke(() =>
                 {
                     island.SetFullscreenAvoidance(fullscreen.Current);
+                    _ = StartToastInboxAsync();
                     var currentPreferences = services.GetRequiredService<LifePreferencesService>().Load();
                     if (currentPreferences.TelemetryEnabled)
                     {
@@ -182,6 +194,19 @@ public partial class App : System.Windows.Application
             }
         }
         services.GetRequiredService<ReminderService>().Start();
+    }
+
+    async Task StartToastInboxAsync()
+    {
+        var provider = services!;
+        var inbox = provider.GetRequiredService<SystemToastInboxService>();
+        if (provider.GetRequiredService<LifePreferencesService>().Load().ToastInboxEnabled)
+            await inbox.StartAsync();
+        else
+        {
+            inbox.Stop();
+            provider.GetRequiredService<LifeIslandWindow>().HideSystemToast();
+        }
     }
 
     void OpenMain()

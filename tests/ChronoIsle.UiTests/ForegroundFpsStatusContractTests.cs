@@ -31,7 +31,7 @@ public sealed class ForegroundFpsStatusContractTests
     }
 
     [Fact]
-    public void SettingsAndIsland_RetireNotificationsButKeepMusicMode()
+    public void SettingsAndIsland_EnableNotificationsAndKeepMusicMode()
     {
         var workspace = FindWorkspace();
         var settingsXaml = File.ReadAllText(Path.Combine(
@@ -41,9 +41,9 @@ public sealed class ForegroundFpsStatusContractTests
         var app = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "App.xaml.cs"));
 
-        Assert.DoesNotContain("x:Name=\"ToastInboxEnabled\"", settingsXaml, StringComparison.Ordinal);
-        Assert.DoesNotContain("StartToastInboxAsync", app, StringComparison.Ordinal);
-        Assert.DoesNotContain("SystemToastInboxService", app, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"ToastInboxEnabled\"", settingsXaml, StringComparison.Ordinal);
+        Assert.Contains("StartToastInboxAsync", app, StringComparison.Ordinal);
+        Assert.Contains("SystemToastInboxService", app, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"MediaAutoTakeover\"", settingsXaml, StringComparison.Ordinal);
         Assert.Contains("ToggleMusicMode", island, StringComparison.Ordinal);
         Assert.Contains("currentPreferences.IslandShowMusicMode &&", island, StringComparison.Ordinal);

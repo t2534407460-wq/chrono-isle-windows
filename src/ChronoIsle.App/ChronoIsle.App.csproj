@@ -29,6 +29,7 @@
   <ItemGroup>
     <Compile Include="App.xaml.cs;GlobalAliases.cs;LifeModels.cs;MarkdownTextBlock.cs" />
     <Compile Include="Services\Domain\*.cs" />
+    <Compile Include="Services\NativeToastBannerService.cs" />
     <Compile Include="Services\Persistence\*.cs" />
     <Compile Include="Services\Commanding\*.cs" />
     <Compile Include="Services\ImportExport\*.cs" />
