@@ -14,9 +14,9 @@ public sealed class TrayMenuContractTests
 
         Assert.DoesNotContain("ContextMenuStrip", service, StringComparison.Ordinal);
         Assert.Contains("TrayMenuWindow", service, StringComparison.Ordinal);
-        Assert.Contains("Width=\"184\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("<Setter Property=\"Height\" Value=\"30\"/>", xaml, StringComparison.Ordinal);
-        Assert.Contains("<Setter Property=\"FontSize\" Value=\"12\"/>", xaml, StringComparison.Ordinal);
+        Assert.Contains("Width=\"200\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Height\" Value=\"34\"/>", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"FontSize\" Value=\"13\"/>", xaml, StringComparison.Ordinal);
         Assert.Contains("WindowStyle=\"None\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AllowsTransparency=\"True\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Background=\"{DynamicResource Brush.Island}\"", xaml, StringComparison.Ordinal);

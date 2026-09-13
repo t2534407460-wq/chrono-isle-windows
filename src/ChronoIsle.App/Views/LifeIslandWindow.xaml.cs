@@ -81,6 +81,7 @@ public partial class LifeIslandWindow : Window
     bool pointerHover;
     ExpandedPinState expandedPinState = ExpandedPinState.Normal;
     int windowBoundsAnimationVersion;
+    double windowResizeCenterX = double.NaN;
     int topDockAnimationVersion;
     int expandedContentAnimationVersion;
     int expandedContentResizeVersion;
@@ -376,7 +377,8 @@ public partial class LifeIslandWindow : Window
         var area = TryGetMonitorGeometry(screen ?? ScreenForHeader(), out var geometry)
             ? geometry.WorkArea
             : SystemParameters.WorkArea;
-        Left = area.Left + (area.Width - ActualWidth) / 2;
+        windowResizeCenterX = area.Left + area.Width / 2;
+        Left = windowResizeCenterX - ActualWidth / 2;
         Top = area.Top + 10;
     }
 
@@ -652,6 +654,7 @@ public partial class LifeIslandWindow : Window
         var clamped = IslandPlacementGeometry.ClampRectToBounds(new Rect(Left, Top, width, height), bounds);
         Left = clamped.Left;
         Top = clamped.Top;
+        windowResizeCenterX = Left + width / 2;
     }
 
     void PositionAtTaskbar(MonitorGeometry geometry)
@@ -661,6 +664,7 @@ public partial class LifeIslandWindow : Window
         UpdateLayout();
         var width = ActualWidth > 0 ? ActualWidth : Width;
         Left = TaskbarLeftForWidth(geometry, width);
+        windowResizeCenterX = Left + width / 2;
         var headerOffset = Header.TranslatePoint(new System.Windows.Point(0, 0), this).Y;
         var targetHeaderTop = IslandPlacementGeometry.TaskbarHeaderTop(taskbar, Header.ActualHeight);
         Top = IslandPlacementGeometry.WindowTopForHeaderAnchor(targetHeaderTop, headerOffset);
@@ -1013,7 +1017,7 @@ public partial class LifeIslandWindow : Window
             Style = (Style)FindResource("IslandIcon"),
             Padding = new Thickness(8, 4, 8, 4),
             Margin = new Thickness(0, 0, 5, 5),
-            FontSize = 11
+            FontSize = 12
         };
         button.Click += (_, _) => action();
         return button;
@@ -1078,10 +1082,11 @@ public partial class LifeIslandWindow : Window
             Text = DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
             Margin = new Thickness(0, 8, 0, 4), Padding = new Thickness(7), MinWidth = 230
         };
-        var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(255, 105, 97)), FontSize = 11, TextWrapping = TextWrapping.Wrap };
+        var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(255, 105, 97)), FontSize = 12, TextWrapping = TextWrapping.Wrap };
         var dialog = new Window
         {
-            Title = title, Owner = this, Width = 320, Height = 170, ResizeMode = ResizeMode.NoResize,
+            Style = (Style)FindResource("Window.Display"),
+            Title = title, Owner = this, Width = 360, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
         SetThemeResource(dialog, BackgroundProperty, "Brush.Card");
@@ -1091,9 +1096,9 @@ public partial class LifeIslandWindow : Window
         panel.Children.Add(input);
         panel.Children.Add(error);
         var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 7, 0, 0) };
-        var cancel = new Button { Content = "取消", Padding = new Thickness(10, 4, 10, 4) };
+        var cancel = new Button { Content = "取消", Style = (Style)FindResource("Button.Secondary"), Padding = new Thickness(10, 4, 10, 4) };
         cancel.Click += (_, _) => dialog.DialogResult = false;
-        var confirm = new Button { Content = "确定", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0) };
+        var confirm = new Button { Content = "确定", Style = (Style)FindResource("Button.Primary"), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0) };
         confirm.Click += (_, _) =>
         {
             if (!DateTime.TryParseExact(input.Text.Trim(), "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
@@ -1156,7 +1161,8 @@ public partial class LifeIslandWindow : Window
             Child = panel
         };
         SetThemeResource(todayPanel, Border.BackgroundProperty, "Brush.Card");
-        SetThemeResource(todayPanel, Border.BorderBrushProperty, "Brush.Stroke");
+        SetThemeResource(todayPanel, Border.BorderBrushProperty, "Brush.StrokeSoft");
+        RenderOptions.SetClearTypeHint(todayPanel, ClearTypeHint.Enabled);
         ExpandedContent.Children.Insert(3, todayPanel);
         todayPanel.Visibility = Visibility.Collapsed;
         CalendarPanel.Visibility = Visibility.Visible;
@@ -1213,7 +1219,7 @@ public partial class LifeIslandWindow : Window
         {
             todayDashboardContent.Children.Add(new TextBlock { Text = $"日程冲突：今日有 {conflicts.Count} 组重叠日程", Foreground = new SolidColorBrush(Color.FromRgb(255, 105, 97)), Margin = new Thickness(0, 5, 0, 2), FontWeight = FontWeights.SemiBold });
             foreach (var conflict in conflicts.Take(2))
-                todayDashboardContent.Children.Add(new TextBlock { Text = $"{conflict.First.StartsAt:HH:mm}–{conflict.First.EndsAt:HH:mm}  {conflict.First.Title} / {conflict.Second.Title}", Foreground = new SolidColorBrush(Color.FromRgb(255, 159, 10)), FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis });
+                todayDashboardContent.Children.Add(new TextBlock { Text = $"{conflict.First.StartsAt:HH:mm}–{conflict.First.EndsAt:HH:mm}  {conflict.First.Title} / {conflict.Second.Title}", Foreground = new SolidColorBrush(Color.FromRgb(255, 159, 10)), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
@@ -1272,11 +1278,11 @@ public partial class LifeIslandWindow : Window
             new DateTimeOffset(weekStart.AddDays(7), TimeZoneInfo.Local.GetUtcOffset(weekStart.AddDays(7))));
         var weeklyFacts = reports.Generate(weekPeriod, "facts-v2").Facts;
         todayDashboardContent.Children.Add(SetThemeResource(
-            new TextBlock { Text = $"本周复盘：完成 {weeklyFacts.CompletedCount} · 逾期 {weeklyFacts.OverdueCount} · 高优先级 {weeklyFacts.HighPriorityCount}", Margin = new Thickness(0, 8, 0, 0), FontSize = 11 },
+            new TextBlock { Text = $"本周复盘：完成 {weeklyFacts.CompletedCount} · 逾期 {weeklyFacts.OverdueCount} · 高优先级 {weeklyFacts.HighPriorityCount}", Margin = new Thickness(0, 8, 0, 0), FontSize = 12 },
             TextBlock.ForegroundProperty,
             "Brush.TextSecondary"));
         var suggestionTitle = SetThemeResource(
-            new TextBlock { Text = "AI 今日建议（本地排序）", FontSize = 11, FontWeight = FontWeights.SemiBold },
+            new TextBlock { Text = "AI 今日建议（本地排序）", FontSize = 12, FontWeight = FontWeights.SemiBold },
             TextBlock.ForegroundProperty,
             "Brush.TextSecondary");
         var suggestionBody = SetThemeResource(
@@ -1285,7 +1291,7 @@ public partial class LifeIslandWindow : Window
                 Text = suggestions.Length == 0 ? "暂时没有需要优先处理的事项。" : $"优先处理 {string.Join("、", suggestions)}",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 3, 0, 0),
-                FontSize = 11
+                FontSize = 12
             },
             TextBlock.ForegroundProperty,
             "Brush.TextPrimary");
@@ -1561,7 +1567,7 @@ public partial class LifeIslandWindow : Window
     {
         if (todayDashboardContent is null || items.Count == 0) return;
         todayDashboardContent.Children.Add(SetThemeResource(
-            new TextBlock { Text = title, FontSize = 11, Margin = new Thickness(0, 3, 0, 3) },
+            new TextBlock { Text = title, FontSize = 12, Margin = new Thickness(0, 3, 0, 3) },
             TextBlock.ForegroundProperty,
             "Brush.TextTertiary"));
         foreach (var item in items.Take(3))
@@ -1632,7 +1638,7 @@ public partial class LifeIslandWindow : Window
             Style = (Style)FindResource("IslandType"),
             Margin = new Thickness(4, 0, 0, 3),
             Padding = new Thickness(6, 2, 6, 2),
-            FontSize = 10,
+            FontSize = 11,
             IsEnabled = enabled
         };
         button.Click += (_, _) => action();
@@ -1722,7 +1728,7 @@ public partial class LifeIslandWindow : Window
             new TextBlock
             {
                 Text = label,
-                FontSize = 10,
+                FontSize = 11,
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Center
             },
             TextBlock.ForegroundProperty,
@@ -1751,6 +1757,7 @@ public partial class LifeIslandWindow : Window
     {
         var dialog = new Window
         {
+            Style = (Style)FindResource("Window.Display"),
             Title = $"{label}详情",
             Width = 500,
             Height = 520,
@@ -1767,6 +1774,7 @@ public partial class LifeIslandWindow : Window
         SetThemeResource(dialog, ForegroundProperty, "Brush.TextPrimary");
 
         var shell = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16) };
+        RenderOptions.SetClearTypeHint(shell, ClearTypeHint.Enabled);
         SetThemeResource(shell, Border.BackgroundProperty, "Brush.Window");
         SetThemeResource(shell, Border.BorderBrushProperty, "Brush.Stroke");
         var layout = new Grid();
@@ -1792,7 +1800,7 @@ public partial class LifeIslandWindow : Window
             TextBlock.ForegroundProperty,
             "Brush.TextPrimary"));
         content.Children.Add(SetThemeResource(
-            new TextBlock { Text = DashboardDetailEmptyText(label), FontSize = 11, Margin = new Thickness(0, 5, 0, 10), TextWrapping = TextWrapping.Wrap },
+            new TextBlock { Text = DashboardDetailEmptyText(label), FontSize = 12, Margin = new Thickness(0, 5, 0, 10), TextWrapping = TextWrapping.Wrap },
             TextBlock.ForegroundProperty,
             "Brush.TextSecondary"));
 
@@ -1886,14 +1894,14 @@ public partial class LifeIslandWindow : Window
             "Brush.TextPrimary"));
         if (items.Count == 0)
             content.Children.Add(SetThemeResource(
-                new TextBlock { Text = emptyText, FontSize = 11, Margin = new Thickness(0, 9, 0, 0), TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = emptyText, FontSize = 12, Margin = new Thickness(0, 9, 0, 0), TextWrapping = TextWrapping.Wrap },
                 TextBlock.ForegroundProperty,
                 "Brush.TextTertiary"));
         else
             foreach (var item in items.Take(2))
             {
                 var itemText = SetThemeResource(
-                    new TextBlock { Text = $"{DashboardTime(item)}  {item.Title}", FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Cursor = System.Windows.Input.Cursors.Hand },
+                    new TextBlock { Text = $"{DashboardTime(item)}  {item.Title}", FontSize = 12, Margin = new Thickness(0, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, Cursor = System.Windows.Input.Cursors.Hand },
                     TextBlock.ForegroundProperty,
                     "Brush.TextPrimary");
                 var target = ItemNavigationTarget.From(item.Id, item.Kind);
@@ -2651,12 +2659,12 @@ public partial class LifeIslandWindow : Window
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var date = new TextBlock { Text = day.Day.ToString("MM-dd"), FontSize = 10 };
+            var date = new TextBlock { Text = day.Day.ToString("MM-dd"), FontSize = 11 };
             date.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextTertiary");
-            var uploaded = new TextBlock { Text = $"↑ {FormatBytes(day.UploadedBytes)}", FontSize = 10 };
+            var uploaded = new TextBlock { Text = $"↑ {FormatBytes(day.UploadedBytes)}", FontSize = 11 };
             uploaded.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSecondary");
             Grid.SetColumn(uploaded, 1);
-            var downloaded = new TextBlock { Text = $"↓ {FormatBytes(day.DownloadedBytes)}", FontSize = 10 };
+            var downloaded = new TextBlock { Text = $"↓ {FormatBytes(day.DownloadedBytes)}", FontSize = 11 };
             downloaded.SetResourceReference(TextBlock.ForegroundProperty, "Brush.TextSecondary");
             Grid.SetColumn(downloaded, 2);
             row.Children.Add(date);
@@ -2699,14 +2707,54 @@ public partial class LifeIslandWindow : Window
             : Math.Min(43, Math.Max(30, Header.Height));
     }
 
+    void UpdateHeaderTextRendering(bool allowClearType = true)
+    {
+        // ClearType needs an opaque text backdrop; the folded status strip has none.
+        var opaque = allowClearType && MainBorder.Opacity >= 1 &&
+            MainBorder.Background is SolidColorBrush brush &&
+            brush.Color.A == byte.MaxValue && brush.Opacity >= 1;
+        RenderOptions.SetClearTypeHint(Header, opaque ? ClearTypeHint.Enabled : ClearTypeHint.Auto);
+        TextOptions.SetTextRenderingMode(Header, opaque ? TextRenderingMode.ClearType : TextRenderingMode.Auto);
+    }
+
+    void UpdateIslandBackground()
+    {
+        if (TopDockStatusLight.Visibility == Visibility.Visible) return;
+        if (!expanded && theme.EffectiveTheme == AppThemeMode.Dark)
+            MainBorder.Background = Brushes.Black;
+        else
+            MainBorder.SetResourceReference(Border.BackgroundProperty, "Brush.Island");
+    }
+
     void ConfigureGlowBorder()
     {
+        UpdateIslandBackground();
+        UpdateHeaderTextRendering();
         if (!preferences.Load().GlowBorderEnabled || !SystemParameters.ClientAreaAnimation)
         {
-            MainBorder.SetResourceReference(Border.BorderBrushProperty, "Brush.Stroke");
+            var light = theme.EffectiveTheme == AppThemeMode.Light;
+            var rimColor = light ? Color.FromRgb(54, 68, 78) : Color.FromRgb(215, 227, 235);
+            var rim = new LinearGradientBrush
+            {
+                StartPoint = new System.Windows.Point(0, 0),
+                EndPoint = new System.Windows.Point(1, 1)
+            };
+            rim.GradientStops.Add(new GradientStop(Color.FromArgb(light ? (byte)72 : (byte)112, rimColor.R, rimColor.G, rimColor.B), 0));
+            rim.GradientStops.Add(new GradientStop(Color.FromArgb(18, rimColor.R, rimColor.G, rimColor.B), .38));
+            rim.GradientStops.Add(new GradientStop(Color.FromArgb(8, rimColor.R, rimColor.G, rimColor.B), .62));
+            rim.GradientStops.Add(new GradientStop(Color.FromArgb(light ? (byte)44 : (byte)64, rimColor.R, rimColor.G, rimColor.B), 1));
+            rim.Freeze();
+            IslandOutline.BorderBrush = rim;
+            var softRim = rim.Clone();
+            softRim.Opacity = .22;
+            softRim.Freeze();
+            IslandStaticRim.BorderBrush = softRim;
+            IslandStaticRim.Visibility = TopDockStatusLight.Visibility == Visibility.Visible
+                ? Visibility.Collapsed : Visibility.Visible;
             return;
         }
 
+        IslandStaticRim.Visibility = Visibility.Collapsed;
         var stroke = (FindResource("Brush.Stroke") as SolidColorBrush)?.Color ?? Color.FromRgb(56, 64, 60);
         var accent = (FindResource("Brush.Accent") as SolidColorBrush)?.Color ?? Color.FromRgb(57, 201, 139);
         var glow = Color.FromArgb(170, accent.R, accent.G, accent.B);
@@ -2719,7 +2767,7 @@ public partial class LifeIslandWindow : Window
         gradient.GradientStops.Add(new GradientStop(stroke, 0));
         gradient.GradientStops.Add(new GradientStop(glow, .45));
         gradient.GradientStops.Add(new GradientStop(stroke, 1));
-        MainBorder.BorderBrush = gradient;
+        IslandOutline.BorderBrush = gradient;
         ((RotateTransform)gradient.RelativeTransform).BeginAnimation(
             RotateTransform.AngleProperty,
             new DoubleAnimation
@@ -3107,6 +3155,7 @@ public partial class LifeIslandWindow : Window
         else
         {
             ApplyPlacementVisuals();
+            windowResizeCenterX = double.NaN;
             Left = fullscreenOriginalLeft;
             Top = fullscreenOriginalTop;
             RestoreTopDockFoldAfterFullscreen();
@@ -3224,7 +3273,7 @@ public partial class LifeIslandWindow : Window
             var time = item.Kind == "event" && item.EndsAt is not null ? $"{item.StartsAt:HH:mm}–{item.EndsAt:HH:mm}" : item.StartsAt.TimeOfDay == TimeSpan.Zero ? "待办" : item.StartsAt.ToString("HH:mm");
             var timeRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
             timeRow.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = IndicatorBrush(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
-            timeRow.Children.Add(new TextBlock { Text = time, Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), FontSize = 11 });
+            timeRow.Children.Add(new TextBlock { Text = time, Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), FontSize = 12 });
             copy.Children.Add(timeRow);
             copy.Children.Add(SetThemeResource(
                 new TextBlock { Text = item.Title, TextDecorations = item.IsCompleted ? TextDecorations.Strikethrough : null },
@@ -3301,7 +3350,11 @@ public partial class LifeIslandWindow : Window
         StopTaskbarGapJump(false);
         var currentLeft = Left;
         var currentTop = Top;
+        var currentWidth = Width;
+        windowResizeCenterX = double.NaN;
         ++windowBoundsAnimationVersion;
+        BeginAnimation(WidthProperty, null);
+        Width = currentWidth;
         BeginAnimation(LeftProperty, null);
         BeginAnimation(TopProperty, null);
         Left = currentLeft;
@@ -3779,6 +3832,7 @@ public partial class LifeIslandWindow : Window
 
     void AnimateExpandedState(bool expand)
     {
+        UpdateIslandBackground();
         var contentAnimationVersion = ++expandedContentAnimationVersion;
         var duration = SystemParameters.ClientAreaAnimation
             ? TimeSpan.FromMilliseconds(ExpansionDurationMilliseconds(
@@ -3795,11 +3849,9 @@ public partial class LifeIslandWindow : Window
         var fromWidth = ActualWidth > 0 && double.IsFinite(ActualWidth)
             ? ActualWidth : Width;
         if (!double.IsFinite(fromWidth) || fromWidth <= 0) fromWidth = CollapsedWidth;
-        var fromLeft = double.IsFinite(Left) ? Left : 0;
         var targetWidth = expand ? ExpandedWidth : CollapsedWidthForContent();
         if (!double.IsFinite(targetWidth) || targetWidth <= 0) targetWidth = CollapsedWidth;
-        var delta = targetWidth - fromWidth;
-        var desiredLeft = fromLeft - delta / 2;
+        var desiredLeft = WindowResizeCenter(fromWidth) - targetWidth / 2;
         var targetLeft = placement == IslandPlacement.Taskbar && hasGeometry
             ? TaskbarLeftForWidth(geometry, targetWidth)
             : hasGeometry
@@ -3879,8 +3931,17 @@ public partial class LifeIslandWindow : Window
     internal static int ExpansionDurationMilliseconds(bool taskbarDocked, bool expand) =>
         expand ? taskbarDocked ? 140 : 230 : 190;
 
+    double WindowResizeCenter(double currentWidth)
+    {
+        // Native window moves round Left to pixels; never feed that error into the next resize.
+        if (!double.IsFinite(windowResizeCenterX))
+            windowResizeCenterX = (double.IsFinite(Left) ? Left : 0) + currentWidth / 2;
+        return windowResizeCenterX;
+    }
+
     void AnimateWindowBounds(double targetWidth, double targetLeft, TimeSpan duration, IEasingFunction easing)
     {
+        windowResizeCenterX = targetLeft + targetWidth / 2;
         var version = ++windowBoundsAnimationVersion;
         AnimateWindowProperty(WidthProperty, targetWidth, duration, easing, version);
         AnimateWindowProperty(LeftProperty, targetLeft, duration, easing, version);
@@ -3908,11 +3969,10 @@ public partial class LifeIslandWindow : Window
 
     void ResizeCollapsedToContent()
     {
-        if (expanded) return;
+        if (expanded || dragging || freeCustomDragging || taskbarCustomDragging) return;
         var targetWidth = CollapsedWidthForContent();
         if (Math.Abs(targetWidth - Width) < 0.5) return;
-        var delta = targetWidth - Width;
-        var desiredLeft = Left - delta / 2;
+        var desiredLeft = WindowResizeCenter(Width) - targetWidth / 2;
         var hasGeometry = TryGetMonitorGeometry(ScreenForHeader(), out var geometry);
         var targetLeft = placement == IslandPlacement.Taskbar && hasGeometry
             ? TaskbarLeftForWidth(geometry, targetWidth)
@@ -4062,7 +4122,9 @@ public partial class LifeIslandWindow : Window
                 if (version != topDockAnimationVersion) return;
                 MainBorder.BeginAnimation(OpacityProperty, null);
                 MainBorder.Opacity = 1;
+                UpdateHeaderTextRendering();
             };
+            UpdateHeaderTextRendering(false);
             MainBorder.BeginAnimation(OpacityProperty, appearance);
             return;
         }
@@ -4096,6 +4158,8 @@ public partial class LifeIslandWindow : Window
         MainBorder.BeginAnimation(OpacityProperty, null);
         MainBorder.Opacity = 1;
         MainBorder.Background = Brushes.Transparent;
+        IslandStaticRim.Visibility = Visibility.Collapsed;
+        UpdateHeaderTextRendering();
         MainBorder.BorderThickness = new Thickness(0);
         TopDockStatusLight.Visibility = Visibility.Visible;
         TopDockStatusPulse.BeginAnimation(OpacityProperty, null);
@@ -4116,7 +4180,10 @@ public partial class LifeIslandWindow : Window
         TopDockStatusPulse.BeginAnimation(OpacityProperty, null);
         TopDockStatusPulse.Opacity = 1;
         TopDockStatusLight.Visibility = Visibility.Collapsed;
-        MainBorder.SetResourceReference(Border.BackgroundProperty, "Brush.Island");
+        UpdateIslandBackground();
+        UpdateHeaderTextRendering();
+        IslandStaticRim.Visibility = !preferences.Load().GlowBorderEnabled || !SystemParameters.ClientAreaAnimation
+            ? Visibility.Visible : Visibility.Collapsed;
         MainBorder.BorderThickness = new Thickness(1);
     }
 
@@ -4311,7 +4378,8 @@ public partial class LifeIslandWindow : Window
             ApplyPlacementVisuals();
             UpdateLayout();
             Top = geometry.WorkArea.Top;
-            Left = geometry.WorkArea.Left + (geometry.WorkArea.Width - ActualWidth) / 2;
+            windowResizeCenterX = geometry.WorkArea.Left + geometry.WorkArea.Width / 2;
+            Left = windowResizeCenterX - ActualWidth / 2;
             pointerHover = false;
             if (expanded) Collapse();
             else SetTopDockFolded(true);

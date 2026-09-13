@@ -32,7 +32,7 @@ public sealed class CollapsedIslandCustomizationContractTests
         foreach (var widget in new[] { "Summary", "NetworkSpeedSummary", "CpuUsageSummary", "MemoryUsageSummary" })
             Assert.Contains($"x:Name=\"{widget}\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("x:Name=\"NetworkSpeedSummary\" Width=\"162\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"NetworkSpeedSummary\" DockPanel.Dock=\"Right\" Width=\"130\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"NetworkSpeedSummary\" DockPanel.Dock=\"Right\" Width=\"144\"", xaml, StringComparison.Ordinal);
         Assert.Contains("void SetIdleSummaryWidgetVisibility(LifePreferences currentPreferences)", source, StringComparison.Ordinal);
         Assert.Contains("NetworkSpeedSummary.Visibility = VisibilityFor", source, StringComparison.Ordinal);
         Assert.Contains("CpuUsageSummary.Visibility = VisibilityFor", source, StringComparison.Ordinal);

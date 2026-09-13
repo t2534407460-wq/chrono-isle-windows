@@ -386,15 +386,29 @@ public partial class LifeManagementWindow : Window
         };
         var calendar = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(28, 28, 30)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(92, 100, 114)),
+            UseLayoutRounding = true,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 6, 0, 0),
             Width = 264
         };
-        popup.Child = calendar;
+        var calendarSurface = new Border
+        {
+            Style = (Style)FindResource("Border.SmoothDecoration"),
+            CornerRadius = calendar.CornerRadius,
+            BorderThickness = calendar.BorderThickness,
+            Margin = calendar.Margin
+        };
+        SetThemeResource(calendarSurface, Border.BackgroundProperty, "Brush.Card");
+        SetThemeResource(calendarSurface, Border.BorderBrushProperty, "Brush.Stroke");
+        TextOptions.SetTextFormattingMode(calendar, TextFormattingMode.Display);
+        RenderOptions.SetClearTypeHint(calendar, ClearTypeHint.Enabled);
+        calendar.SetResourceReference(System.Windows.Documents.TextElement.FontFamilyProperty, "Font.UI");
+        var calendarShell = new Grid();
+        calendarShell.Children.Add(calendarSurface);
+        calendarShell.Children.Add(calendar);
+        popup.Child = calendarShell;
         var displayedMonth = new DateTime(selected.Year, selected.Month, 1);
         void RenderMonth()
         {
@@ -408,6 +422,7 @@ public partial class LifeManagementWindow : Window
             var title = new TextBlock { Text = displayedMonth.ToString("yyyy 年 M 月"), FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             var next = new Button { Content = "›", Width = 28, Height = 28, Style = (Style)FindResource("Action"), Padding = new Thickness(0) };
             next.Click += (_, _) => { displayedMonth = displayedMonth.AddMonths(1); RenderMonth(); };
+            SetThemeResource(title, TextBlock.ForegroundProperty, "Brush.TextPrimary");
             Grid.SetColumn(title, 1);
             Grid.SetColumn(next, 2);
             header.Children.Add(previous);
@@ -417,7 +432,7 @@ public partial class LifeManagementWindow : Window
 
             var weekdays = new System.Windows.Controls.Primitives.UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, 3) };
             foreach (var weekday in new[] { "一", "二", "三", "四", "五", "六", "日" })
-                weekdays.Children.Add(new TextBlock { Text = weekday, FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(152, 152, 157)), HorizontalAlignment = System.Windows.HorizontalAlignment.Center });
+                weekdays.Children.Add(SetThemeResource(new TextBlock { Text = weekday, FontSize = 12, HorizontalAlignment = System.Windows.HorizontalAlignment.Center }, TextBlock.ForegroundProperty, "Brush.TextTertiary"));
             panel.Children.Add(weekdays);
 
             var days = new System.Windows.Controls.Primitives.UniformGrid { Columns = 7 };
@@ -427,7 +442,7 @@ public partial class LifeManagementWindow : Window
             {
                 var value = displayedMonth.AddDays(day - 1);
                 var cell = new Button { Content = day.ToString(), Height = 28, Style = (Style)FindResource("Action"), Padding = new Thickness(0), Margin = new Thickness(1) };
-                if (value == selected) cell.Background = new SolidColorBrush(Color.FromRgb(70, 70, 74));
+                if (value == selected) SetThemeResource(cell, System.Windows.Controls.Control.BackgroundProperty, "Brush.AccentSoft");
                 cell.Click += (_, _) =>
                 {
                     selected = value;
@@ -546,7 +561,7 @@ public partial class LifeManagementWindow : Window
         details.Children.Add(SetThemeResource(new TextBlock
         {
             Text = $"完成：{completed} · 已延期 {attributes.DeferredCount} 次",
-            FontSize = 11, Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis
+            FontSize = 12, Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis
         }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
         container.Children.Add(editor);
         container.Children.Add(details);

@@ -43,7 +43,8 @@ public sealed class IslandNotificationWindowTests
                     var title = (TextBlock)window.FindName("NotificationTitle");
                     Assert.Equal(message.Title, title.Text);
                     var body = (TextBlock)window.FindName("NotificationBody");
-                    Assert.True(body.ActualHeight <= 54);
+                    Assert.True(body.ActualHeight <= body.LineHeight * 3);
+                    Assert.Null(((Border)window.FindName("NotificationCard")).Effect);
                     if (!string.IsNullOrEmpty(output))
                     {
                         Directory.CreateDirectory(output);
@@ -69,7 +70,8 @@ public sealed class IslandNotificationWindowTests
                 Assert.True(window.Left >= 0);
                 Assert.True(window.Top + window.ActualHeight <= 770);
                 Assert.True(((TextBlock)window.FindName("NotificationTitle")).ActualHeight <= 40);
-                Assert.True(((TextBlock)window.FindName("NotificationBody")).ActualHeight <= 54);
+                var longBody = (TextBlock)window.FindName("NotificationBody");
+                Assert.True(longBody.ActualHeight <= longBody.LineHeight * 3);
                 window.HideMessage();
                 Assert.Null(window.CurrentMessage);
                 window.ShowMessage(message with { Id = 43, AppName = "微信", Body = "", AppUserModelId = "" });

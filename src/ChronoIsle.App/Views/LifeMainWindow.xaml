@@ -1,4 +1,5 @@
 <Window x:Class="ChronoIsle.App.Views.LifeMainWindow"
+        Style="{StaticResource Window.Display}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
@@ -28,9 +29,12 @@
       <Setter Property="Width" Value="32"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,4,0"/>
       <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="UseLayoutRounding" Value="True"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderThickness="0" CornerRadius="8" SnapsToDevicePixels="True">
+        <Grid Background="Transparent">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderThickness="0" CornerRadius="8" Style="{StaticResource Border.SmoothDecoration}"/>
+        <Border BorderThickness="0" RenderOptions.ClearTypeHint="Enabled">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
+      </Grid>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Hover}"/></Trigger>
           <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource Brush.Control}"/></Trigger>
@@ -41,9 +45,12 @@
     <Style x:Key="WindowCloseControl" TargetType="Button" BasedOn="{StaticResource WindowControl}">
       <Setter Property="Margin" Value="0"/><Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderThickness="0" CornerRadius="8" SnapsToDevicePixels="True">
+        <Grid Background="Transparent">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderThickness="0" CornerRadius="8" Style="{StaticResource Border.SmoothDecoration}"/>
+        <Border BorderThickness="0" RenderOptions.ClearTypeHint="Enabled">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
+      </Grid>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#5A2B32"/><Setter Property="Foreground" Value="#FFFFFF"/></Trigger>
           <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#71333D"/></Trigger>
@@ -52,9 +59,11 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
   </Window.Resources>
-  <Border Background="{DynamicResource Brush.Window}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}" SnapsToDevicePixels="True">
+  <Grid>
+    <Border Background="{DynamicResource Brush.Window}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}" Style="{StaticResource Border.SmoothDecoration}"/>
+  <Border RenderOptions.ClearTypeHint="Enabled" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}" SnapsToDevicePixels="True">
     <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/></Grid.RowDefinitions>
       <Grid Grid.Row="0" Background="Transparent" MouseLeftButtonDown="TitleBar_MouseDown">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0"><Image Source="pack://application:,,,/ChronoIsle;component/Assets/island-mascot.png" Width="54" Height="34" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="False"/><TextBlock Text="时屿 ChronoIsle" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/></StackPanel>
@@ -95,13 +104,13 @@
             <Grid Margin="24,20,24,16">
               <StackPanel><StackPanel Orientation="Horizontal"><TextBlock Text="对话" Style="{StaticResource Text.PageTitle}"/><StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="11,2,0,0"><Ellipse Width="6" Height="6" Fill="{DynamicResource Brush.Success}" VerticalAlignment="Center"/><TextBlock Text="{Binding Status}" Style="{StaticResource Text.Tertiary}" Margin="5,0,0,0" VerticalAlignment="Center"/></StackPanel></StackPanel><TextBlock Text="用一句自然语言创建、安排和回顾你的事项" Style="{StaticResource Text.Secondary}" Margin="0,7,0,0"/></StackPanel>
             </Grid>
-            <Border Grid.Row="1" Background="{DynamicResource Brush.Stroke}"/>
+            <Border Grid.Row="1" Background="{DynamicResource Brush.StrokeSoft}"/>
             <ListBox Grid.Row="2" ItemsSource="{Binding Messages}" ItemContainerStyle="{StaticResource MessageItem}" Margin="24,20,24,12" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Border BorderThickness="1" CornerRadius="{StaticResource Radius.Card}" Padding="16" Margin="0,0,0,14" MaxWidth="650">
-                    <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource Brush.Card}"/><Setter Property="BorderBrush" Value="{DynamicResource Brush.Stroke}"/><Setter Property="HorizontalAlignment" Value="Left"/><Style.Triggers><DataTrigger Binding="{Binding Role}" Value="user"><Setter Property="Background" Value="{DynamicResource Brush.AccentSoft}"/><Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}"/><Setter Property="HorizontalAlignment" Value="Right"/></DataTrigger></Style.Triggers></Style></Border.Style>
-                    <local:MarkdownTextBlock Markdown="{Binding Content}" FontSize="14" LineHeight="22" Foreground="{DynamicResource Brush.TextPrimary}"/>
+                    <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource Brush.Card}"/><Setter Property="BorderBrush" Value="{DynamicResource Brush.StrokeSoft}"/><Setter Property="HorizontalAlignment" Value="Left"/><Style.Triggers><DataTrigger Binding="{Binding Role}" Value="user"><Setter Property="Background" Value="{DynamicResource Brush.AccentSoft}"/><Setter Property="BorderBrush" Value="{DynamicResource Brush.AccentSoft}"/><Setter Property="HorizontalAlignment" Value="Right"/></DataTrigger></Style.Triggers></Style></Border.Style>
+                    <local:MarkdownTextBlock Markdown="{Binding Content}" FontSize="14" LineHeight="24" Foreground="{DynamicResource Brush.TextPrimary}"/>
                   </Border>
                 </DataTemplate>
               </ListBox.ItemTemplate>
@@ -126,4 +135,5 @@
       </Grid>
     </Grid>
   </Border>
+  </Grid>
 </Window>

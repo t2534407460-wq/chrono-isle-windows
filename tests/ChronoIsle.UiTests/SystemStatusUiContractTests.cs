@@ -111,10 +111,11 @@ public sealed class SystemStatusUiContractTests
             "<Setter Property=\"Foreground\" Value=\"{DynamicResource Brush.Island}\"/>",
             controls,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "x:Name=\"Mark\" Text=\"✓\" Foreground=\"{DynamicResource Brush.Island}\"",
-            controls,
-            StringComparison.Ordinal);
+        var checkMark = System.Xml.Linq.XDocument.Parse(controls).Descendants()
+            .Single(element => element.Attribute(
+                System.Xml.Linq.XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == "Mark");
+        Assert.Equal("Path", checkMark.Name.LocalName);
+        Assert.Equal("{DynamicResource Brush.Island}", checkMark.Attribute("Stroke")?.Value);
         Assert.Contains("Brush.AccentSoft", island, StringComparison.Ordinal);
         var source = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml.cs"));

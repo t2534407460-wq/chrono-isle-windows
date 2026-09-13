@@ -5,7 +5,7 @@
         xmlns:domain="clr-namespace:ChronoIsle.App.Services.Domain"
         Width="294" SizeToContent="Height" Background="Transparent" AllowsTransparency="True"
         WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" ShowActivated="False"
-        Topmost="True"
+        Topmost="True" Style="{StaticResource Window.Display}"
         UseLayoutRounding="True" AutomationProperties.AutomationId="LifeIslandWindow"
         SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
         MouseEnter="Island_MouseEnter" MouseLeave="Island_MouseLeave">
@@ -15,7 +15,7 @@
       <Setter Property="Background" Value="{DynamicResource Brush.Stroke}"/>
       <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="MinHeight" Value="34"/>
       <Setter Property="Padding" Value="13,7"/>
@@ -68,14 +68,14 @@
       <Setter Property="BorderBrush" Value="{DynamicResource Brush.Stroke}"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,5"/>
     </Style>
     <Style x:Key="IslandQuick" TargetType="Button" BasedOn="{StaticResource IslandType}">
-      <Setter Property="FontSize" Value="12"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,0,6,6"/>
+      <Setter Property="FontSize" Value="13"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,0,6,6"/>
     </Style>
     <Style x:Key="IslandDeleteButton" TargetType="Button" BasedOn="{StaticResource Button.Ghost}">
       <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="0"/>
       <Setter Property="Background" Value="#2B272E"/><Setter Property="Foreground" Value="#E5A2AA"/>
     </Style>
     <Style x:Key="IslandTab" TargetType="Button" BasedOn="{StaticResource IslandType}">
-      <Setter Property="MinHeight" Value="31"/><Setter Property="Padding" Value="12,6"/><Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="MinHeight" Value="31"/><Setter Property="Padding" Value="10,6"/><Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style x:Key="CollapsedHeaderButton" TargetType="Button">
       <Setter Property="Cursor" Value="Hand"/>
@@ -122,10 +122,13 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TextBox">
-            <Border x:Name="InputBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="{TemplateBinding Padding}">
-              <ScrollViewer x:Name="PART_ContentHost"/>
-            </Border>
+            <Grid Background="Transparent">
+              <Border x:Name="InputBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Style="{StaticResource Border.SmoothDecoration}"/>
+              <Border BorderThickness="{TemplateBinding BorderThickness}" RenderOptions.ClearTypeHint="Enabled">
+                <ScrollViewer x:Name="PART_ContentHost" Background="Transparent"/>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="InputBorder" Property="BorderBrush" Value="{DynamicResource Brush.TextTertiary}"/></Trigger>
             </ControlTemplate.Triggers>
@@ -135,7 +138,7 @@
     </Style>
     <Style x:Key="IslandSelect" TargetType="ComboBox">
       <Setter Property="Foreground" Value="{DynamicResource Brush.TextPrimary}"/><Setter Property="Background" Value="{DynamicResource Brush.Surface}"/><Setter Property="BorderBrush" Value="{DynamicResource Brush.Stroke}"/>
-      <Setter Property="BorderThickness" Value="1"/><Setter Property="FontSize" Value="12"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="FontSize" Value="13"/>
       <Setter Property="ItemContainerStyle">
         <Setter.Value>
           <Style TargetType="ComboBoxItem">
@@ -197,7 +200,7 @@
       <Setter Property="HasDropShadow" Value="False"/>
       <Setter Property="OverridesDefaultStyle" Value="True"/>
       <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI Variable"/>
-      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ContextMenu}">
@@ -297,8 +300,8 @@
     <Geometry x:Key="MediaPlayGeometry">M4,2 L13,8 L4,14 Z</Geometry>
     <Geometry x:Key="MediaPauseGeometry">M4,2 H7 V14 H4 Z M10,2 H13 V14 H10 Z</Geometry>
   </Window.Resources>
-  <Border x:Name="Outer" Margin="8,8,8,11">
-    <Border x:Name="MainBorder" Background="{DynamicResource Brush.Island}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="24">
+  <Grid x:Name="Outer" Margin="8,8,8,11">
+    <Border x:Name="MainBorder" Background="{DynamicResource Brush.Island}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="24">
       <Grid x:Name="IslandLayout">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid x:Name="Header" Grid.Row="0" Height="43" Background="Transparent" Cursor="Hand" PreviewMouseLeftButtonDown="Header_MouseDown" PreviewMouseMove="Header_MouseMove" PreviewMouseLeftButtonUp="Header_MouseUp">
@@ -316,15 +319,15 @@
                     AutomationProperties.AutomationId="IslandAgendaButton"
                     Style="{StaticResource CollapsedHeaderButton}" HorizontalContentAlignment="Stretch" IsHitTestVisible="False">
               <DockPanel x:Name="SummaryWidgets" LastChildFill="True" Margin="9,1,10,0" VerticalAlignment="Center">
-                <TextBlock x:Name="FpsSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="FpsSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Width="130" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Width="144" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"
+                <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
               </DockPanel>
             </Button>
@@ -344,7 +347,7 @@
             <Button x:Name="ClockButton" AutomationProperties.AutomationId="IslandClockButton"
                     Style="{StaticResource CollapsedHeaderButton}" IsHitTestVisible="False">
               <TextBlock x:Name="Clock" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="15"
-                         FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                         FontFamily="{StaticResource Font.Clock}" FontWeight="Bold" Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" Margin="0,0,10,0"/>
             </Button>
             <TextBlock x:Name="ExpandIndicator" Text="›" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="20" VerticalAlignment="Center" RenderTransformOrigin=".5,.5"><TextBlock.RenderTransform><RotateTransform x:Name="ChevronRotate" Angle="0"/></TextBlock.RenderTransform></TextBlock>
           </StackPanel>
@@ -364,7 +367,7 @@
                 <TextBlock x:Name="CollapsedMediaArtworkPlaceholder" Text="♪" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Grid>
               <StackPanel Grid.Column="1" Margin="8,0,6,0" VerticalAlignment="Center">
-                <TextBlock x:Name="CollapsedMediaTitle" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="CollapsedMediaTitle" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="CollapsedMediaArtist" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="9" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
               </StackPanel>
               <Button x:Name="CollapsedMediaTrackButton" Grid.Column="2" Width="72" Height="34"
@@ -465,7 +468,7 @@
                         AutomationProperties.AutomationId="IslandSettingsButton"/>
               </StackPanel>
             </Grid>
-            <Border x:Name="CalendarPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="14">
+            <Border RenderOptions.ClearTypeHint="Enabled" x:Name="CalendarPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="14">
               <StackPanel>
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -480,8 +483,8 @@
                   <TextBlock Text="日" Foreground="{DynamicResource Brush.TextTertiary}" HorizontalAlignment="Center"/>
                 </UniformGrid>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,7">
-                  <TextBlock Text="休" Foreground="#FF6961" FontSize="10" FontWeight="SemiBold"/><TextBlock Text="法定节假日" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="10" Margin="3,0,10,0"/>
-                  <TextBlock Text="班" Foreground="#FFB02E" FontSize="10" FontWeight="SemiBold"/><TextBlock Text="调休上班" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="10" Margin="3,0,0,0"/>
+                  <TextBlock Text="休" Foreground="#FF6961" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="法定节假日" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="3,0,10,0"/>
+                  <TextBlock Text="班" Foreground="#FFB02E" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="调休上班" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="3,0,0,0"/>
                 </StackPanel>
                 <UniformGrid x:Name="CalendarGrid" Columns="7"/>
                 <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="10" Margin="0,12,0,9" Padding="12">
@@ -490,7 +493,7 @@
                 <StackPanel>
                   <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <TextBlock x:Name="QuickAddDate" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="QuickAddDate" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                       <Button x:Name="ReminderTypeButton" Content="提醒" Click="ReminderType_Click" Style="{StaticResource IslandType}" Margin="0,0,6,0"/>
                       <Button x:Name="TodoTypeButton" Content="待办" Click="TodoType_Click" Style="{StaticResource IslandType}"/>
@@ -506,7 +509,7 @@
                 </StackPanel>
               </StackPanel>
             </Border>
-            <Border x:Name="TelemetryPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.Stroke}"
+            <Border RenderOptions.ClearTypeHint="Enabled" x:Name="TelemetryPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.Stroke}"
                     BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="16" Visibility="Collapsed">
               <StackPanel>
                 <Grid Margin="0,0,0,14">
@@ -515,16 +518,16 @@
                     <Ellipse x:Name="TelemetryStatusLight" Width="8" Height="8" Fill="{DynamicResource Brush.Success}" Margin="0,0,8,0"/>
                     <TextBlock x:Name="TelemetryNetworkStatus" Text="正在读取网络状态" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="15" FontWeight="SemiBold"/>
                   </StackPanel>
-                  <TextBlock x:Name="TelemetryLatency" Grid.Column="1" Text="-- ms" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"/>
+                  <TextBlock x:Name="TelemetryLatency" Grid.Column="1" Text="-- ms" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"/>
                 </Grid>
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                   <Border Background="{DynamicResource Brush.Surface}" CornerRadius="12" Padding="14" Margin="0,0,6,0">
-                    <StackPanel><TextBlock Text="上传" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="10"/>
+                    <StackPanel><TextBlock Text="上传" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11"/>
                       <TextBlock x:Name="TelemetryUploadSpeed" Text="0 B/s" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="19" FontWeight="SemiBold" Margin="0,5,0,0"/></StackPanel>
                   </Border>
                   <Border Grid.Column="1" Background="{DynamicResource Brush.Surface}" CornerRadius="12" Padding="14" Margin="6,0,0,0">
-                    <StackPanel><TextBlock Text="下载" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="10"/>
+                    <StackPanel><TextBlock Text="下载" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11"/>
                       <TextBlock x:Name="TelemetryDownloadSpeed" Text="0 B/s" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="19" FontWeight="SemiBold" Margin="0,5,0,0"/></StackPanel>
                   </Border>
                 </Grid>
@@ -544,24 +547,24 @@
                              Foreground="{DynamicResource Brush.Accent}" Background="{DynamicResource Brush.Control}"/>
                 <Grid Margin="0,16,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-                  <StackPanel><TextBlock Text="今日流量" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="10"/>
+                  <StackPanel><TextBlock Text="今日流量" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11"/>
                     <TextBlock x:Name="TelemetryTodayTraffic" Text="0 B" Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0"/></StackPanel>
-                  <StackPanel Grid.Column="1"><TextBlock Text="本月流量" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="10"/>
+                  <StackPanel Grid.Column="1"><TextBlock Text="本月流量" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11"/>
                     <TextBlock x:Name="TelemetryMonthTraffic" Text="0 B" Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,4,0,0"/></StackPanel>
                 </Grid>
                 <Border Height="1" Background="{DynamicResource Brush.StrokeSoft}" Margin="0,15,0,11"/>
-                <TextBlock Text="最近 7 天" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" Margin="0,0,0,7"/>
+                <TextBlock Text="最近 7 天" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" Margin="0,0,0,7"/>
                 <StackPanel x:Name="TelemetryHistoryList"/>
               </StackPanel>
             </Border>
-            <Border x:Name="QuickAskPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="16" Visibility="Collapsed">
+            <Border RenderOptions.ClearTypeHint="Enabled" x:Name="QuickAskPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="16" Visibility="Collapsed">
               <StackPanel>
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                   <TextBlock Text="问一下 Island" Foreground="{DynamicResource Brush.TextPrimary}" FontWeight="SemiBold" FontSize="15"/>
-                  <Button Grid.Column="1" Content="打开完整对话" Click="OpenFullChat_Click" Style="{StaticResource IslandIcon}" FontSize="11"/>
+                  <Button Grid.Column="1" Content="打开完整对话" Click="OpenFullChat_Click" Style="{StaticResource IslandIcon}" FontSize="12"/>
                 </Grid>
-                <TextBlock x:Name="QuickAskStatus" Text="准备就绪" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="0,5,0,10"/>
+                <TextBlock x:Name="QuickAskStatus" Text="准备就绪" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="12" Margin="0,5,0,10"/>
                 <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="10" Padding="12" MinHeight="72" MaxHeight="180">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <TextBox x:Name="QuickAskAnswer" Text="输入一个问题，回答会在这里流式显示。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{DynamicResource Brush.TextPrimary}">
@@ -588,7 +591,7 @@
                 </StackPanel>
               </StackPanel>
             </Border>
-            <Border x:Name="ToolsPanel" Background="{DynamicResource Brush.Card}"
+            <Border RenderOptions.ClearTypeHint="Enabled" x:Name="ToolsPanel" Background="{DynamicResource Brush.Card}"
                     BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1"
                     CornerRadius="14" Margin="12,0,12,12" Padding="16"
                     Visibility="Collapsed">
@@ -623,7 +626,7 @@
                                    TextChanged="MeaningInput_TextChanged"
                                    AutomationProperties.AutomationId="NamingMeaningInput"/>
                           <TextBlock x:Name="MeaningInputCharCount" Text="0/30"
-                                     FontSize="11" Foreground="{DynamicResource Brush.TextTertiary}"
+                                     FontSize="12" Foreground="{DynamicResource Brush.TextTertiary}"
                                      HorizontalAlignment="Right" Margin="0,4,0,0"/>
 
                           <Grid Margin="0,16,0,0">
@@ -761,7 +764,7 @@
                                 <TextBox Style="{StaticResource ToolResultText}" x:Name="RecommendedNameValue" FontFamily="Cascadia Mono, Consolas"
                                            FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Brush.TextPrimary}"
                                            Margin="0,4,0,0"/>
-                                <TextBlock x:Name="RecommendedHint" FontSize="11" Foreground="{DynamicResource Brush.TextSecondary}"
+                                <TextBlock x:Name="RecommendedHint" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}"
                                            TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
                               </StackPanel>
                               <Button Grid.Column="2" Click="CopyRecommended_Click" Style="{StaticResource Button.Secondary}"
@@ -825,12 +828,12 @@
                                  TextChanged="CaseConverterInput_TextChanged"
                                  AutomationProperties.AutomationId="CaseConverterInput"/>
                         <TextBlock x:Name="CaseConverterCharCount" Text="0/200"
-                                   FontSize="11" Foreground="{DynamicResource Brush.TextTertiary}"
+                                   FontSize="12" Foreground="{DynamicResource Brush.TextTertiary}"
                                    HorizontalAlignment="Right" Margin="0,4,0,0"/>
                           <Button x:Name="CaseConverterClearButton" Content="清空"
                                   Click="CaseConverterClear_Click" Style="{StaticResource IslandType}"
                                   Height="26" Padding="10,2" HorizontalAlignment="Right" Margin="0,4,0,0"/>
-                          <TextBlock x:Name="CaseConverterStatus" Text="" FontSize="11"
+                          <TextBlock x:Name="CaseConverterStatus" Text="" FontSize="12"
                                      Foreground="{DynamicResource Brush.Success}"
                                      Margin="0,2,0,0" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                       </StackPanel>
@@ -1004,14 +1007,14 @@
                                      FontSize="30" FontWeight="SemiBold"/>
                           <TextBlock x:Name="NetworkSpeedTestGaugeUnit" Text="Mbps"
                                      Foreground="{DynamicResource Brush.TextSecondary}"
-                                     FontSize="11" Margin="6,15,0,0"/>
+                                     FontSize="12" Margin="6,15,0,0"/>
                         </StackPanel>
                         <TextBlock x:Name="NetworkSpeedTestPhaseText" Text="等待开始测速"
                                    Foreground="{DynamicResource Brush.TextSecondary}"
-                                   FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                   FontSize="12" HorizontalAlignment="Center" Margin="0,3,0,0"/>
                         <Button x:Name="NetworkSpeedTestUnitButton" Content="Mbps ⇄ MB/s"
                                 Style="{StaticResource IslandTab}" Click="NetworkSpeedTestUnitButton_Click"
-                                MinHeight="20" Height="20" Padding="6,1" FontSize="10"
+                                MinHeight="20" Height="20" Padding="6,1" FontSize="11"
                                 HorizontalAlignment="Center" Margin="0,2,0,0"/>
                       </StackPanel>
                     </Canvas>
@@ -1025,7 +1028,7 @@
                     <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}"
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,0,4,0">
                       <StackPanel>
-                        <TextBlock Text="下载" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10"/>
+                        <TextBlock Text="下载" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"/>
                         <TextBlock x:Name="NetworkSpeedTestDownloadValue" Text="--"
                                    Foreground="{DynamicResource Brush.TextPrimary}" FontWeight="SemiBold" Margin="0,3,0,0"/>
                       </StackPanel>
@@ -1033,7 +1036,7 @@
                     <Border Grid.Column="1" Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}"
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="2,0">
                       <StackPanel>
-                        <TextBlock Text="上传" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10"/>
+                        <TextBlock Text="上传" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"/>
                         <TextBlock x:Name="NetworkSpeedTestUploadValue" Text="--"
                                    Foreground="{DynamicResource Brush.TextPrimary}" FontWeight="SemiBold" Margin="0,3,0,0"/>
                       </StackPanel>
@@ -1041,14 +1044,14 @@
                     <Border Grid.Column="2" Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}"
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="4,0,0,0">
                       <StackPanel>
-                        <TextBlock Text="节点延迟" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10"/>
+                        <TextBlock Text="节点延迟" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11"/>
                         <TextBlock x:Name="NetworkSpeedTestNodeLatencyValue" Text="--"
                                    Foreground="{DynamicResource Brush.TextPrimary}" FontWeight="SemiBold" Margin="0,3,0,0"/>
                       </StackPanel>
                     </Border>
                   </Grid>
                   <TextBlock Text="平台延迟" Foreground="{DynamicResource Brush.TextSecondary}"
-                             FontSize="11" Margin="0,0,0,7"/>
+                             FontSize="12" Margin="0,0,0,7"/>
                   <UniformGrid Columns="2" Margin="0,0,0,10">
                     <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}"
                             BorderThickness="1" CornerRadius="10" Padding="8" Margin="0,0,4,4">
@@ -1057,8 +1060,8 @@
                         <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-league.ico"
                                Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
-                          <TextBlock Text="英雄联盟" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
-                          <TextBlock x:Name="NetworkSpeedTestLeagueLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
+                          <TextBlock Text="英雄联盟" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="11"/>
+                          <TextBlock x:Name="NetworkSpeedTestLeagueLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" Margin="0,2,0,0"/>
                         </StackPanel>
                       </Grid>
                     </Border>
@@ -1069,8 +1072,8 @@
                         <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-douyin.ico"
                                Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
-                          <TextBlock Text="抖音" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
-                          <TextBlock x:Name="NetworkSpeedTestDouyinLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
+                          <TextBlock Text="抖音" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="11"/>
+                          <TextBlock x:Name="NetworkSpeedTestDouyinLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" Margin="0,2,0,0"/>
                         </StackPanel>
                       </Grid>
                     </Border>
@@ -1081,8 +1084,8 @@
                         <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-jd.ico"
                                Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
-                          <TextBlock Text="京东" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
-                          <TextBlock x:Name="NetworkSpeedTestJdLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
+                          <TextBlock Text="京东" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="11"/>
+                          <TextBlock x:Name="NetworkSpeedTestJdLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" Margin="0,2,0,0"/>
                         </StackPanel>
                       </Grid>
                     </Border>
@@ -1093,8 +1096,8 @@
                         <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-ctrip.ico"
                                Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
-                          <TextBlock Text="携程" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
-                          <TextBlock x:Name="NetworkSpeedTestCtripLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
+                          <TextBlock Text="携程" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="11"/>
+                          <TextBlock x:Name="NetworkSpeedTestCtripLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" Margin="0,2,0,0"/>
                         </StackPanel>
                       </Grid>
                     </Border>
@@ -1105,8 +1108,8 @@
                         <Image Width="18" Height="18" Source="pack://application:,,,/ChronoIsle;component/Assets/platform-toutiao.ico"
                                Stretch="Uniform" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Margin="7,0,0,0">
-                          <TextBlock Text="今日头条" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="10"/>
-                          <TextBlock x:Name="NetworkSpeedTestToutiaoLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="10" Margin="0,2,0,0"/>
+                          <TextBlock Text="今日头条" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="11"/>
+                          <TextBlock x:Name="NetworkSpeedTestToutiaoLatency" Text="未测得" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="11" Margin="0,2,0,0"/>
                         </StackPanel>
                       </Grid>
                     </Border>
@@ -1120,5 +1123,20 @@
         </ScrollViewer>
       </Grid>
     </Border>
-  </Border>
+    <!-- The static rim fades across a soft outer edge; neither layer contains text. -->
+    <Border x:Name="IslandStaticRim" IsHitTestVisible="False" Visibility="Collapsed"
+            BorderThickness="3" Margin="1" CornerRadius="{Binding CornerRadius, ElementName=MainBorder}"
+            Opacity="{Binding Opacity, ElementName=MainBorder}" Clip="{Binding Clip, ElementName=MainBorder}"
+            Style="{StaticResource Border.SmoothDecoration}"/>
+    <!-- Cache only the outline at 2x; text stays on the native text-rendering path. -->
+    <Border x:Name="IslandOutline" IsHitTestVisible="False" SnapsToDevicePixels="False" UseLayoutRounding="False"
+            BorderBrush="{DynamicResource Brush.Stroke}"
+            BorderThickness="{Binding BorderThickness, ElementName=MainBorder}"
+            CornerRadius="{Binding CornerRadius, ElementName=MainBorder}"
+            Opacity="{Binding Opacity, ElementName=MainBorder}"
+            Clip="{Binding Clip, ElementName=MainBorder}"
+            RenderOptions.BitmapScalingMode="HighQuality">
+      <Border.CacheMode><BitmapCache RenderAtScale="2"/></Border.CacheMode>
+    </Border>
+  </Grid>
 </Window>
