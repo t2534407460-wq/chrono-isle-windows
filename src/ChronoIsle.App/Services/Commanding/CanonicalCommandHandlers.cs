@@ -324,8 +324,12 @@ internal sealed class CreateRecurringTaskCommandHandler : CreateItemCommandHandl
         }
         var wall = AssistantCommandTimeResolver.Resolve(context, wallExpression with { LocalDate = localDate, TimeZoneHint = zone });
         var kind = arguments.Kind == AssistantItemKindV1.Todo ? "Todo" : "Reminder";
+        var mirrorRecurring = kind == "Reminder" &&
+            recurrence.Frequency is AssistantRecurrenceFrequencyV1.Daily or AssistantRecurrenceFrequencyV1.Weekly &&
+            recurrence.Interval is null or 1 && recurrence.End?.Kind is null or AssistantRecurrenceEndKindV1.Never;
         var id = Insert(context, kind, arguments.Title!, arguments.Notes,
-            kind == "Todo" ? wall : null, kind == "Reminder" ? wall : null, null, null);
+            kind == "Todo" ? wall : null, kind == "Reminder" ? wall : null, null, null,
+            mirrorLegacy: !mirrorRecurring);
 
         using var command = context.UnitOfWork.Connection.CreateCommand();
         command.Transaction = context.UnitOfWork.Transaction;
@@ -351,6 +355,25 @@ internal sealed class CreateRecurringTaskCommandHandler : CreateItemCommandHandl
         command.Parameters.AddWithValue("$next", wall.UtcInstant.ToUniversalTime().ToString("O"));
         command.Parameters.AddWithValue("$now", context.NowUtc.ToUniversalTime().ToString("O"));
         command.ExecuteNonQuery();
+        if (mirrorRecurring)
+        {
+            using var legacy = context.UnitOfWork.Connection.CreateCommand();
+            legacy.Transaction = context.UnitOfWork.Transaction;
+            legacy.CommandText = """
+                INSERT INTO recurring_reminders(id,title,notes,reminder_time,recurrence,weekdays,last_notified_at,created_at,updated_at)
+                VALUES($id,$title,$notes,$time,$frequency,$days,NULL,$now,$now)
+                """;
+            legacy.Parameters.AddWithValue("$id", id);
+            legacy.Parameters.AddWithValue("$title", arguments.Title!.Trim());
+            legacy.Parameters.AddWithValue("$notes", (object?)arguments.Notes ?? DBNull.Value);
+            legacy.Parameters.AddWithValue("$time", wall.LocalDateTime.ToString("HH:mm"));
+            legacy.Parameters.AddWithValue("$frequency", recurrence.Frequency.ToString());
+            legacy.Parameters.AddWithValue("$days", string.Join(',', (recurrence.Weekdays ?? []).Select(d => (int)d)));
+            legacy.Parameters.AddWithValue("$now", context.NowUtc.ToLocalTime().ToString("O"));
+            legacy.ExecuteNonQuery();
+            legacy.CommandText = "UPDATE life_items SET origin_adapter='assistant_command' WHERE id=$id";
+            legacy.ExecuteNonQuery();
+        }
         return new(true, "created", CanonicalCommandHandlers.ItemResult(id), [id]);
     }
 }
@@ -423,7 +446,35 @@ public sealed class CompleteTodoCommandHandler : ICommandHandler<CompleteTodoArg
             _ => null
         };
         if (legacySql is not null) ExecuteLegacy(context, legacySql, target.ItemId);
+        SyncRecurringProjection(context, target.ItemId);
         return new(true, "completed", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
+    }
+
+    internal static void SyncRecurringProjection(AssistantCommandExecutionContext context, string id, bool timeChanged = false)
+    {
+        using var c = context.UnitOfWork.Connection.CreateCommand();
+        c.Transaction = context.UnitOfWork.Transaction;
+        c.CommandText = """
+            DELETE FROM recurring_reminders WHERE id=$id AND EXISTS(
+                SELECT 1 FROM life_items WHERE id=$id AND (deleted_at IS NOT NULL OR status IN ('Completed','Cancelled','Ignored')));
+            UPDATE recurring_reminders SET
+                title=(SELECT title FROM life_items WHERE id=$id),
+                notes=(SELECT notes FROM life_items WHERE id=$id),updated_at=$now
+                WHERE id=$id;
+            """;
+        c.Parameters.AddWithValue("$id", id);
+        c.Parameters.AddWithValue("$now", context.NowUtc.ToLocalTime().ToString("O"));
+        c.ExecuteNonQuery();
+        if (!timeChanged) return;
+        c.CommandText = """
+            UPDATE recurring_reminders SET reminder_time=(
+                SELECT substr(remind_local_datetime,12,5) FROM life_items WHERE id=$id),last_notified_at=NULL WHERE id=$id;
+            UPDATE recurrence_rules SET start_local_datetime=(SELECT remind_local_datetime FROM life_items WHERE id=$id),
+                next_occurrence_utc=(SELECT remind_utc_instant FROM life_items WHERE id=$id),
+                rule_version=rule_version+1,row_version=row_version+1,updated_at=$now
+                WHERE series_item_id=$id AND deleted_at IS NULL AND EXISTS(SELECT 1 FROM recurring_reminders WHERE id=$id);
+            """;
+        c.ExecuteNonQuery();
     }
 
     internal static string ReadKind(AssistantCommandExecutionContext context, string id)
@@ -467,6 +518,7 @@ public sealed class DeleteTodoCommandHandler : ICommandHandler<DeleteTodoArgumen
         }
         var table = kind switch { "Todo" => "todos", "Reminder" => "single_reminders", "Event" => "calendar_events", _ => null };
         if (table is not null) CompleteTodoCommandHandler.ExecuteLegacy(context, $"DELETE FROM {table} WHERE id=$id", target.ItemId);
+        CompleteTodoCommandHandler.SyncRecurringProjection(context, target.ItemId);
         return new(true, "deleted", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
     }
 }
@@ -502,6 +554,7 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
         command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm') AND deleted_at IS NULL AND is_readonly=0";
         CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
         MirrorLegacy(context, target.ItemId, kind, changes);
+        CompleteTodoCommandHandler.SyncRecurringProjection(context, target.ItemId, changes.Remind is not null);
         return new(true, "updated", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
     }
 
@@ -574,6 +627,7 @@ public sealed class RescheduleItemCommandHandler : ICommandHandler<RescheduleIte
         command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm') AND deleted_at IS NULL AND is_readonly=0";
         CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
         MirrorLegacy(context, target.ItemId, row.Kind, next, nextEnd, newReminder);
+        CompleteTodoCommandHandler.SyncRecurringProjection(context, target.ItemId, timeChanged: true);
         return new(true, "rescheduled", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
     }
 

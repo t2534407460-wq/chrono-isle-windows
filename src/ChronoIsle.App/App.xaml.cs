@@ -99,7 +99,8 @@ public partial class App : System.Windows.Application
             preferences: provider.GetRequiredService<LifePreferencesService>(),
             planner: provider.GetRequiredService<IConversationPlanner>(),
             argumentParser: provider.GetRequiredService<IOperationArgumentParser>(),
-            assistantPlanPipeline: provider.GetRequiredService<AssistantPlanPipeline>()));
+            assistantPlanPipeline: provider.GetRequiredService<AssistantPlanPipeline>(),
+            draftInterpreter: new AssistantDraftInterpreter(provider.GetRequiredService<IChatCompletionClient>())));
         collection.AddSingleton<NativeToastBannerService>();
         collection.AddSingleton<SystemToastInboxService>();
         collection.AddSingleton<WindowsNotificationService>();

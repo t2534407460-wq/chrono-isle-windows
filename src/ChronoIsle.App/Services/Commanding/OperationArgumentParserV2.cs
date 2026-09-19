@@ -36,7 +36,7 @@ public sealed class OperationArgumentParserV2(IChatCompletionClient chat) : IOpe
         messages.Add(new("user", segment.Evidence));
 
         var stopwatch = Stopwatch.StartNew();
-        var first = await chat.Complete(provider, messages, jsonObject: true);
+        var first = await chat.Complete(provider, messages, jsonObject: true, cancellationToken: cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (TryNormalizeAndParse(first, segment.Operation, out var parsed, out var error))
         {
@@ -50,7 +50,7 @@ public sealed class OperationArgumentParserV2(IChatCompletionClient chat) : IOpe
             new("system", "Repair the candidate JSON. Preserve the user's intent. Return only the corrected command object."),
             new("user", $"EVIDENCE:\n{segment.Evidence}\n\nVALIDATION_ERROR:\n{error}\n\nCANDIDATE:\n{first}")
         };
-        var repaired = await chat.Complete(provider, repair, jsonObject: true);
+        var repaired = await chat.Complete(provider, repair, jsonObject: true, cancellationToken: cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (TryNormalizeAndParse(repaired, segment.Operation, out parsed, out error))
         {

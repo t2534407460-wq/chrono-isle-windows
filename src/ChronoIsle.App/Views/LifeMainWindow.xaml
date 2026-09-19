@@ -4,6 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:local="clr-namespace:ChronoIsle.App"
+        xmlns:views="clr-namespace:ChronoIsle.App.Views"
         Title="时屿 ChronoIsle" Width="1120" Height="760" MinWidth="840" MinHeight="560"
         Background="Transparent" Foreground="{DynamicResource Brush.TextPrimary}"
         FontFamily="{StaticResource Font.UI}" WindowStartupLocation="CenterScreen"
@@ -115,12 +116,15 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-            <Border Grid.Row="3" Style="{StaticResource Notice.Warning}" Padding="14" Margin="24,0,24,12" Visibility="{Binding HasPendingAction,Converter={StaticResource Visible}}" AutomationProperties.AutomationId="PendingActionCard">
+            <StackPanel Grid.Row="3">
+              <views:AssistantTaskCard Margin="24,0,24,12"/>
+            <Border Style="{StaticResource Notice.Warning}" Padding="14" Margin="24,0,24,12" Visibility="{Binding HasPendingAction,Converter={StaticResource Visible}}" AutomationProperties.AutomationId="PendingActionCard">
               <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel><TextBlock Text="待确认计划" Style="{StaticResource Text.SectionTitle}"/><TextBlock Text="请核对全部步骤；确认后整体执行，失败时整体回滚。" Style="{StaticResource Text.Secondary}" Margin="0,4,0,0"/><TextBlock Text="{Binding PendingActionText}" TextWrapping="Wrap" Margin="0,8,12,0" Foreground="{DynamicResource Brush.TextPrimary}"/></StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0"><Button Content="取消全部" Command="{Binding CancelPendingActionCommand}" AutomationProperties.AutomationId="CancelPendingActionButton" Style="{StaticResource Button.Secondary}" Margin="0,0,8,0"/><Button Content="确认全部" Command="{Binding ConfirmPendingActionCommand}" AutomationProperties.AutomationId="ConfirmPendingActionButton" Style="{StaticResource Button.Primary}"/></StackPanel>
               </Grid>
             </Border>
+            </StackPanel>
             <Border Grid.Row="4" Style="{StaticResource Card.Subtle}" Padding="6" Margin="24,0,24,22">
               <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0">

@@ -7,7 +7,7 @@ using ChronoIsle.App.Services.Persistence;
 
 namespace ChronoIsle.App.Services;
 
-public sealed class AssistantActionService
+public sealed partial class AssistantActionService
 {
     readonly LifeDataService data;
     readonly ChinaStatutoryHolidayCalendar holidays;
@@ -17,6 +17,8 @@ public sealed class AssistantActionService
     readonly LifePreferencesService? preferences;
     readonly AssistantCommandPipeline commandPipeline;
     readonly DraftStore drafts;
+    readonly AssistantDraftStore draftStore;
+    readonly IAssistantDraftInterpreter? draftInterpreter;
     readonly IConversationPlanner conversationPlanner;
     readonly IOperationArgumentParser operationParser;
     readonly AssistantPlanPipeline planPipeline;
@@ -31,9 +33,12 @@ public sealed class AssistantActionService
         LifePreferencesService? preferences = null,
         IConversationPlanner? planner = null,
         IOperationArgumentParser? argumentParser = null,
-        AssistantPlanPipeline? assistantPlanPipeline = null)
+        AssistantPlanPipeline? assistantPlanPipeline = null,
+        IAssistantDraftInterpreter? draftInterpreter = null)
     {
         this.data = data;
+        this.draftInterpreter = draftInterpreter;
+        draftStore = new AssistantDraftStore(data.DatabasePath);
         this.holidays = holidays;
         this.router = router;
         this.localQueries = localQueries;
@@ -69,6 +74,9 @@ public sealed class AssistantActionService
         Action<string>? onDelta = null,
         CancellationToken cancellationToken = default)
     {
+        if (UseDraftRuntime(session, history, input))
+            return ApplyPersona(await HandleDraftTurnAsync(provider, session, history, input, onDelta, cancellationToken));
+
         var pendingConfirmation = data.ActiveConfirmation(session.Id);
         if (pendingConfirmation is not null && IsConfirmationReply(input))
         {
@@ -670,7 +678,7 @@ public sealed class AssistantActionService
         messages.AddRange(history.Select(message => new ModelMessage(message.Role, message.Content)));
         messages.Add(new("user", input));
         if (onDelta is null)
-            return new(await chat.Complete(provider, messages), null, false);
+            return new(await chat.Complete(provider, messages, false, cancellationToken), null, false);
 
         var reply = new System.Text.StringBuilder();
         await foreach (var delta in chat.StreamComplete(provider, messages, cancellationToken))

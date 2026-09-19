@@ -23,8 +23,11 @@ public sealed partial class LifeDataService
         using var db = Open();
         using var command = db.CreateCommand();
         command.CommandText = """
-            SELECT id,title,notes,reminder_time,recurrence,weekdays,last_notified_at,created_at,updated_at
-            FROM recurring_reminders ORDER BY reminder_time,title
+            SELECT r.id,r.title,r.notes,r.reminder_time,r.recurrence,r.weekdays,r.last_notified_at,r.created_at,r.updated_at,
+                   (SELECT rr.start_local_datetime FROM recurrence_rules rr JOIN life_items li ON li.id=rr.series_item_id
+                    WHERE rr.series_item_id=r.id AND rr.deleted_at IS NULL AND li.origin_adapter='assistant_command'
+                    ORDER BY rr.rule_version DESC LIMIT 1)
+            FROM recurring_reminders r ORDER BY r.reminder_time,r.title
             """;
         using var reader = command.ExecuteReader();
         var values = new List<RecurringReminder>();
@@ -124,7 +127,7 @@ public sealed partial class LifeDataService
     }
     public AgendaItem? OccurrenceOn(RecurringReminder reminder, DateTime day)
     {
-        if (!Matches(reminder, day.Date)) return null;
+        if (reminder.StartsAt is { } starts && day.Date < starts.Date || !Matches(reminder, day.Date)) return null;
         var startsAt = day.Date.Add(reminder.ReminderTime.ToTimeSpan());
         return new(reminder.Id, "recurring", reminder.Title, reminder.Notes, startsAt, null, startsAt, false, true);
     }
@@ -132,7 +135,8 @@ public sealed partial class LifeDataService
     public AgendaItem? NextOccurrence(RecurringReminder reminder, DateTime after)
     {
         var horizon = reminder.Recurrence == RecurrenceKind.StatutoryHolidays ? 550 : 8;
-        for (var day = after.Date; day <= after.Date.AddDays(horizon); day = day.AddDays(1))
+        var firstDay = reminder.StartsAt is { } starts && starts.Date > after.Date ? starts.Date : after.Date;
+        for (var day = firstDay; day <= firstDay.AddDays(horizon); day = day.AddDays(1))
         {
             var occurrence = OccurrenceOn(reminder, day);
             if (occurrence is not null && occurrence.StartsAt > after) return occurrence;
@@ -265,7 +269,8 @@ public sealed partial class LifeDataService
         ReadWeekdays(Text(reader, 5)),
         Date(reader, 6),
         ReadDate(reader, 7),
-        ReadDate(reader, 8));
+        ReadDate(reader, 8),
+        reader.FieldCount > 9 ? Date(reader, 9) : null);
 
     static IReadOnlyList<DayOfWeek> ReadWeekdays(string? value)
     {

@@ -111,7 +111,7 @@ public sealed class ConversationPlannerV2(IChatCompletionClient chat) : IConvers
             messages.Add(new("system", "ACTIVE_CONTEXT:\n" + JsonSerializer.Serialize(context)));
         messages.Add(new("user", input));
 
-        var first = await chat.Complete(provider, messages, jsonObject: true);
+        var first = await chat.Complete(provider, messages, jsonObject: true, cancellationToken: cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (ConversationPlanJsonV2.TryDeserialize(first, input, out var plan, out var code, out var message))
         {
@@ -125,7 +125,7 @@ public sealed class ConversationPlannerV2(IChatCompletionClient chat) : IConvers
             new("system", "Repair the candidate JSON. Return only a corrected object. Do not add or remove user intents."),
             new("user", $"CURRENT_USER_INPUT:\n{input}\n\nVALIDATION_ERROR:\n{code}: {message}\n\nCANDIDATE:\n{first}")
         };
-        var repaired = await chat.Complete(provider, repairMessages, jsonObject: true);
+        var repaired = await chat.Complete(provider, repairMessages, jsonObject: true, cancellationToken: cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (ConversationPlanJsonV2.TryDeserialize(repaired, input, out plan, out code, out message))
         {

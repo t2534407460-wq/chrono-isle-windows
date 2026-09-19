@@ -246,6 +246,8 @@ public partial class LifeIslandWindow : Window
         };
         networkSpeedTest.SnapshotChanged += networkSpeedTestSnapshotChanged;
         this.assistant = assistant;
+        QuickAskTaskCard.DataContext = assistant;
+        QuickAskLegacyConfirmation.DataContext = assistant;
         media.SnapshotChanged += _ =>
         {
             audioSpectrum.RefreshCaptureDevice();
@@ -2781,9 +2783,9 @@ public partial class LifeIslandWindow : Window
 
     void UpdateQuickAskView()
     {
-        QuickAskStatus.Text = assistant.HasPendingAction
-            ? "需要在完整对话中确认操作"
-            : assistant.Status;
+        QuickAskStatus.Text = assistant.Status;
+        QuickAskLegacyConfirmation.Visibility = assistant.HasPendingAction ? Visibility.Visible : Visibility.Collapsed;
+        QuickAskLegacyConfirmation.IsEnabled = !assistant.IsSending;
         QuickAskSend.IsEnabled = !assistant.IsSending && !string.IsNullOrWhiteSpace(QuickAskInput.Text);
         QuickAskStop.Visibility = assistant.IsSending ? Visibility.Visible : Visibility.Collapsed;
         var latest = assistant.Messages.LastOrDefault(message => message.Role == "assistant");
@@ -2820,6 +2822,15 @@ public partial class LifeIslandWindow : Window
         if (e.Key != Key.Enter || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;
         e.Handled = true;
         QuickAskSend_Click(QuickAskSend, new RoutedEventArgs());
+    }
+
+    void NewQuickAsk_Click(object sender, RoutedEventArgs e)
+    {
+        if (assistant.IsSending) return;
+        assistant.BeginQuickAskConversation();
+        QuickAskAnswer.Text = "输入一个问题，或描述想创建、查询、修改的事项。";
+        QuickAskInput.Clear();
+        UpdateQuickAskView();
     }
 
     void OpenFullChat_Click(object sender, RoutedEventArgs e) => OpenAssistant();

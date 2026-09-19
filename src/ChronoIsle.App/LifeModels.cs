@@ -50,7 +50,8 @@ public sealed record RecurringReminder(
     IReadOnlyList<DayOfWeek> Weekdays,
     DateTime? LastNotifiedAt,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    DateTime? StartsAt = null);
 
 public sealed record AgendaItem(
     string Id,
@@ -211,7 +212,8 @@ public sealed record AssistantPendingPlan(
 
 public sealed record AssistantConversationResult(
     string Reply, AssistantAction? PendingAction, bool IsFailure, bool RefreshReminders = false,
-    AssistantPendingPlan? PendingPlan = null);
+    AssistantPendingPlan? PendingPlan = null,
+    ChronoIsle.App.Services.Commanding.AssistantInteraction? Interaction = null);
 public sealed record ActionExecutionResult(bool Succeeded, string Message, AgendaItem? AgendaItem);
 /// <summary>
 /// Immutable snapshot of a one-off reminder selected for a batch reschedule.

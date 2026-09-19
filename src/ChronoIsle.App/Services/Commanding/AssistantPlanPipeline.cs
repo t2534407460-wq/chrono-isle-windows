@@ -148,6 +148,28 @@ public sealed class AssistantPlanPipeline
         return matches.Select((item, index) => new AssistantPlanCandidateBindingV2(
             $"{segmentRef}_c{index + 1}", item.Id, item.Version, item.Title, item.Kind, item.Time)).ToArray();
     }
+    public AssistantPlanPipelineResultV2 PrepareDraftPlan(string requestId, int revision,
+        IReadOnlyList<AssistantCommandEnvelope> commands,
+        IReadOnlyList<AssistantPlanCandidateBindingV2> bindings,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParseExact(requestId, "N", out _) || revision < 1)
+            throw new ArgumentException("Invalid local draft identity.");
+        if (commands.Count is < 1 or > 3) throw new ArgumentException("Expected 1 to 3 commands.");
+        foreach (var command in commands) AssistantCommandContractValidator.Validate(command);
+        return Preflight("本地已校验的任务草稿", commands, bindings, cancellationToken,
+            forceConfirmation: commands.Count > 1, draftConfirmationId: $"draft_{requestId}_{revision}");
+    }
+
+    public AssistantPlanPipelineResultV2? ReadPlanResult(string confirmationId) =>
+        writeQueue.Execute<AssistantPlanPipelineResultV2?>(uow =>
+        {
+            var stored = Read(uow, confirmationId);
+            if (stored is null) return null;
+            var preview = JsonSerializer.Deserialize<AssistantPlanPreviewStepV2[]>(stored.PreviewJson) ?? [];
+            return Terminal(stored, preview, StatusState(stored.Status), "stored_result");
+        });
+
     public AssistantPlanPipelineResultV2 ConfirmPlan(
         string confirmationId,
         CancellationToken cancellationToken = default)
@@ -269,11 +291,19 @@ public sealed class AssistantPlanPipeline
         IReadOnlyList<AssistantCommandEnvelope> commands,
         IReadOnlyList<AssistantPlanCandidateBindingV2> candidateBindings,
         CancellationToken cancellationToken,
-        bool forceConfirmation = false)
+        bool forceConfirmation = false,
+        string? draftConfirmationId = null)
     {
         var now = utcNow().ToUniversalTime();
         return writeQueue.Execute<AssistantPlanPipelineResultV2>(unitOfWork =>
         {
+            if (draftConfirmationId is not null && Read(unitOfWork, draftConfirmationId) is { } existing)
+            {
+                if (!string.Equals(existing.PlanHash, Hash(AssistantCommandPlanJsonV2.Serialize(commands)), StringComparison.Ordinal))
+                    throw new InvalidOperationException("The prepared draft has changed.");
+                return Terminal(existing, JsonSerializer.Deserialize<AssistantPlanPreviewStepV2[]>(existing.PreviewJson) ?? [],
+                    StatusState(existing.Status), "idempotent_replay");
+            }
             var allTargets = new List<AssistantPlanTargetSnapshotV2>();
             var preview = new List<AssistantPlanPreviewStepV2>(commands.Count);
             var needsConfirmation = forceConfirmation;
@@ -294,12 +324,12 @@ public sealed class AssistantPlanPipeline
                         decision.Reason, preview, [], null);
                 needsConfirmation |= decision.Disposition == AssistantExecutionDisposition.RequireConfirmation;
             }
-            if (!needsConfirmation)
+            if (!needsConfirmation && draftConfirmationId is null)
                 return new(AssistantPlanPipelineState.Succeeded, NewId("plan"), null,
                     "preflight_clear", preview, [], null);
 
             var planId = NewId("plan");
-            var confirmationId = NewId("confirm");
+            var confirmationId = draftConfirmationId ?? NewId("confirm");
             var planJson = AssistantCommandPlanJsonV2.Serialize(commands);
             var targetJson = JsonSerializer.Serialize(allTargets);
             var targetHash = TargetHash(allTargets);
@@ -307,7 +337,7 @@ public sealed class AssistantPlanPipeline
             Insert(unitOfWork, confirmationId, planId, Hash(planJson), planJson, targetHash, targetJson,
                 previewJson, now.AddMinutes(15), now);
             return new(AssistantPlanPipelineState.AwaitingConfirmation, planId, confirmationId,
-                commands.Count > 1 ? "multi_write_confirmation" : "risk_confirmation",
+                !needsConfirmation ? "ready_to_execute" : commands.Count > 1 ? "multi_write_confirmation" : "risk_confirmation",
                 preview, allTargets.Select(target => target.ItemId).Distinct(StringComparer.Ordinal).ToArray(), null);
         }, cancellationToken);
     }
@@ -634,6 +664,7 @@ public sealed class AssistantPlanPipeline
 
     static AssistantPlanPipelineState StatusState(string status) => status switch
     {
+        "AwaitingConfirmation" => AssistantPlanPipelineState.AwaitingConfirmation,
         "Succeeded" => AssistantPlanPipelineState.Succeeded,
         "Cancelled" => AssistantPlanPipelineState.Cancelled,
         "Expired" => AssistantPlanPipelineState.Expired,
