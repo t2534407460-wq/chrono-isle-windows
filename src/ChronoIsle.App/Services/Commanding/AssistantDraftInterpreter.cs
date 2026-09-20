@@ -18,7 +18,18 @@ public sealed class AssistantDraftInterpreter(IChatCompletionClient chat) : IAss
         {"operation":"create_reminder","evidence":"exact quote from input or active draft",
          "title":null,"target":null,"timeText":null,"endText":null,"dueText":null,
          "reminderText":null,"repeatText":null,"notes":null,"priority":null,
-         "itemKind":null,"clearFields":[],"proposedTasks":[]}
+         "itemKind":null,"clearFields":[],"proposedTasks":[], "durationText":null,
+         "schedule":null,"unhandledConstraints":[]}
+        For within-day intervals / several daily times / working windows, use schedule:
+        {"intervalText":null,"windowText":null,"exclusionText":null,"daysText":null,
+         "timesText":null,"startText":null,"untilText":null,"firstTrigger":null,"rhythm":null,"weekdaysText":null}.
+        Copy all schedule *Text values exactly from the request/active draft. firstTrigger/rhythm/weekday values
+        are reserved for local UI choices: preserve existing values but never invent them.
+        Preserve intervals, work windows, lunch exclusions and repeat end dates separately.
+        Put event length in durationText (exact user phrase), not endText.
+        Never turn "every 2 hours during work except lunch" into a single daily time.
+        Evidence must quote the complete relevant request clause, including its constraints.
+        Put conditions outside these supported fields in unhandledConstraints as exact quotes; do not drop them.
         Allowed operations: create_todo, create_reminder, create_event, create_long_term_item,
         create_recurring_task, update_todo, complete_todo, delete_todo, reschedule_item,
         decompose_goal, list_items, summarize_period.
@@ -52,7 +63,7 @@ public sealed class AssistantDraftInterpreter(IChatCompletionClient chat) : IAss
         };
         messages.AddRange(history.TakeLast(10).Select(m => new ModelMessage(m.Role, m.Content)));
         messages.Add(new("user", input));
-        var evidence = turn.SourceText + "\n" + input;
+        var evidence = turn.SourceText + "\n" + input + "\n" + AssistantDraftJson.Serialize(turn.Tasks);
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var response = await chat.Complete(provider, messages, true, cancellationToken);
@@ -87,7 +98,10 @@ public sealed class AssistantDraftInterpreter(IChatCompletionClient chat) : IAss
             if (string.IsNullOrWhiteSpace(task.Evidence) || !evidence.Contains(task.Evidence, StringComparison.Ordinal))
                 throw new FormatException("Evidence must be copied from the user input.");
             foreach (var value in new[] { task.Title, task.Target, task.TimeText, task.EndText, task.DueText,
-                         task.ReminderText, task.RepeatText, task.Notes })
+                         task.ReminderText, task.RepeatText, task.Notes, task.DurationText,
+                         task.Schedule?.IntervalText, task.Schedule?.WindowText, task.Schedule?.ExclusionText,
+                         task.Schedule?.DaysText, task.Schedule?.TimesText, task.Schedule?.StartText, task.Schedule?.UntilText }
+                         .Concat(task.UnhandledConstraints ?? []))
                 if (!string.IsNullOrWhiteSpace(value) && !evidence.Contains(value, StringComparison.Ordinal))
                     throw new FormatException("Field values must be grounded in the user input.");
             if (task.ProposedTasks is { Count: > 10 } || task.ProposedTasks?.Any(string.IsNullOrWhiteSpace) == true)
@@ -123,7 +137,7 @@ public sealed class AssistantDraftInterpreter(IChatCompletionClient chat) : IAss
 
     public static AssistantUnderstanding? TryLocal(string input)
     {
-        if (Regex.IsMatch(input, @"[？?；;\n]|不要|别|如何|怎么|如果|然后|并且|以及|顺便|或者|同时|改成|改为|直到|截至|截止|持续|共[一二三四五六七八九十0-9]|每隔|法定|节假日")) return null;
+        if (Regex.IsMatch(input, @"[？?；;\n]|不要|别|如何|怎么|如果|然后|并且|以及|顺便|或者|同时|改成|改为|直到|截至|截止|持续|共[一二三四五六七八九十0-9]|每隔|间隔|工作时间|午休|早晚|法定|节假日")) return null;
         var match = Regex.Match(input.Trim(), @"^(?:请|帮我|请帮我)?(?<time>[^，,]*?)提醒我(?<title>[^，,]+)$");
         if (match.Success)
         {

@@ -23,6 +23,18 @@ public sealed partial class AssistantActionService
     {
         var turn = draftStore.Active(sessionId);
         if (turn is null) return LegacyInteraction(sessionId);
+        // Upgrade only the questions of unfinished drafts. Opening a chat never executes a plan.
+        if (turn.InteractionVersion < 2 && turn.State == "NeedsInput")
+        {
+            var tasks = EnrichDrafts(turn.Tasks, turn.SourceText);
+            if (tasks.Any(t => t.Schedule is not null))
+            {
+                var compiled = AssistantDraftCompiler.Compile(turn with { Tasks = tasks });
+                turn = SaveDraft(turn with { Tasks = tasks, Fields = compiled.Fields, Summary = compiled.Summary,
+                    Facts = compiled.Facts, Preview = compiled.Preview, Explanation = PlanningExplanation,
+                    State = compiled.Blocked is null ? "NeedsInput" : "Blocked", Reply = compiled.Blocked });
+            }
+        }
         if (turn.State == "Understanding")
             return Card(turn with { State = "Interrupted" });
         return Card(turn);
@@ -127,7 +139,7 @@ public sealed partial class AssistantActionService
                 planPipeline.CancelPlan(turn.ConfirmationId);
             }
             var source = turn.SourceText == input ? input : turn.SourceText + "\n" + input;
-            turn = SaveDraft(turn with { State = "Understanding", Tasks = understanding.Tasks,
+            turn = SaveDraft(turn with { State = "Understanding", Tasks = EnrichDrafts(MergeScheduleCorrections(turn.Tasks, understanding.Tasks), understanding.Tasks.Count == 1 ? input : source),
                 SourceText = source, ConfirmationId = null, Fields = [],
                 Bindings = new Dictionary<int, AssistantPlanCandidateBindingV2>(),
                 Candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>() });
@@ -165,6 +177,9 @@ public sealed partial class AssistantActionService
         if (turn.Tasks.All(t => t.Operation is "list_items" or "summarize_period"))
             return QueryDraft(turn);
         var compiled = AssistantDraftCompiler.Compile(turn);
+        if (compiled.Blocked is not null)
+            return Result(SaveDraft(turn with { State = "Blocked", Fields = [], Summary = compiled.Summary,
+                Explanation = compiled.Blocked, Facts = compiled.Facts, Preview = [], Reply = compiled.Blocked }));
         var queryReply = QueryContent(turn, out var queryFields);
         var fields = compiled.Fields.Concat(queryFields).ToList();
         var bindings = new Dictionary<int, AssistantPlanCandidateBindingV2>(turn.Bindings);
@@ -184,10 +199,13 @@ public sealed partial class AssistantActionService
                     matches.Select(c => new AssistantInputOption($"{c.Title} · {KindLabel(c.Kind)} · {c.TimeText ?? "未设时间"}", c.CandidateRef)).ToArray()));
             }
         }
-        turn = turn with { Fields = fields, Summary = string.IsNullOrWhiteSpace(queryReply) ? compiled.Summary : queryReply + "\n\n待执行：\n" + compiled.Summary, Bindings = bindings, Candidates = candidates };
+        turn = turn with { Fields = fields, Summary = string.IsNullOrWhiteSpace(queryReply) ? compiled.Summary : queryReply + "\n\n待执行：\n" + compiled.Summary, Bindings = bindings, Candidates = candidates, Facts = compiled.Facts, Preview = compiled.Preview,
+            Explanation = turn.Tasks.Any(t => t.Schedule is not null) ? PlanningExplanation : "已保留你提供的信息，只补充影响执行的条件。" };
         if (fields.Count > 0)
         {
-            turn = SaveDraft(turn with { State = "NeedsInput", Reply = "还需要补充以下信息。请在卡片中选择或填写，已有内容会保留。" });
+            turn = SaveDraft(turn with { State = "NeedsInput", Reply = fields.FirstOrDefault(f => f.Error is not null) is { } invalid
+                ? $"请调整“{invalid.Label}”：{invalid.Error} 已填写的信息已保留。"
+                : "我已整理出已知条件。请完成下方选项，接下来会生成具体执行计划。" });
             return Result(turn);
         }
         if (compiled.Commands.Any(c => c.Command == AssistantCommandName.DecomposeGoal))
@@ -217,7 +235,6 @@ public sealed partial class AssistantActionService
             return CompleteDraft(turn, planPipeline.ConfirmPlan(plan.ConfirmationId!, cancellationToken));
         }
         turn = SaveDraft(turn with { State = "NeedsConfirmation",
-            Summary = turn.Summary + "\n" + string.Join("\n", plan.Preview.Select(p => p.Description)),
             Reply = "请核对下方计划。确认后整体执行；你也可以修改信息或取消。" });
         return Result(turn);
     }
@@ -260,6 +277,10 @@ public sealed partial class AssistantActionService
         }
         if (action == "confirm" && turn.State == "NeedsConfirmation" && turn.ConfirmationId is not null)
             return CompleteDraft(turn, planPipeline.ConfirmPlan(turn.ConfirmationId, cancellationToken));
+        if (action == "edit" && turn.State == "Blocked")
+            return Result(SaveDraft(turn with { State = "NeedsInput",
+                Fields = [new("request", "调整需求", "text", [], turn.SourceText.Split("\n用户在卡片中补充：")[0],
+                    turn.Explanation)], Reply = "修改需求后会重新规划；当前没有执行任何操作。" }));
         if (action == "edit" && turn.Tasks.Count > 0)
         {
             if (turn.ConfirmationId is not null)
@@ -279,13 +300,24 @@ public sealed partial class AssistantActionService
         }
         if (action != "submit" || turn.State != "NeedsInput") return Result(turn, "请使用当前卡片提供的操作。");
         if (values.Keys.Any(k => turn.Fields.All(f => f.Key != k))) return Result(turn, "提交包含过期字段，请使用最新卡片。");
+        if (turn.Fields.Count == 1 && turn.Fields[0].Key == "request")
+        {
+            if (!values.TryGetValue("request", out var revised) || string.IsNullOrWhiteSpace(revised) || revised.Length > 2000)
+                return Result(turn, "请填写调整后的需求。");
+            turn = SaveDraft(turn with { Tasks = [], SourceText = revised, Fields = [], ConfirmationId = null });
+            return await UnderstandDraftAsync(provider, session, turn, [], revised, null, cancellationToken);
+        }
         var tasks = turn.Tasks.ToArray();
         var bindings = new Dictionary<int, AssistantPlanCandidateBindingV2>(turn.Bindings);
         foreach (var field in turn.Fields)
         {
-            if (!values.TryGetValue(field.Key, out var raw) || string.IsNullOrWhiteSpace(raw)) return Result(turn, "请填写或选择卡片中的所有必填项。");
-            var value = raw.Trim();
-            if (value.Length > 2000 || field.Options.Count > 0 && field.Options.All(o => o.Value != value))
+            if (field.DependsOn is { } dependency &&
+                (!values.TryGetValue(dependency, out var selected) || selected != field.DependsValue)) continue;
+            values.TryGetValue(field.Key, out var raw);
+            if (field.Required && string.IsNullOrWhiteSpace(raw)) return Result(turn, "请填写或选择卡片中的所有必填项。");
+            var value = raw?.Trim() ?? "";
+            if (value.Length > 2000 || field.Kind == "choice" && field.Options.All(o => o.Value != value) ||
+                field.Kind == "multichoice" && value.Split(',').Any(v => field.Options.All(o => o.Value != v)))
                 return Result(turn, "所选内容无效，请从卡片中重新选择。");
             var parts = field.Key.Split('.');
             var index = int.Parse(parts[0]);
@@ -296,7 +328,8 @@ public sealed partial class AssistantActionService
             }
             else
             {
-                tasks[index] = AssistantDraftCompiler.SetField(tasks[index], parts[1], value);
+                tasks[index] = parts[1] == "schedule" ? AssistantScenarioPlanner.Set(tasks[index], parts[2], value)
+                    : AssistantDraftCompiler.SetField(tasks[index], parts[1], value);
                 if (parts[1] == "target") bindings.Remove(index);
             }
         }
@@ -342,10 +375,19 @@ public sealed partial class AssistantActionService
                 "下周" => now.AddDays(7 - ((int)now.DayOfWeek + 6) % 7),
                 "本月" or "这个月" => new DateTime(now.Year, now.Month, 1), _ => (DateTime?)null
             };
+            if (range == "自定义" && DateTime.TryParseExact(task.DueText, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var customStart) &&
+                DateTime.TryParseExact(task.EndText, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var customEnd) &&
+                customEnd >= customStart && (customEnd - customStart).TotalDays <= 366)
+            {
+                replies.Add(localQueries.Query(new(customStart, customEnd.AddDays(1), $"{customStart:MM-dd} 至 {customEnd:MM-dd}")).ListText);
+                continue;
+            }
             if (start is null)
             {
-                fields.Add(new($"{i}.timeText", "选择查询范围", "choice",
-                    new[] { "今天", "明天", "后天", "本周", "下周", "本月" }.Select(s => new AssistantInputOption(s, s)).ToArray()));
+                fields.Add(new($"{i}.timeText", "想查看哪个时间范围？", "choice",
+                    new[] { "今天", "明天", "后天", "本周", "下周", "本月", "自定义" }.Select(s => new AssistantInputOption(s, s)).ToArray(), range));
+                fields.Add(new($"{i}.dueText", "开始日期", "date", [], task.DueText, "自定义范围最多 366 天。", DependsOn: $"{i}.timeText", DependsValue: "自定义"));
+                fields.Add(new($"{i}.endText", "结束日期", "date", [], task.EndText, "包含结束当天；需晚于或等于开始日期。", DependsOn: $"{i}.timeText", DependsValue: "自定义"));
                 continue;
             }
             var end = range is "本月" or "这个月" ? start.Value.AddMonths(1) : range is "本周" or "这周" or "下周" ? start.Value.AddDays(7) : start.Value.AddDays(1);
@@ -377,7 +419,7 @@ public sealed partial class AssistantActionService
 
     AssistantDraftTurn SaveDraft(AssistantDraftTurn turn)
     {
-        var next = turn with { Revision = turn.Revision + 1 };
+        var next = turn with { Revision = turn.Revision + 1, InteractionVersion = 2 };
         draftStore.Save(next, turn.Revision);
         return next;
     }
@@ -390,8 +432,28 @@ public sealed partial class AssistantActionService
 
     static AssistantInteraction? Card(AssistantDraftTurn turn) => turn.State is "Succeeded" or "Cancelled" or "Expired" or "Superseded"
         ? null : new(turn.RequestId, turn.Revision, turn.State,
-            turn.State == "NeedsConfirmation" ? "核对并执行" : turn.State == "NeedsInput" ? "补充任务信息" : "任务已保留",
-            turn.Summary, turn.Fields);
+            turn.State == "NeedsConfirmation" ? "核对执行计划" : turn.State == "NeedsInput" ? "一起完善计划" : turn.State == "Blocked" ? "需要调整需求" : "任务已保留",
+            turn.Summary, turn.Fields, turn.State == "NeedsConfirmation" && turn.Preview is { Count: > 0 }
+                ? "确认后创建完整的重复计划。错过多次时仅补最近一次；休息时段不补发。"
+                : turn.State is "Failed" or "Interrupted" ? turn.Reply ?? turn.Explanation : turn.Explanation, turn.Facts, turn.Preview);
+
+    static IReadOnlyList<AssistantTaskDraft> MergeScheduleCorrections(IReadOnlyList<AssistantTaskDraft> previous, IReadOnlyList<AssistantTaskDraft> incoming) =>
+        incoming.Select(task =>
+        {
+            var matching = previous.Where(old => old.Operation == task.Operation && old.Title == task.Title).ToArray();
+            if (matching.Length != 1 || matching[0].Schedule is not { } old || task.RepeatText == "不重复") return task;
+            var next = task.Schedule ?? new AssistantScheduleDraft();
+            return task with { Schedule = new(
+                next.IntervalText ?? old.IntervalText, next.WindowText ?? old.WindowText,
+                next.ExclusionText ?? old.ExclusionText, next.DaysText ?? old.DaysText,
+                next.TimesText ?? old.TimesText, next.StartText ?? old.StartText, next.UntilText ?? old.UntilText,
+                next.FirstTrigger ?? old.FirstTrigger, next.Rhythm ?? old.Rhythm, next.WeekdaysText ?? old.WeekdaysText) };
+        }).ToArray();
+
+    const string PlanningExplanation = "先确定执行日、有效时段与计时方式，再预览实际提醒时刻。确认后创建一个完整的重复计划。";
+
+    static IReadOnlyList<AssistantTaskDraft> EnrichDrafts(IReadOnlyList<AssistantTaskDraft> tasks, string source) =>
+        tasks.Select(t => AssistantScenarioPlanner.Enrich(t, tasks.Count == 1 ? source : t.Evidence)).ToArray();
 
     static AssistantConversationResult Result(AssistantDraftTurn turn, string? reply = null) =>
         new(reply ?? turn.Reply ?? "请继续处理下方任务。", null, turn.State == "Failed",

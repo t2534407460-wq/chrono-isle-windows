@@ -25,15 +25,21 @@
   <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}"
           BorderThickness="1" CornerRadius="10" Padding="12"
           Visibility="{Binding HasInteraction,Converter={StaticResource CardVisible}}">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="300">
-      <StackPanel>
-        <TextBlock Text="{Binding Interaction.Title}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource Brush.TextPrimary}"/>
+    <StackPanel>
+      <TextBlock Text="{Binding Interaction.Title}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource Brush.TextPrimary}"/>
+      <TextBlock Text="{Binding Interaction.Explanation}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,5,0,10"/>
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="310">
+        <StackPanel>
         <TextBlock Text="{Binding Interaction.Summary}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,5,0,8"/>
         <ItemsControl ItemsSource="{Binding InteractionFields}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <StackPanel Margin="0,0,0,12">
+              <StackPanel Margin="0,0,0,16" Visibility="{Binding IsVisible,Converter={StaticResource CardVisible}}">
                 <TextBlock Text="{Binding Label}" Foreground="{DynamicResource Brush.TextPrimary}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Danger}" Margin="0,0,0,6"
+                           AutomationProperties.Name="输入校验提示" AutomationProperties.LiveSetting="Assertive"
+                           Visibility="{Binding HasError,Converter={StaticResource CardVisible}}"/>
+                <TextBlock Text="{Binding Help}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="0,0,0,5"/>
                 <ComboBox ItemsSource="{Binding Options}" DisplayMemberPath="Label" SelectedValuePath="Value"
                           SelectedValue="{Binding Value,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" MinHeight="34"
                           AutomationProperties.Name="{Binding Label}" AutomationProperties.AutomationId="{Binding Key}"
@@ -41,9 +47,30 @@
                 <TextBox Text="{Binding Value,UpdateSourceTrigger=PropertyChanged}" MinHeight="34" TextWrapping="Wrap"
                          AutomationProperties.Name="{Binding Label}" AutomationProperties.AutomationId="{Binding Key}"
                          Visibility="{Binding IsText,Converter={StaticResource CardVisible}}"/>
+                <TextBlock Text="常用选择（也可在下方自定义）" FontSize="11" Foreground="{DynamicResource Brush.TextTertiary}" Margin="0,0,0,4"
+                           Visibility="{Binding HasSuggestions,Converter={StaticResource CardVisible}}"/>
+                <ComboBox ItemsSource="{Binding Options}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                          SelectedValue="{Binding Suggestion,Mode=TwoWay}" MinHeight="34" Margin="0,0,0,6"
+                          AutomationProperties.Name="建议值" Visibility="{Binding HasSuggestions,Converter={StaticResource CardVisible}}"/>
+                <StackPanel Orientation="Horizontal" Visibility="{Binding IsDuration,Converter={StaticResource CardVisible}}">
+                  <TextBox Text="{Binding Value,UpdateSourceTrigger=PropertyChanged}" Width="110" MinHeight="34" AutomationProperties.Name="{Binding Label}"/>
+                  <TextBlock Text="分钟" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}" Margin="8,0,0,0"/>
+                </StackPanel>
+                <WrapPanel Visibility="{Binding IsRange,Converter={StaticResource CardVisible}}">
+                  <TextBox Text="{Binding RangeStart,UpdateSourceTrigger=PropertyChanged}" Width="86" MinHeight="34" AutomationProperties.Name="时段开始（24 小时制）"/>
+                  <TextBlock Text="至" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}" Margin="8,0"/>
+                  <TextBox Text="{Binding RangeEnd,UpdateSourceTrigger=PropertyChanged}" Width="86" MinHeight="34" AutomationProperties.Name="时段结束（24 小时制）"/>
+                  <TextBlock Text="HH:mm" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextTertiary}" Margin="8,0"/>
+                </WrapPanel>
+                <ItemsControl ItemsSource="{Binding Choices}" Visibility="{Binding IsMultiChoice,Converter={StaticResource CardVisible}}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate><DataTemplate>
+                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected,Mode=TwoWay}" Margin="0,4,14,6" Foreground="{DynamicResource Brush.TextPrimary}"/>
+                  </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <DatePicker SelectedDate="{Binding Date,Mode=TwoWay}" Width="150" HorizontalAlignment="Left" MinHeight="34" Margin="0,0,8,4"
+                            AutomationProperties.Name="日期" Visibility="{Binding HasDate,Converter={StaticResource CardVisible}}"/>
                 <WrapPanel Visibility="{Binding HasTime,Converter={StaticResource CardVisible}}">
-                  <DatePicker SelectedDate="{Binding Date,Mode=TwoWay}" Width="142" MinHeight="34" Margin="0,0,8,4"
-                              AutomationProperties.Name="日期" Visibility="{Binding HasDate,Converter={StaticResource CardVisible}}"/>
                   <ComboBox ItemsSource="{Binding Hours}" SelectedItem="{Binding Hour,Mode=TwoWay}" Width="66" MinHeight="34" Margin="0,0,4,4" AutomationProperties.Name="小时"/>
                   <TextBlock Text=":" VerticalAlignment="Center" Margin="0,0,4,4" Foreground="{DynamicResource Brush.TextSecondary}"/>
                   <ComboBox ItemsSource="{Binding Minutes}" SelectedItem="{Binding Minute,Mode=TwoWay}" Width="66" MinHeight="34" Margin="0,0,4,4" AutomationProperties.Name="分钟"/>
@@ -53,8 +80,15 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <WrapPanel>
-          <Button Content="补充并继续" Command="{Binding SubmitInteractionCommand}" Style="{DynamicResource Button.Primary}" Margin="0,0,8,6"
+        <ItemsControl ItemsSource="{Binding Interaction.Preview}" Margin="0,4,0,8">
+          <ItemsControl.ItemTemplate><DataTemplate>
+            <TextBlock Text="{Binding StringFormat=即将提醒：{0}}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextPrimary}" Margin="0,3"/>
+          </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+        <WrapPanel Margin="0,10,0,0">
+          <Button Content="继续规划" Command="{Binding SubmitInteractionCommand}" Style="{DynamicResource Button.Primary}" Margin="0,0,8,6"
                   Visibility="{Binding Interaction.CanSubmit,Converter={StaticResource CardVisible}}" AutomationProperties.AutomationId="SubmitAssistantFields"/>
           <Button Content="确认执行" Command="{Binding ConfirmInteractionCommand}" Style="{DynamicResource Button.Primary}" Margin="0,0,8,6"
                   Visibility="{Binding Interaction.CanConfirm,Converter={StaticResource CardVisible}}" AutomationProperties.AutomationId="ConfirmAssistantDraft"/>
@@ -64,7 +98,6 @@
                   Visibility="{Binding Interaction.CanRetry,Converter={StaticResource CardVisible}}"/>
           <Button Content="取消任务" Command="{Binding CancelInteractionCommand}" Style="{DynamicResource Button.Secondary}" Margin="0,0,0,6"/>
         </WrapPanel>
-      </StackPanel>
-    </ScrollViewer>
+    </StackPanel>
   </Border>
 </UserControl>

@@ -295,6 +295,11 @@ public static class AssistantCommandContractValidator
                 if (value.Kind is not (null or AssistantItemKindV1.Todo or AssistantItemKindV1.Reminder))
                     throw Invalid("kind", "create_recurring_task supports todo or reminder only.");
                 Time(value.WallStart, "wallStart");
+                if (value.DailySchedule is { } schedule)
+                {
+                    if (value.Kind != AssistantItemKindV1.Reminder) throw Invalid("dailySchedule", "Daily schedules require a reminder.");
+                    try { schedule.Validate(); } catch (ArgumentException e) { throw Invalid("dailySchedule", e.Message); }
+                }
                 Recurrence(value.Recurrence);
                 break;
             case (AssistantCommandName.RescheduleItem, RescheduleItemArgumentsV1 value):

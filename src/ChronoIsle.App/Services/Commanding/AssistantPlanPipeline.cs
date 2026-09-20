@@ -158,7 +158,7 @@ public sealed class AssistantPlanPipeline
         if (commands.Count is < 1 or > 3) throw new ArgumentException("Expected 1 to 3 commands.");
         foreach (var command in commands) AssistantCommandContractValidator.Validate(command);
         return Preflight("本地已校验的任务草稿", commands, bindings, cancellationToken,
-            forceConfirmation: commands.Count > 1, draftConfirmationId: $"draft_{requestId}_{revision}");
+            forceConfirmation: commands.Count > 1 || commands.Any(c => c.Arguments is CreateRecurringTaskArgumentsV1 { DailySchedule: not null }), draftConfirmationId: $"draft_{requestId}_{revision}");
     }
 
     public AssistantPlanPipelineResultV2? ReadPlanResult(string confirmationId) =>

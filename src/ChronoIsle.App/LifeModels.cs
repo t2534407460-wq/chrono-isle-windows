@@ -51,7 +51,8 @@ public sealed record RecurringReminder(
     DateTime? LastNotifiedAt,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    DateTime? StartsAt = null);
+    DateTime? StartsAt = null,
+    Services.Domain.ReminderDailySchedule? Schedule = null);
 
 public sealed record AgendaItem(
     string Id,

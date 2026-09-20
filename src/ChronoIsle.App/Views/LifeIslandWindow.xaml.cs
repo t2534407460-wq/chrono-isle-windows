@@ -346,9 +346,9 @@ public partial class LifeIslandWindow : Window
         });
     }
 
-    public void ShowReminder(string kind, string itemId)
+    public void ShowReminder(string kind, string itemId, DateTime? occurrenceAt = null)
     {
-        var item = data.FindAgendaItem(kind, itemId);
+        var item = data.FindAgendaItem(kind, itemId, occurrenceAt);
         if (item is not null)
         {
             selectedDate = item.StartsAt.Date;

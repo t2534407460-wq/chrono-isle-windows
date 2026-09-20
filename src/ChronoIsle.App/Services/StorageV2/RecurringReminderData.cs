@@ -15,6 +15,8 @@ public sealed partial class LifeDataService
                 id TEXT PRIMARY KEY,title TEXT NOT NULL,notes TEXT,reminder_time TEXT NOT NULL,
                 recurrence TEXT NOT NULL,weekdays TEXT,last_notified_at TEXT,
                 created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS assistant_reminder_schedules(
+                series_item_id TEXT PRIMARY KEY,schedule_json TEXT NOT NULL);
             """);
     }
 
@@ -26,7 +28,8 @@ public sealed partial class LifeDataService
             SELECT r.id,r.title,r.notes,r.reminder_time,r.recurrence,r.weekdays,r.last_notified_at,r.created_at,r.updated_at,
                    (SELECT rr.start_local_datetime FROM recurrence_rules rr JOIN life_items li ON li.id=rr.series_item_id
                     WHERE rr.series_item_id=r.id AND rr.deleted_at IS NULL AND li.origin_adapter='assistant_command'
-                    ORDER BY rr.rule_version DESC LIMIT 1)
+                    ORDER BY rr.rule_version DESC LIMIT 1),
+                   (SELECT s.schedule_json FROM assistant_reminder_schedules s WHERE s.series_item_id=r.id)
             FROM recurring_reminders r ORDER BY r.reminder_time,r.title
             """;
         using var reader = command.ExecuteReader();
@@ -49,6 +52,28 @@ public sealed partial class LifeDataService
         if (recurrence == RecurrenceKind.Weekly && normalizedDays.Count == 0)
             throw new InvalidOperationException("Weekly reminders require at least one weekday.");
 
+        var advanced = id is null ? null : RecurringReminders().FirstOrDefault(r => r.Id == id && r.Schedule is not null);
+        if (advanced is not null)
+        {
+            if (advanced.ReminderTime != reminderTime || advanced.Recurrence != recurrence || !advanced.Weekdays.SequenceEqual(normalizedDays))
+                throw new InvalidOperationException("这是包含多个时刻的计划，单一时间编辑器不能替换其规则。请在对话中重新规划，或只修改名称与备注。");
+            writeQueue.Execute(uow =>
+            {
+                using var update = uow.Connection.CreateCommand();
+                update.Transaction = uow.Transaction;
+                update.CommandText = """
+                    UPDATE recurring_reminders SET title=$title,notes=$notes,updated_at=$now WHERE id=$id;
+                    UPDATE life_items SET title=$title,notes=$notes,updated_at=$now,row_version=row_version+1 WHERE id=$id;
+                    """;
+                update.Parameters.AddWithValue("$title", title.Trim());
+                update.Parameters.AddWithValue("$notes", (object?)notes ?? DBNull.Value);
+                update.Parameters.AddWithValue("$now", localNow().ToString("O"));
+                update.Parameters.AddWithValue("$id", id!);
+                update.ExecuteNonQuery();
+            });
+            RaiseAgendaChanged();
+            return advanced with { Title = title.Trim(), Notes = notes };
+        }
         var now = localNow();
         var item = new RecurringReminder(
             id ?? Guid.NewGuid().ToString("N"),
@@ -85,7 +110,7 @@ public sealed partial class LifeDataService
     }
 
     public IReadOnlyList<AgendaItem> RecurringAgendaFor(DateTime day) =>
-        RecurringReminders().Select(reminder => OccurrenceOn(reminder, day)).Where(item => item is not null).Cast<AgendaItem>().ToList();
+        RecurringReminders().SelectMany(reminder => OccurrencesOn(reminder, day)).ToList();
 
     /// <summary>Skips only the supplied recurring occurrence; the recurrence rule is unchanged.</summary>
     public void SkipRecurringOccurrence(AgendaItem item) => SaveRecurringOccurrenceOverride(item, OccurrenceOverrideType.Skip, null);
@@ -125,8 +150,18 @@ public sealed partial class LifeDataService
         new OccurrenceOverrideStore(writeQueue).Save(new OccurrenceOverride(
             key, type, null, rescheduledUtc, new DateTimeOffset(localNow())));
     }
+    public IReadOnlyList<AgendaItem> OccurrencesOn(RecurringReminder reminder, DateTime day)
+    {
+        if (reminder.Schedule is { } schedule)
+            return schedule.Occurrences(DateOnly.FromDateTime(day)).Select(at =>
+                new AgendaItem(reminder.Id, "recurring", reminder.Title, reminder.Notes, at, null, at, false, true)).ToArray();
+        var occurrence = OccurrenceOn(reminder, day);
+        return occurrence is null ? [] : [occurrence];
+    }
+
     public AgendaItem? OccurrenceOn(RecurringReminder reminder, DateTime day)
     {
+        if (reminder.Schedule is not null) return OccurrencesOn(reminder, day).FirstOrDefault();
         if (reminder.StartsAt is { } starts && day.Date < starts.Date || !Matches(reminder, day.Date)) return null;
         var startsAt = day.Date.Add(reminder.ReminderTime.ToTimeSpan());
         return new(reminder.Id, "recurring", reminder.Title, reminder.Notes, startsAt, null, startsAt, false, true);
@@ -134,12 +169,12 @@ public sealed partial class LifeDataService
 
     public AgendaItem? NextOccurrence(RecurringReminder reminder, DateTime after)
     {
-        var horizon = reminder.Recurrence == RecurrenceKind.StatutoryHolidays ? 550 : 8;
+        var horizon = reminder.Schedule is not null || reminder.Recurrence == RecurrenceKind.StatutoryHolidays ? 550 : 8;
         var firstDay = reminder.StartsAt is { } starts && starts.Date > after.Date ? starts.Date : after.Date;
         for (var day = firstDay; day <= firstDay.AddDays(horizon); day = day.AddDays(1))
         {
-            var occurrence = OccurrenceOn(reminder, day);
-            if (occurrence is not null && occurrence.StartsAt > after) return occurrence;
+            var occurrence = OccurrencesOn(reminder, day).FirstOrDefault(o => o.StartsAt > after);
+            if (occurrence is not null) return occurrence;
         }
         return null;
     }
@@ -158,7 +193,13 @@ public sealed partial class LifeDataService
         var due = new List<AgendaItem>();
         foreach (var reminder in reminders)
         {
-            var occurrence = OccurrenceOn(reminder, now.Date);
+            // Resume at the latest due occurrence; never flood all missed intervals on wake.
+            // A work-window plan must not deliver catch-up notifications during a break or after work.
+            var clock = TimeOnly.FromDateTime(now);
+            if (reminder.Schedule is { Window: { } window } schedule &&
+                (!window.Contains(clock) || (schedule.Exclusions ?? []).Any(p => p.Contains(clock))))
+                continue;
+            var occurrence = OccurrencesOn(reminder, now.Date).LastOrDefault(o => o.RemindAt <= now);
             if (occurrence?.RemindAt is null || occurrence.RemindAt > now ||
                 reminder.LastNotifiedAt is not null && reminder.LastNotifiedAt >= occurrence.RemindAt)
                 continue;
@@ -183,6 +224,14 @@ public sealed partial class LifeDataService
         if (string.Equals(kind, "recurring", StringComparison.OrdinalIgnoreCase))
         {
             var reminder = RecurringReminders().FirstOrDefault(x => x.Id == id);
+            if (reminder?.Schedule is not null)
+            {
+                var occurrences = OccurrencesOn(reminder, date);
+                if (day is { } exact && exact.TimeOfDay != TimeSpan.Zero)
+                    return occurrences.FirstOrDefault(o => o.StartsAt == exact);
+                return (day is null ? occurrences.LastOrDefault(o => o.StartsAt <= localNow()) : null)
+                    ?? occurrences.FirstOrDefault() ?? NextOccurrence(reminder, localNow());
+            }
             return reminder is null ? null : OccurrenceOn(reminder, date) ?? NextOccurrence(reminder, localNow());
         }
         if (string.Equals(kind, "long_term", StringComparison.OrdinalIgnoreCase))
@@ -215,7 +264,8 @@ public sealed partial class LifeDataService
                 reminder.Notes,
                 next?.StartsAt,
                 false,
-                AssistantActionService.RecurrenceText(reminder.Recurrence, reminder.Weekdays)));
+                reminder.Schedule is { } schedule ? string.Join("、", schedule.Times.Select(t => t.ToString("HH:mm"))) + " · " + schedule.Description
+                    : AssistantActionService.RecurrenceText(reminder.Recurrence, reminder.Weekdays)));
         }
         values.AddRange(ManagedSingleReminders());
         values.AddRange(LongTermItems());
@@ -270,7 +320,8 @@ public sealed partial class LifeDataService
         Date(reader, 6),
         ReadDate(reader, 7),
         ReadDate(reader, 8),
-        reader.FieldCount > 9 ? Date(reader, 9) : null);
+        reader.FieldCount > 9 ? Date(reader, 9) : null,
+        reader.FieldCount > 10 && Text(reader, 10) is { } json ? Commanding.AssistantDraftJson.Read<ReminderDailySchedule>(json) : null);
 
     static IReadOnlyList<DayOfWeek> ReadWeekdays(string? value)
     {

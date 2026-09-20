@@ -149,7 +149,7 @@ public partial class App : System.Windows.Application
             main?.SubmitQuickInput(text);
         });
         services.GetRequiredService<ReminderService>().ReminderDue += (_, item) =>
-            Dispatcher.BeginInvoke(() => island.ShowReminder(item.Kind, item.Id));
+            Dispatcher.BeginInvoke(() => island.ShowReminder(item.Kind, item.Id, item.StartsAt));
         var tray = services.GetRequiredService<LifeTrayService>();
         tray.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         tray.RestoreIslandRequested += (_, _) => Dispatcher.BeginInvoke(island.OpenDefaultExpanded);

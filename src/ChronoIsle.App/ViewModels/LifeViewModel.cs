@@ -33,9 +33,21 @@ public partial class LifeViewModel : ObservableObject
     partial void OnInteractionChanged(AssistantInteraction? value)
     {
         InteractionFields.Clear();
-        foreach (var field in value?.Fields ?? []) InteractionFields.Add(new(field));
+        foreach (var field in value?.Fields ?? [])
+        {
+            var input = new AssistantInputViewModel(field);
+            input.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AssistantInputViewModel.InputValue)) RefreshFieldVisibility(); };
+            InteractionFields.Add(input);
+        }
+        RefreshFieldVisibility();
         OnPropertyChanged(nameof(HasInteraction));
         UpdateInteractionCommands();
+    }
+
+    void RefreshFieldVisibility()
+    {
+        foreach (var field in InteractionFields)
+            field.IsVisible = field.DependsOn is null || InteractionFields.FirstOrDefault(f => f.Key == field.DependsOn)?.InputValue == field.DependsValue;
     }
 
     bool CanInteract() => !IsSending && Interaction is not null;
@@ -65,11 +77,15 @@ public partial class LifeViewModel : ObservableObject
         if (!CanInteract() || SelectedSession is null || Interaction is null) return;
         var session = SelectedSession;
         var card = Interaction;
-        var values = InteractionFields.ToDictionary(field => field.Key, field => field.InputValue);
-        if (action == "submit" && values.Values.Any(string.IsNullOrWhiteSpace))
+        var values = InteractionFields.Where(field => field.IsVisible).ToDictionary(field => field.Key, field => field.InputValue);
+        if (action == "submit")
         {
-            Status = "请完成卡片中的必填选项，已填写内容会保留";
-            return;
+            foreach (var field in InteractionFields) field.Validate();
+            if (InteractionFields.FirstOrDefault(field => field.HasError) is { } invalid)
+            {
+                Status = invalid.Label + "：" + invalid.Error;
+                return;
+            }
         }
         await RunTurnAsync(session, label, (delta, token) =>
             actions.InteractAsync(settings.Load(), session, card.RequestId, card.Revision, action, values, token));

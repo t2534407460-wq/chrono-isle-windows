@@ -324,9 +324,9 @@ internal sealed class CreateRecurringTaskCommandHandler : CreateItemCommandHandl
         }
         var wall = AssistantCommandTimeResolver.Resolve(context, wallExpression with { LocalDate = localDate, TimeZoneHint = zone });
         var kind = arguments.Kind == AssistantItemKindV1.Todo ? "Todo" : "Reminder";
-        var mirrorRecurring = kind == "Reminder" &&
+        var mirrorRecurring = kind == "Reminder" && (arguments.DailySchedule is not null ||
             recurrence.Frequency is AssistantRecurrenceFrequencyV1.Daily or AssistantRecurrenceFrequencyV1.Weekly &&
-            recurrence.Interval is null or 1 && recurrence.End?.Kind is null or AssistantRecurrenceEndKindV1.Never;
+            recurrence.Interval is null or 1 && recurrence.End?.Kind is null or AssistantRecurrenceEndKindV1.Never);
         var id = Insert(context, kind, arguments.Title!, arguments.Notes,
             kind == "Todo" ? wall : null, kind == "Reminder" ? wall : null, null, null,
             mirrorLegacy: !mirrorRecurring);
@@ -367,12 +367,21 @@ internal sealed class CreateRecurringTaskCommandHandler : CreateItemCommandHandl
             legacy.Parameters.AddWithValue("$title", arguments.Title!.Trim());
             legacy.Parameters.AddWithValue("$notes", (object?)arguments.Notes ?? DBNull.Value);
             legacy.Parameters.AddWithValue("$time", wall.LocalDateTime.ToString("HH:mm"));
-            legacy.Parameters.AddWithValue("$frequency", recurrence.Frequency.ToString());
+            legacy.Parameters.AddWithValue("$frequency", arguments.DailySchedule?.DayPattern == "official" ? "OfficialWorkdays" : recurrence.Frequency.ToString());
             legacy.Parameters.AddWithValue("$days", string.Join(',', (recurrence.Weekdays ?? []).Select(d => (int)d)));
             legacy.Parameters.AddWithValue("$now", context.NowUtc.ToLocalTime().ToString("O"));
             legacy.ExecuteNonQuery();
             legacy.CommandText = "UPDATE life_items SET origin_adapter='assistant_command' WHERE id=$id";
             legacy.ExecuteNonQuery();
+            if (arguments.DailySchedule is { } schedule)
+            {
+                schedule.Validate();
+                legacy.CommandText = "CREATE TABLE IF NOT EXISTS assistant_reminder_schedules(series_item_id TEXT PRIMARY KEY,schedule_json TEXT NOT NULL)";
+                legacy.ExecuteNonQuery();
+                legacy.CommandText = "INSERT INTO assistant_reminder_schedules(series_item_id,schedule_json) VALUES($id,$schedule)";
+                legacy.Parameters.AddWithValue("$schedule", AssistantDraftJson.Serialize(schedule));
+                legacy.ExecuteNonQuery();
+            }
         }
         return new(true, "created", CanonicalCommandHandlers.ItemResult(id), [id]);
     }
@@ -452,6 +461,19 @@ public sealed class CompleteTodoCommandHandler : ICommandHandler<CompleteTodoArg
 
     internal static void SyncRecurringProjection(AssistantCommandExecutionContext context, string id, bool timeChanged = false)
     {
+        if (timeChanged)
+        {
+            using var advanced = context.UnitOfWork.Connection.CreateCommand();
+            advanced.Transaction = context.UnitOfWork.Transaction;
+            advanced.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='assistant_reminder_schedules'";
+            if (advanced.ExecuteScalar() is not null)
+            {
+                advanced.CommandText = "SELECT 1 FROM assistant_reminder_schedules WHERE series_item_id=$id";
+                advanced.Parameters.AddWithValue("$id", id);
+                if (advanced.ExecuteScalar() is not null)
+                    throw new InvalidOperationException("包含多个时刻的计划需要重新规划，不能替换为单一时间。");
+            }
+        }
         using var c = context.UnitOfWork.Connection.CreateCommand();
         c.Transaction = context.UnitOfWork.Transaction;
         c.CommandText = """

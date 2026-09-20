@@ -11,7 +11,7 @@ namespace ChronoIsle.Tests;
 public sealed class AssistantDraftRuntimeCollection { }
 
 [Collection("Assistant draft runtime")]
-public sealed class AssistantDraftRuntimeTests : IDisposable
+public sealed partial class AssistantDraftRuntimeTests : IDisposable
 {
     readonly string directory = Path.Combine(Path.GetTempPath(), "chronoisle-draft-tests", Guid.NewGuid().ToString("N"));
     readonly LifeDataService data;
@@ -157,7 +157,7 @@ public sealed class AssistantDraftRuntimeTests : IDisposable
         var interpreter = new FixedInterpreter(new(3, "query", [new("list_items", "查看事项")]));
         var service = Service(interpreter);
         var result = await Send(service, "查看事项");
-        Assert.Equal("choice", Assert.Single(result.Interaction!.Fields).Kind);
+        Assert.Equal("choice", Assert.Single(result.Interaction!.Fields.Where(f => f.DependsOn is null)).Kind);
         var completed = await Click(service, result.Interaction, "submit", new() { ["0.timeText"] = "明天" });
         Assert.Null(completed.Interaction);
         Assert.False(completed.RefreshReminders);

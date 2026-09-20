@@ -4,7 +4,8 @@ using System.Text.RegularExpressions;
 namespace ChronoIsle.App.Services.Commanding;
 
 public sealed record AssistantDraftCompilation(IReadOnlyList<AssistantCommandEnvelope> Commands,
-    IReadOnlyList<AssistantInputField> Fields, string Summary);
+    IReadOnlyList<AssistantInputField> Fields, string Summary,
+    IReadOnlyList<string>? Facts = null, IReadOnlyList<string>? Preview = null, string? Blocked = null);
 
 public static class AssistantDraftCompiler
 {
@@ -13,10 +14,23 @@ public static class AssistantDraftCompiler
         var fields = new List<AssistantInputField>();
         var commands = new List<AssistantCommandEnvelope>();
         var summaries = new List<string>();
+        var facts = new List<string>();
+        var preview = new List<string>();
         for (var i = 0; i < turn.Tasks.Count; i++)
         {
             var draft = Normalize(turn.Tasks[i], turn);
+            if (draft.UnhandledConstraints is { Count: > 0 })
+                return new([], [], draft.Evidence, Blocked: "这些条件尚不能可靠执行：" + string.Join("、", draft.UnhandledConstraints) + "。请修改需求后重新规划。");
             if (draft.Operation is "list_items" or "summarize_period") continue;
+            if (draft.Schedule is not null)
+            {
+                var planned = AssistantScenarioPlanner.Compile(draft, turn, i, edit);
+                if (planned.Blocked is not null) return new([], [], planned.Summary, planned.Facts, [], planned.Blocked);
+                fields.AddRange(planned.Fields); facts.AddRange(planned.Facts); preview.AddRange(planned.Preview);
+                summaries.Add(planned.Summary);
+                if (planned.Command is not null) commands.Add(planned.Command);
+                continue;
+            }
             var prefix = turn.Tasks.Count == 1 ? "" : $"第 {i + 1} 项 · ";
             void Add(string key, string label, string kind, string? value = null, IReadOnlyList<AssistantInputOption>? options = null)
             {
@@ -56,7 +70,18 @@ public static class AssistantDraftCompiler
             var endReference = time?.LocalDate is { } eventDate && draft.EndText is { } endText &&
                 Regex.IsMatch(endText.Replace(" ", ""), @"^(?:凌晨|早上|早晨|上午|中午|下午|晚上|晚间)?[0-9零〇一二两三四五六七八九十]+(?:点|时|:|：)")
                 ? new DateTimeOffset(eventDate.ToDateTime(TimeOnly.MinValue), turn.ReferenceTime.Offset) : (DateTimeOffset?)null;
-            var end = Time("endText", draft.EndText, draft.Operation == "create_event", endReference);
+            AssistantTimeExpressionV1? end;
+            if (draft.Operation == "create_event" && string.IsNullOrWhiteSpace(draft.EndText))
+            {
+                var duration = AssistantScenarioPlanner.Minutes(draft.DurationText);
+                if (duration is null || edit)
+                    fields.Add(new($"{i}.durationText", "这项日程持续多久？", "duration", AssistantScenarioPlanner.DurationOptions,
+                        duration?.ToString(), "选择建议或填写分钟数；也可在对话中指定结束时间。"));
+                var finish = time?.LocalDate is { } date && time.LocalTime is { } clock && duration is { } minutes
+                    ? date.ToDateTime(clock).AddMinutes(minutes) : (DateTime?)null;
+                end = finish is { } value ? new(DateOnly.FromDateTime(value), TimeOnly.FromDateTime(value), null, turn.TimeZone, value.ToString("yyyy-MM-dd HH:mm")) : null;
+            }
+            else end = Time("endText", draft.EndText, false, endReference);
             var due = Time("dueText", draft.DueText, false);
             var remind = Time("reminderText", draft.ReminderText, false);
             if (time?.LocalDate is { } startDate && end?.LocalDate is { } endDate &&
@@ -135,11 +160,12 @@ public static class AssistantDraftCompiler
                 (string.IsNullOrWhiteSpace(timeLabel) ? "" : $" · {timeLabel}") + (repeating ? $" · {draft.RepeatText}" : "") +
                 (end is null ? "" : $" 至 {end.LocalDate:yyyy-MM-dd} {end.LocalTime:HH:mm}"));
         }
-        return new(commands, fields, string.Join("\n", summaries));
+        return new(commands, fields, string.Join("\n", summaries), facts, preview);
     }
 
     static AssistantTaskDraft Normalize(AssistantTaskDraft draft, AssistantDraftTurn turn)
     {
+        draft = AssistantScenarioPlanner.Enrich(draft, turn.Tasks.Count == 1 ? turn.SourceText : draft.Evidence);
         if (draft.Operation == "create_recurring_task" && draft.RepeatText == "不重复")
             draft = draft with { Operation = draft.ItemKind switch
             { "todo" => "create_todo", "event" => "create_event", "long_term" => "create_long_term_item", _ => "create_reminder" } };
@@ -276,6 +302,7 @@ public static class AssistantDraftCompiler
 
     public static AssistantTaskDraft SetField(AssistantTaskDraft draft, string field, string value) => field switch
     {
+        "durationText" => draft with { DurationText = value, EndText = null },
         "title" => draft with { Title = value }, "target" => draft with { Target = value },
         "timeText" => draft with { TimeText = value,
             ReminderText = draft.Operation == "create_reminder" ||

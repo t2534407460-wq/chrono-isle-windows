@@ -197,6 +197,11 @@ public sealed class ReminderService : IDisposable
             {
                 var item = ResolveOccurrenceItem(lease)
                     ?? throw new InvalidOperationException("The reminder item no longer exists.");
+                if (!CanDeliverScheduledOccurrence(item, lease.OccurrenceKey, currentLocalTime))
+                {
+                    dueDetector.MarkDelivered(lease, nowUtc);
+                    continue;
+                }
                 var current = preferences.Load();
                 var context = new ReminderPresentationContext(
                     current.FullScreenSilentEnabled,
@@ -300,6 +305,7 @@ public sealed class ReminderService : IDisposable
             request.OccurrenceKey, request.ItemId, request.TargetDeliveryAtUtc, 1,
             request.ClaimToken, DateTimeOffset.UtcNow, request.AttemptCount))
             ?? throw new InvalidOperationException("The reminder item no longer exists.");
+        if (!CanDeliverScheduledOccurrence(item, request.OccurrenceKey, localNow())) return;
         var isAudibleAlert = string.Equals(
             request.ActionType,
             "ToastAndIsland",
@@ -313,6 +319,16 @@ public sealed class ReminderService : IDisposable
             catch { /* Sound failures must not retry or duplicate the reminder. */ }
         }
         await Task.CompletedTask;
+    }
+
+    bool CanDeliverScheduledOccurrence(AgendaItem item, string key, DateTime now)
+    {
+        if (item.Kind != "recurring") return true;
+        var reminder = data.RecurringReminders().FirstOrDefault(r => r.Id == item.Id);
+        if (reminder?.Schedule is not { } schedule) return true;
+        var parts = key.Split('\u001f', 3);
+        return parts.Length == 3 && DateTimeOffset.TryParse(parts[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out var due) &&
+            schedule.CanDeliver(due.LocalDateTime, now);
     }
 
     static string OccurrenceKey(AgendaItem item, DateTimeOffset dueAt) => string.Join('',

@@ -56,6 +56,50 @@ public sealed class AssistantDraftModelEvaluationTests
         }
         Assert.True(failures.Count == 0, string.Join("\n", failures));
     }
+    [ModelEvaluationFact]
+    public async Task Configured_provider_retains_multiscenario_constraints_in_plannable_drafts()
+    {
+        var provider = new ProviderSettingsService().Load();
+        var interpreter = new AssistantDraftInterpreter(new OpenAiChatService());
+        var examples = new[]
+        {
+            "每天工作时间间隔2小时提醒我站起来活动，除午休时间外",
+            "每天09:00到18:00每隔1小时提醒我喝水，排除12:00到13:00午休",
+            "每天上午9点和下午3点提醒我喝水",
+            "明天下午三点安排项目评审，持续90分钟",
+            "工作日上午9点到下午6点每隔2小时提醒我活动，持续到2026-10-30"
+        };
+        var failures = new List<string>();
+        for (var i = 0; i < examples.Length; i++)
+        {
+            var input = examples[i];
+            var turn = new AssistantDraftTurn(Guid.NewGuid().ToString("N"), "evaluation", 1, "Understanding",
+                input, new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.FromHours(8)), "Asia/Shanghai",
+                DateTimeOffset.UtcNow.AddMinutes(15), [], [], new Dictionary<int, AssistantPlanCandidateBindingV2>(),
+                new Dictionary<string, AssistantPlanCandidateBindingV2>());
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+                var result = await interpreter.UnderstandAsync(provider, input, turn, [], timeout.Token);
+                var draft = AssistantScenarioPlanner.Enrich(Assert.Single(result.Tasks), input);
+                if (i == 3) Assert.Contains("90", draft.DurationText);
+                else
+                {
+                    Assert.NotNull(draft.Schedule);
+                    if (i == 0) Assert.Contains("午休", draft.Schedule!.ExclusionText);
+                    if (i == 1) Assert.Contains("12:00", draft.Schedule!.ExclusionText);
+                    if (i == 4) Assert.Contains("2026-10-30", draft.Schedule!.UntilText);
+                    var plan = AssistantDraftCompiler.Compile(turn with { Tasks = [draft] });
+                    Assert.True(plan.Fields.Any(f => f.Key.Contains("schedule")) || plan.Commands.Any(c =>
+                        c.Arguments is CreateRecurringTaskArgumentsV1 { DailySchedule: not null }), plan.Summary);
+                    Assert.DoesNotContain(plan.Fields, f => f.Kind == "time");
+                }
+            }
+            catch (Exception e) { failures.Add($"Scenario {i + 1}: {e.GetType().Name}: {e.Message}"); }
+        }
+        Assert.True(failures.Count == 0, string.Join("\n", failures));
+    }
+
 }
 
 public sealed class ModelEvaluationFactAttribute : FactAttribute

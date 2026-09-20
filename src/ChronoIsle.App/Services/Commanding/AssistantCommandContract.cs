@@ -183,7 +183,9 @@ public sealed record CreateRecurringTaskArgumentsV1(
     AssistantItemKindV1? Kind,
     AssistantTimeExpressionV1? WallStart,
     AssistantRecurrenceRuleV1? Recurrence,
-    AssistantPriorityV1? Priority) : IAssistantCommandArgumentsV1;
+    AssistantPriorityV1? Priority,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    ChronoIsle.App.Services.Domain.ReminderDailySchedule? DailySchedule = null) : IAssistantCommandArgumentsV1;
 
 public sealed record RescheduleItemArgumentsV1(
     AssistantTargetSelectorV1? Target,
