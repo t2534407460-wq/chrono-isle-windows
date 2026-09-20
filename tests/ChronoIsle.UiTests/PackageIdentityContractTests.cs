@@ -61,6 +61,33 @@ public sealed class PackageIdentityContractTests
             node.Name.LocalName == "RegistryWriteVirtualization" && node.Value.Trim() == "disabled");
     }
 
+    [Fact]
+    public void PackageIdentity_ManifestLogosAreDeployedBesideExecutable()
+    {
+        var manifest = XDocument.Load(Path.Combine(FindWorkspace(), "installer", "package-identity", "Package.appxmanifest"));
+        XNamespace foundation = "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
+        XNamespace uap = "http://schemas.microsoft.com/appx/manifest/uap/windows10";
+        var visual = Assert.Single(manifest.Descendants(uap + "VisualElements"));
+        var logos = new[]
+        {
+            (Path: Assert.Single(manifest.Descendants(foundation + "Logo")).Value, Size: 50),
+            (Path: visual.Attribute("Square44x44Logo")!.Value, Size: 44),
+            (Path: visual.Attribute("Square150x150Logo")!.Value, Size: 150)
+        };
+        foreach (var logo in logos)
+        {
+            // Sparse package resources resolve at the external executable location.
+            var deployedPath = Path.Combine(AppContext.BaseDirectory, logo.Path);
+            Assert.True(File.Exists(deployedPath), $"Missing external-location logo: {deployedPath}");
+            using var stream = File.OpenRead(deployedPath);
+            var decoder = new System.Windows.Media.Imaging.PngBitmapDecoder(stream,
+                System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+                System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+            Assert.Equal(logo.Size, decoder.Frames[0].PixelWidth);
+            Assert.Equal(logo.Size, decoder.Frames[0].PixelHeight);
+        }
+    }
+
     static string FindWorkspace()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

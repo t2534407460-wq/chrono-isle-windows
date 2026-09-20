@@ -39,29 +39,15 @@ $packagePath = Join-Path $outputDirectory 'ChronoIsle.Identity.msix'
 New-Item -ItemType Directory -Force -Path $layoutDirectory | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Package.appxmanifest') -Destination (Join-Path $layoutDirectory 'AppxManifest.xml') -Force
 
-# A fresh checkout must contain valid package logos, not depend on an old layout.
-Add-Type -AssemblyName System.Drawing
-$assetsDirectory = Join-Path $layoutDirectory 'Assets'
-New-Item -ItemType Directory -Force -Path $assetsDirectory | Out-Null
-$logoSource = [Drawing.Image]::FromFile((Join-Path $root 'src\ChronoIsle.App\Assets\island-mascot.png'))
-try {
-    foreach ($logo in @(@{ Name = 'storelogo.png'; Size = 50 }, @{ Name = 'Square44x44Logo.png'; Size = 44 }, @{ Name = 'Square150x150Logo.png'; Size = 150 })) {
-        $bitmap = [Drawing.Bitmap]::new($logo.Size, $logo.Size)
-        $graphics = [Drawing.Graphics]::FromImage($bitmap)
-        try {
-            $graphics.Clear([Drawing.Color]::Transparent)
-            $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-            $ratio = [Math]::Min($logo.Size / $logoSource.Width, $logo.Size / $logoSource.Height)
-            $width = [int]($logoSource.Width * $ratio)
-            $height = [int]($logoSource.Height * $ratio)
-            $graphics.DrawImage($logoSource, [int](($logo.Size - $width) / 2), [int](($logo.Size - $height) / 2), $width, $height)
-            $bitmap.Save((Join-Path $assetsDirectory $logo.Name), [Drawing.Imaging.ImageFormat]::Png)
-        }
-        finally { $graphics.Dispose(); $bitmap.Dispose() }
+# Sparse package logos resolve at the external location, not inside the identity package.
+# Use the same checked-in assets that dotnet publish deploys, including for existing installs.
+$logoSourceDirectory = Join-Path $PSScriptRoot 'Assets'
+foreach ($logoDirectory in @((Join-Path $layoutDirectory 'Assets'), (Join-Path $PublishDirectory 'Assets'))) {
+    New-Item -ItemType Directory -Force -Path $logoDirectory | Out-Null
+    foreach ($logoName in @('storelogo.png', 'Square44x44Logo.png', 'Square150x150Logo.png')) {
+        Copy-Item -LiteralPath (Join-Path $logoSourceDirectory $logoName) -Destination (Join-Path $logoDirectory $logoName) -Force
     }
 }
-finally { $logoSource.Dispose() }
-
 
 & $makeAppx pack /o /d $layoutDirectory /nv /p $packagePath
 if ($LASTEXITCODE -ne 0) { throw 'MakeAppx did not create the external-location package.' }
