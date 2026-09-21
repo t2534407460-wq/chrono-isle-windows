@@ -847,12 +847,15 @@ public partial class LifeIslandWindow : Window
         SetIdleSummaryWidgetVisibility(currentPreferences);
         NetworkStatusLight.Visibility = VisibilityFor(
             currentPreferences.IslandShowNetworkStatus && currentPreferences.TelemetryEnabled);
+        NetworkLatencySummary.Visibility = VisibilityFor(
+            currentPreferences.IslandShowNetworkLatency && currentPreferences.TelemetryEnabled);
         Clock.Visibility = VisibilityFor(currentPreferences.IslandShowClock);
         ExpandIndicator.Visibility = VisibilityFor(currentPreferences.IslandShowExpandIndicator);
         DefaultHeaderLeft.Visibility = VisibilityFor(
             MascotArea.Visibility == Visibility.Visible || showSummary);
         ClockGroup.Visibility = VisibilityFor(
             NetworkStatusLight.Visibility == Visibility.Visible ||
+            NetworkLatencySummary.Visibility == Visibility.Visible ||
             Clock.Visibility == Visibility.Visible ||
             ExpandIndicator.Visibility == Visibility.Visible);
     }
@@ -919,6 +922,14 @@ public partial class LifeIslandWindow : Window
         percent > 90 ? "Brush.Danger" :
         percent > 70 ? "Brush.Warning" :
         "Brush.TextSecondary";
+
+    internal static string NetworkStatusBrushKey(NetworkHealth health, long? latency) =>
+        latency is null ? "Brush.Danger" : health switch
+        {
+            NetworkHealth.Connected => "Brush.Success",
+            NetworkHealth.Unstable => "Brush.Warning",
+            _ => "Brush.Danger"
+        };
 
     internal static System.Windows.Media.Brush IndicatorBrush(IslandIndicatorState state) => state switch
     {
@@ -2632,19 +2643,13 @@ public partial class LifeIslandWindow : Window
             }
             : "系统监控已关闭";
         var brushKey = enabled
-            ? snapshot.NetworkHealth switch
-            {
-                NetworkHealth.Connected => "Brush.Success",
-                NetworkHealth.Unstable => "Brush.Warning",
-                NetworkHealth.Offline => "Brush.Danger",
-                _ => "Brush.Danger"
-            }
+            ? NetworkStatusBrushKey(snapshot.NetworkHealth, snapshot.LatencyMilliseconds)
             : "Brush.TextTertiary";
-        var statusBrush = FindResource(brushKey) as System.Windows.Media.Brush ?? Brushes.Gray;
-        NetworkStatusGlyph.Stroke = statusBrush;
-        TelemetryStatusLight.Fill = statusBrush;
+        NetworkStatusGlyph.SetResourceReference(Shape.StrokeProperty, brushKey);
+        TelemetryStatusLight.SetResourceReference(Shape.FillProperty, brushKey);
         TelemetryNetworkStatus.Text = label;
         TelemetryLatency.Text = enabled && snapshot.LatencyMilliseconds is { } value ? $"{value} ms" : "-- ms";
+        NetworkLatencySummary.Text = TelemetryLatency.Text;
         TelemetryUploadSpeed.Text = FormatRate(snapshot.UploadBytesPerSecond);
         TelemetryDownloadSpeed.Text = FormatRate(snapshot.DownloadBytesPerSecond);
         TelemetryCpuText.Text = $"{snapshot.CpuPercent:0}%";
@@ -4000,13 +4005,17 @@ public partial class LifeIslandWindow : Window
         if (CollapsedMedia.Visibility == Visibility.Visible) return CollapsedWidth;
         DefaultHeaderLeft.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
         ClockGroup.Measure(new System.Windows.Size(double.PositiveInfinity, Header.Height));
+        var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
         var compactWidth =
-            Outer.Margin.Left + Outer.Margin.Right +
-            MainBorder.BorderThickness.Left + MainBorder.BorderThickness.Right +
+            HorizontalLayoutThickness(Outer.Margin, dpiScale) +
+            HorizontalLayoutThickness(MainBorder.BorderThickness, dpiScale) +
             DefaultHeaderLeft.DesiredSize.Width +
             ClockGroup.DesiredSize.Width;
         return Math.Max(CollapsedIslandDisplayPolicy.MinimumWidth, compactWidth);
     }
+
+    internal static double HorizontalLayoutThickness(Thickness thickness, double dpiScale) =>
+        (Math.Round(thickness.Left * dpiScale) + Math.Round(thickness.Right * dpiScale)) / dpiScale;
 
     void Touch() => collapseTimer.Stop();
 

@@ -319,23 +319,24 @@
             <Button x:Name="AgendaSummaryButton" Grid.Column="1"
                     AutomationProperties.AutomationId="IslandAgendaButton"
                     Style="{StaticResource CollapsedHeaderButton}" HorizontalContentAlignment="Stretch" IsHitTestVisible="False">
-              <DockPanel x:Name="SummaryWidgets" LastChildFill="True" Margin="9,1,10,0" VerticalAlignment="Center">
-                <TextBlock x:Name="FpsSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
-                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
-                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
-                           Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              <DockPanel x:Name="SummaryWidgets" LastChildFill="True" Margin="7,1,6,0" VerticalAlignment="Center">
+                <!-- Reserve each text slot so refreshes cannot resize or reposition the island. -->
+                <TextBlock x:Name="FpsSummary" DockPanel.Dock="Right" Width="48" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
+                           Margin="6,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="MemoryUsageSummary" DockPanel.Dock="Right" Width="62" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
+                           Margin="6,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="CpuUsageSummary" DockPanel.Dock="Right" Width="62" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
+                           Margin="6,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="NetworkSpeedSummary" DockPanel.Dock="Right" Width="144" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="Summary" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
+                <TextBlock x:Name="Summary" Width="144" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
               </DockPanel>
             </Button>
           </Grid>
           <StackPanel x:Name="ClockGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,13,0">
             <Button x:Name="NetworkStatusLight" AutomationProperties.AutomationId="IslandNetworkStatusButton"
-                    Style="{StaticResource CollapsedHeaderButton}" Margin="0,0,8,0"
+                    Style="{StaticResource CollapsedHeaderButton}" Margin="0,0,6,0"
                     VerticalAlignment="Center" IsHitTestVisible="False">
               <Viewbox Width="14" Height="14" Stretch="Uniform">
                 <Path x:Name="NetworkStatusGlyph"
@@ -345,10 +346,14 @@
                       StrokeLineJoin="Round" Fill="Transparent"/>
               </Viewbox>
             </Button>
+            <TextBlock x:Name="NetworkLatencySummary" Text="-- ms" Visibility="Collapsed"
+                       Width="44" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12"
+                       Margin="0,0,6,0" VerticalAlignment="Center"/>
             <Button x:Name="ClockButton" AutomationProperties.AutomationId="IslandClockButton"
                     Style="{StaticResource CollapsedHeaderButton}" IsHitTestVisible="False">
-              <TextBlock x:Name="Clock" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="15"
-                         FontFamily="{StaticResource Font.Clock}" FontWeight="Bold" Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" Margin="0,0,10,0"/>
+              <TextBlock x:Name="Clock" Width="62" Foreground="{DynamicResource Brush.TextPrimary}" FontSize="15"
+                         FontFamily="{StaticResource Font.Clock}" FontWeight="Bold" Typography.NumeralAlignment="Tabular" VerticalAlignment="Center" Margin="0,0,6,0"/>
             </Button>
             <TextBlock x:Name="ExpandIndicator" Text="›" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="20" VerticalAlignment="Center" RenderTransformOrigin=".5,.5"><TextBlock.RenderTransform><RotateTransform x:Name="ChevronRotate" Angle="0"/></TextBlock.RenderTransform></TextBlock>
           </StackPanel>

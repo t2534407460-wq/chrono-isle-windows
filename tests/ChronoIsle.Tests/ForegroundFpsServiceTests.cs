@@ -6,6 +6,57 @@ namespace ChronoIsle.Tests;
 public sealed class ForegroundFpsServiceTests
 {
     [Fact]
+    public async Task CaptureFailure_RetriesWithoutRestartingTheService()
+    {
+        var attempts = 0;
+        var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var service = new ForegroundFpsService(() =>
+        {
+            if (Interlocked.Increment(ref attempts) == 1)
+                throw new InvalidOperationException("capture interrupted");
+            recovered.TrySetResult();
+        });
+
+        service.Start();
+        await recovered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        service.Stop();
+        Assert.Equal(2, Volatile.Read(ref attempts));
+    }
+
+    [Fact]
+    public async Task RepeatedStart_AndQuickStopStart_KeepOneCaptureUntilItExits()
+    {
+        var attempts = 0;
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var service = new ForegroundFpsService(() =>
+        {
+            if (Interlocked.Increment(ref attempts) == 1)
+            {
+                entered.TrySetResult();
+                release.Wait(TimeSpan.FromSeconds(10));
+            }
+            else resumed.TrySetResult();
+        });
+
+        try
+        {
+            service.Start();
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            service.Start();
+            service.Stop();
+            service.Start();
+            Assert.Equal(1, Volatile.Read(ref attempts));
+            release.Set();
+            await resumed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            service.Stop();
+            Assert.Equal(2, Volatile.Read(ref attempts));
+        }
+        finally { release.Set(); }
+    }
+
+    [Fact]
     public void LegacySessionCleanup_SelectsOnlyPresentMonSessionNames()
     {
         var method = typeof(ForegroundFpsService).GetMethod(

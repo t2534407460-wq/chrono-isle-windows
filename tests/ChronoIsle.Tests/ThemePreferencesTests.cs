@@ -20,6 +20,7 @@ public sealed class ThemePreferencesTests
         Assert.True(preferences.IslandShowAgendaSummary);
         Assert.False(preferences.IslandShowNetworkSpeed);
         Assert.False(preferences.IslandShowNetworkStatus);
+        Assert.False(preferences.IslandShowNetworkLatency);
         Assert.False(preferences.IslandShowCpuUsage);
         Assert.False(preferences.IslandShowMemoryUsage);
         Assert.True(preferences.IslandShowClock);

@@ -199,6 +199,13 @@
                                   StrokeLineJoin="Round" Fill="Transparent"/>
                           </Viewbox>
                         </CheckBox>
+                        <CheckBox x:Name="IslandShowNetworkLatency"
+                                  Style="{StaticResource IslandVisualOption}"
+                                  ToolTip="网络延迟" AutomationProperties.Name="网络延迟">
+                          <TextBlock Text="20 ms"
+                                     Foreground="{DynamicResource Brush.TextSecondary}"
+                                     FontSize="12" VerticalAlignment="Center"/>
+                        </CheckBox>
                         <CheckBox x:Name="IslandShowClock"
                                   Style="{StaticResource IslandVisualOption}"
                                   ToolTip="时间" AutomationProperties.Name="时间">

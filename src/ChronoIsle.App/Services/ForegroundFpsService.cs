@@ -111,10 +111,12 @@ public sealed class ForegroundFpsService : IDisposable
 
     readonly object gate = new();
     readonly System.Threading.Timer focusTimer;
+    readonly Action captureTraceEvents;
     readonly List<ForegroundFrameSample> frameSamples = [];
     static readonly TimeSpan FrameHistory = TimeSpan.FromSeconds(3);
     TraceEventSession? traceSession;
     Task? tracePump;
+    long retryCaptureAfter;
     HashSet<int> trackedProcessIds = [];
     int? capturedProcessId;
     int sampling;
@@ -122,8 +124,11 @@ public sealed class ForegroundFpsService : IDisposable
     bool disposed;
     ForegroundFpsSnapshot current = new(null, null);
 
-    public ForegroundFpsService()
+    public ForegroundFpsService() : this(null) { }
+
+    internal ForegroundFpsService(Action? captureTraceEvents)
     {
+        this.captureTraceEvents = captureTraceEvents ?? CaptureTraceEvents;
         focusTimer = new System.Threading.Timer(_ => SampleForeground(), null,
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
@@ -134,8 +139,8 @@ public sealed class ForegroundFpsService : IDisposable
     public void Start()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        Volatile.Write(ref started, 1);
-        StopLegacyPresentMonSessions();
+        if (Interlocked.Exchange(ref started, 1) != 0) return;
+        lock (gate) retryCaptureAfter = 0;
         StartTraceCapture();
         focusTimer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
     }
@@ -153,44 +158,57 @@ public sealed class ForegroundFpsService : IDisposable
     void StartTraceCapture()
     {
         lock (gate)
-            if (tracePump is not null) return;
-
-        tracePump = Task.Run(() =>
         {
-            TraceEventSession? session = null;
-            try
+            if (disposed || Volatile.Read(ref started) == 0 ||
+                tracePump is { IsCompleted: false } || Environment.TickCount64 < retryCaptureAfter) return;
+
+            // 会话释放完毕、任务完全退出后才允许重建采集。
+            tracePump = Task.Run(() =>
             {
-                session = new TraceEventSession($"ChronoIsleFps{Environment.ProcessId}")
+                try
                 {
-                    StopOnDispose = true
-                };
-                session.Source.Dynamic.All += OnTraceEvent;
-                session.EnableProvider(DxgKrnlProviderGuid, TraceEventLevel.Always, DxgKrnlPresentKeyword);
-                lock (gate)
-                {
-                    if (disposed || Volatile.Read(ref started) == 0)
-                    {
-                        session.Dispose();
-                        return;
-                    }
-                    traceSession = session;
+                    if (!disposed && Volatile.Read(ref started) != 0) captureTraceEvents();
                 }
-                session.Source.Process();
-            }
-            catch (Exception exception)
+                catch (Exception exception)
+                {
+                    Debug.WriteLine($"Foreground FPS ETW capture failed: {exception.Message}");
+                }
+                finally
+                {
+                    lock (gate) retryCaptureAfter = Environment.TickCount64 + 5000;
+                }
+            });
+        }
+    }
+
+    void CaptureTraceEvents()
+    {
+        TraceEventSession? session = null;
+        try
+        {
+            StopLegacyPresentMonSessions();
+            session = new TraceEventSession($"ChronoIsleFps{Environment.ProcessId}")
             {
-                Debug.WriteLine($"Foreground FPS ETW capture failed: {exception.Message}");
+                StopOnDispose = true
+            };
+            session.Source.Dynamic.All += OnTraceEvent;
+            session.EnableProvider(DxgKrnlProviderGuid, TraceEventLevel.Always, DxgKrnlPresentKeyword);
+            lock (gate)
+            {
+                if (disposed || Volatile.Read(ref started) == 0) return;
+                traceSession = session;
             }
+            session.Source.Process();
+        }
+        finally
+        {
+            try { session?.Dispose(); }
             finally
             {
-                session?.Dispose();
                 lock (gate)
-                {
                     if (ReferenceEquals(traceSession, session)) traceSession = null;
-                    tracePump = null;
-                }
             }
-        });
+        }
     }
 
     static void StopLegacyPresentMonSessions()
@@ -228,6 +246,7 @@ public sealed class ForegroundFpsService : IDisposable
         if (disposed || Volatile.Read(ref started) == 0 || Interlocked.Exchange(ref sampling, 1) != 0) return;
         try
         {
+            StartTraceCapture();
             var window = GetForegroundWindow();
             GetWindowThreadProcessId(window, out var foregroundProcessId);
             if (foregroundProcessId == 0 || foregroundProcessId == Environment.ProcessId)

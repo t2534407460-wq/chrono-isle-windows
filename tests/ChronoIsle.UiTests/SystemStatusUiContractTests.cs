@@ -39,7 +39,8 @@ public sealed class SystemStatusUiContractTests
         Assert.Contains("new HttpRequestMessage(HttpMethod.Head, LatencyProbeUri)", telemetrySource, StringComparison.Ordinal);
         Assert.Contains("HttpCompletionOption.ResponseHeadersRead", telemetrySource, StringComparison.Ordinal);
         Assert.DoesNotContain("new TcpClient()", telemetrySource, StringComparison.Ordinal);
-        Assert.Contains("NetworkStatusGlyph.Stroke = statusBrush;", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkStatusGlyph.SetResourceReference(Shape.StrokeProperty, brushKey);", source, StringComparison.Ordinal);
+        Assert.Contains("NetworkLatencySummary.Text = TelemetryLatency.Text;", source, StringComparison.Ordinal);
         Assert.Contains(
             @"\Processor Information(_Total)\% Processor Utility",
             telemetrySource,
