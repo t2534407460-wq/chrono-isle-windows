@@ -2,6 +2,8 @@ using ChronoIsle.App;
 using ChronoIsle.App.Services;
 using ChronoIsle.App.Services.Commanding;
 using ChronoIsle.App.Services.Domain;
+using ChronoIsle.App.Services.Persistence;
+using ChronoIsle.App.Services.Scheduling;
 
 namespace ChronoIsle.Tests;
 
@@ -251,6 +253,74 @@ public sealed partial class AssistantDraftRuntimeTests
         await scheduler.PollNowAsync();
         Assert.Equal(new[] { day.AddHours(13), day.AddHours(15) }, received);
         Assert.Null(scheduler.Health.LastErrorMessage);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task Removed_interval_plan_does_not_deliver_queued_occurrences_or_notifications(
+        bool delete, bool restart, bool alreadyInOutbox)
+    {
+        var (service, _) = WorkService();
+        var card = (await Send(service, WorkRequest)).Interaction!;
+        var preview = (await Click(service, card, "submit", WorkAnswers())).Interaction!;
+        await Click(service, preview, "confirm");
+        var reminder = Assert.Single(data.RecurringReminders());
+        var dueAt = reminder.Schedule!.Next(DateTime.Now)[0];
+        var occurrence = data.RecurringAgendaFor(dueAt.Date).Single(item => item.StartsAt == dueAt);
+        var now = dueAt.AddMinutes(-10);
+        ReminderService CreateScheduler() => new(data, new LifePreferencesService(),
+            new WindowsNotificationService(), localNow: () => now);
+        var scheduler = CreateScheduler();
+        try
+        {
+            // The task was registered before the user removed it, as in the reported case.
+            scheduler.Schedule(occurrence);
+            if (alreadyInOutbox)
+            {
+                var store = new ReminderDeliveryStore(LifeDataStoreRuntimeRegistry.GetOrCreate(path).WriteQueue);
+                var detector = new ReminderDueDetector(store);
+                var lease = Assert.IsType<ReminderOccurrenceLease>(
+                    detector.TryClaimDue(new DateTimeOffset(dueAt), "queued-before-removal"));
+                Assert.True(store.EnqueueNotification(new("queued-before-removal", occurrence.Id,
+                    lease.OccurrenceKey, "ToastAndIsland", new DateTimeOffset(dueAt))));
+                Assert.True(detector.MarkDelivered(lease, new DateTimeOffset(dueAt)));
+            }
+            if (delete) scheduler.Delete(occurrence);
+            else scheduler.Archive(occurrence);
+            Assert.Empty(data.RecurringReminders());
+            if (restart)
+            {
+                scheduler.Dispose();
+                scheduler = CreateScheduler();
+            }
+            // Suppressing a removed plan must not suppress unrelated active reminders.
+            var other = data.SaveReminder("保留的其他提醒", null, dueAt);
+            var received = new List<AgendaItem>();
+            scheduler.ReminderDue += (_, item) => received.Add(item);
+            now = dueAt;
+            await scheduler.PollNowAsync();
+            now = dueAt.AddMinutes(2);
+            await scheduler.PollNowAsync();
+            Assert.Equal(other.Id, Assert.Single(received).Id);
+            Assert.Null(scheduler.Health.LastErrorMessage);
+            Assert.Null(scheduler.NotificationHealth.LastError);
+            using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}");
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "SELECT delivery_status FROM reminder_occurrences WHERE item_id=$id";
+            command.Parameters.AddWithValue("$id", occurrence.Id);
+            Assert.Equal("Delivered", command.ExecuteScalar());
+            command.CommandText = "SELECT COUNT(*) FROM notification_outbox WHERE item_id=$id";
+            Assert.Equal(alreadyInOutbox ? 1L : 0L, command.ExecuteScalar());
+        }
+        finally { scheduler.Dispose(); }
     }
 
     [Fact]

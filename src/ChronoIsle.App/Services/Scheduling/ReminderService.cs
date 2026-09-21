@@ -195,9 +195,9 @@ public sealed class ReminderService : IDisposable
         {
             try
             {
-                var item = ResolveOccurrenceItem(lease)
-                    ?? throw new InvalidOperationException("The reminder item no longer exists.");
-                if (!CanDeliverScheduledOccurrence(item, lease.OccurrenceKey, currentLocalTime))
+                var item = ResolveOccurrenceItem(lease);
+                // Removed items are obsolete work, not transient delivery failures.
+                if (item is null || !CanDeliverScheduledOccurrence(item, lease.OccurrenceKey, currentLocalTime))
                 {
                     dueDetector.MarkDelivered(lease, nowUtc);
                     continue;
@@ -303,9 +303,8 @@ public sealed class ReminderService : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var item = ResolveOccurrenceItem(new ReminderOccurrenceLease(
             request.OccurrenceKey, request.ItemId, request.TargetDeliveryAtUtc, 1,
-            request.ClaimToken, DateTimeOffset.UtcNow, request.AttemptCount))
-            ?? throw new InvalidOperationException("The reminder item no longer exists.");
-        if (!CanDeliverScheduledOccurrence(item, request.OccurrenceKey, localNow())) return;
+            request.ClaimToken, DateTimeOffset.UtcNow, request.AttemptCount));
+        if (item is null || !CanDeliverScheduledOccurrence(item, request.OccurrenceKey, localNow())) return;
         var isAudibleAlert = string.Equals(
             request.ActionType,
             "ToastAndIsland",
@@ -325,7 +324,9 @@ public sealed class ReminderService : IDisposable
     {
         if (item.Kind != "recurring") return true;
         var reminder = data.RecurringReminders().FirstOrDefault(r => r.Id == item.Id);
-        if (reminder?.Schedule is not { } schedule) return true;
+        // A cached occurrence does not keep an archived/deleted series active.
+        if (reminder is null) return false;
+        if (reminder.Schedule is not { } schedule) return true;
         var parts = key.Split('\u001f', 3);
         return parts.Length == 3 && DateTimeOffset.TryParse(parts[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out var due) &&
             schedule.CanDeliver(due.LocalDateTime, now);
