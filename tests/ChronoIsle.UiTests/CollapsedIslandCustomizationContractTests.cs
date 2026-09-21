@@ -17,7 +17,7 @@ public sealed class CollapsedIslandCustomizationContractTests
                  {
                      "IslandShowMascot", "IslandShowStatusLight", "IslandShowAgendaSummary",
                      "IslandShowNetworkSpeed", "IslandShowCpuUsage", "IslandShowFps", "IslandShowMemoryUsage",
-                     "IslandShowNetworkStatus", "IslandShowClock",
+                     "IslandShowNetworkStatus", "IslandShowNetworkLatency", "IslandShowClock",
                      "IslandShowExpandIndicator"
                  })
             Assert.Contains(preference, source, StringComparison.Ordinal);

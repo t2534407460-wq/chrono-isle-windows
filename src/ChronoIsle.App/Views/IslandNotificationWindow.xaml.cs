@@ -103,9 +103,11 @@ public partial class IslandNotificationWindow : Window
         if (currentMessage is not { } message || !NativeToastBannerService.IsValidAppId(message.AppUserModelId)) return;
         try
         {
-            var start = new System.Diagnostics.ProcessStartInfo("explorer.exe") { UseShellExecute = false };
-            start.ArgumentList.Add(@"shell:AppsFolder\" + message.AppUserModelId);
-            System.Diagnostics.Process.Start(start)?.Dispose();
+            if (!NotificationAppLauncher.Open(message.AppUserModelId))
+            {
+                ShowActionFailure("应用已运行，暂时无法切换，请从任务栏或托盘打开。");
+                return;
+            }
             HideMessage();
         }
         catch (Exception exception)

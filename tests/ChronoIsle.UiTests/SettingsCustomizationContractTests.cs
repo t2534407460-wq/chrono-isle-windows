@@ -21,7 +21,7 @@ public sealed class SettingsCustomizationContractTests
                  {
                      "IslandShowMascot", "IslandShowStatusLight", "IslandShowAgendaSummary",
                      "IslandShowNetworkSpeed", "IslandShowCpuUsage", "IslandShowMemoryUsage",
-                     "IslandShowNetworkStatus", "IslandShowClock",
+                     "IslandShowNetworkStatus", "IslandShowNetworkLatency", "IslandShowClock",
                      "IslandShowExpandIndicator"
                  })
             Assert.Contains($"x:Name=\"{option}\"", xaml, StringComparison.Ordinal);
@@ -82,6 +82,8 @@ public sealed class SettingsCustomizationContractTests
         Assert.Contains("AccentScheme = AccentSchemeSelector.SelectedValue", source, StringComparison.Ordinal);
         Assert.Contains("IslandShowMascot = IslandShowMascot.IsChecked == true", source, StringComparison.Ordinal);
         Assert.Contains("IslandShowCpuUsage = IslandShowCpuUsage.IsChecked == true", source, StringComparison.Ordinal);
+        Assert.Contains("IslandShowNetworkLatency = IslandShowNetworkLatency.IsChecked == true", source, StringComparison.Ordinal);
+        Assert.Contains("IslandShowNetworkLatency.IsChecked = savedPreferences.IslandShowNetworkLatency", source, StringComparison.Ordinal);
         Assert.Contains("IslandShowMemoryUsage = IslandShowMemoryUsage.IsChecked == true", source, StringComparison.Ordinal);
         Assert.Contains("IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true", source, StringComparison.Ordinal);
     }

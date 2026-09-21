@@ -78,6 +78,7 @@ public partial class LifeSettingsWindow : Window
         IslandShowMemoryUsage.IsChecked = savedPreferences.IslandShowMemoryUsage;
         IslandShowFps.IsChecked = savedPreferences.IslandShowFps;
         IslandShowNetworkStatus.IsChecked = savedPreferences.IslandShowNetworkStatus;
+        IslandShowNetworkLatency.IsChecked = savedPreferences.IslandShowNetworkLatency;
         IslandShowClock.IsChecked = savedPreferences.IslandShowClock;
         IslandShowExpandIndicator.IsChecked = savedPreferences.IslandShowExpandIndicator;
         MoveIslandDuringFullscreen.IsChecked = savedPreferences.MoveIslandDuringFullscreen;
@@ -200,6 +201,7 @@ public partial class LifeSettingsWindow : Window
             IslandShowMemoryUsage = IslandShowMemoryUsage.IsChecked == true,
             IslandShowFps = IslandShowFps.IsChecked == true,
             IslandShowNetworkStatus = IslandShowNetworkStatus.IsChecked == true,
+            IslandShowNetworkLatency = IslandShowNetworkLatency.IsChecked == true,
             IslandShowClock = IslandShowClock.IsChecked == true,
             IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true,
             MoveIslandDuringFullscreen = MoveIslandDuringFullscreen.IsChecked == true
