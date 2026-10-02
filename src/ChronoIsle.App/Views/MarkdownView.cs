@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Text.RegularExpressions;
 using System.IO;
 using ChronoIsle.App.Services.Markdown;
+using ChronoIsle.App.Services.Knowledge;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -191,8 +192,10 @@ public sealed class MarkdownView : System.Windows.Controls.RichTextBox
 
     System.Windows.Documents.Inline ImageInline(string address, string label)
     {
-        // Chat messages have no source file; opening their image link remains an explicit action.
-        if (Origin is null || imageCount++ >= 32) return Link(address, "图片：" + label + "（点击查看）");
+        // Knowledge answers carry absolute snapshot URLs. Other origin-less images still require an explicit click.
+        var knowledgeImage = Origin is null && Uri.TryCreate(address, UriKind.Absolute, out var imageUri) &&
+            MarkdownImages.IsImage(imageUri) && RemoteKnowledgeClient.IsConfiguredDocumentUri(imageUri);
+        if (Origin is null && !knowledgeImage || imageCount++ >= 32) return Link(address, "图片：" + label + "（点击查看）");
         var origin = Origin;
         var image = new System.Windows.Controls.Image { Stretch = Stretch.Uniform, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
         var caption = new TextBlock { Text = "正在加载图片…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 0) };

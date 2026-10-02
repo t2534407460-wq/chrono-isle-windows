@@ -100,6 +100,16 @@ public sealed class RemoteKnowledgeClient
     }
 
     // Only this service's document route receives its key. Never follow redirects with credentials.
+    public static bool IsConfiguredDocumentUri(Uri uri)
+    {
+        try
+        {
+            var saved = new KnowledgeBaseSettingsService().LoadRemote();
+            return saved is not null && new Uri(new Uri(saved.BaseUrl), "v1/files/").IsBaseOf(uri);
+        }
+        catch (KnowledgeBaseException) { return false; }
+    }
+
     public static async Task<HttpResponseMessage?> TryReadDocumentAsync(Uri uri, CancellationToken token)
     {
         try

@@ -5,11 +5,63 @@ using ChronoIsle.App.Services;
 using ChronoIsle.App.Services.Knowledge;
 using ChronoIsle.App.Services.Markdown;
 using Xunit.Abstractions;
+using ChronoIsle.App;
+using Markdig;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace ChronoIsle.Tests;
 
 public sealed class RemoteKnowledgeDeploymentTests(ITestOutputHelper output)
 {
+    [RemoteImageFact]
+    public async Task Remote_question_reproduces_complete_source_images_in_both_answer_paths()
+    {
+        const string question = "无限链表 页面关联关系 ET10 自定义数据集";
+        var settings = new KnowledgeBaseSettingsService();
+        var saved = settings.LoadRemote();
+        Assert.NotNull(saved);
+        var provider = new ProviderSettings("https://unused.invalid", "test", "not-used");
+        foreach (var fallback in new[] { true, false })
+        {
+            var service = new KnowledgeQuestionService(settings, new ObsidianKnowledgeIndex(), new ImageEvidenceModel(fallback));
+            var answer = await service.AskAsync(provider, question);
+            Assert.Equal(fallback, answer.IsFailure);
+            var images = Markdown.Parse(answer.Reply, MarkdownDocuments.Pipeline).Descendants<LinkInline>().Where(l => l.IsImage).ToArray();
+            var actual = Assert.Single(images.Where(i => i.Url!.EndsWith("b18de828c78083e0ca5c.png", StringComparison.Ordinal)));
+            var uri = new Uri(actual.Url!);
+            Assert.True(RemoteKnowledgeClient.IsConfiguredDocumentUri(uri));
+            Assert.False(RemoteKnowledgeClient.IsConfiguredDocumentUri(new Uri("https://external.invalid/image.png")));
+            Assert.DoesNotContain("Bearer", answer.Reply);
+            var bitmap = await MarkdownImages.ReadAsync(uri, thumbnail: true);
+            Assert.True(bitmap.IsFrozen);
+            Assert.True(bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0);
+            output.WriteLine($"{(fallback ? "Fallback" : "Verified answer")}: screenshot source image decoded {bitmap.PixelWidth} x {bitmap.PixelHeight}; images={images.Length}.");
+            var folder = Environment.GetEnvironmentVariable("CHRONOISLE_IMAGE_QA_OUTPUT");
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, fallback ? "fallback-answer.md" : "verified-answer.md"), answer.Reply);
+            }
+        }
+    }
+
+    sealed class ImageEvidenceModel(bool fallback) : IChatCompletionClient
+    {
+        public Task<string> Complete(ProviderSettings provider, IEnumerable<ModelMessage> messages, bool jsonObject = false)
+        {
+            if (fallback) return Task.FromResult("invalid-json");
+            const string quote = "页面关联关系就更复杂了";
+            using var request = JsonDocument.Parse(messages.Last().Content);
+            var source = request.RootElement.GetProperty("sources").EnumerateArray().Single(s => s.GetProperty("text").GetString()!.Contains(quote, StringComparison.Ordinal));
+            return Task.FromResult(JsonSerializer.Serialize(new { insufficient = false, points = new[] { new {
+                text = "原文指出，无限链表场景会使页面关联关系更复杂。", evidence = new[] { new { sourceId = source.GetProperty("id").GetString(), quote } }
+            } } }));
+        }
+        public Task<string> Reply(ProviderSettings provider, IEnumerable<ChatMessage> history, string input) => throw new NotSupportedException();
+        public Task Test(ProviderSettings provider) => throw new NotSupportedException();
+    }
+
     [RemoteImageFact]
     public async Task Remote_image_uses_the_saved_application_credentials()
     {
