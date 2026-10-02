@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 using ChronoIsle.App.Services;
+using ChronoIsle.App.Services.Knowledge;
 using ChronoIsle.App.Services.Domain;
 using ChronoIsle.App.Services.Commanding;
 using ChronoIsle.App.Services.Reporting;
@@ -18,6 +19,7 @@ public partial class LifeSettingsWindow : Window
     readonly LifePreferencesService preferences;
     readonly ReminderService reminders;
     readonly OpenAiChatService ai;
+    readonly KnowledgeBaseSettingsService knowledgeSettings;
     readonly AutoStartService autoStart;
     readonly ThemeService theme;
     readonly SystemToastInboxService? toastInbox;
@@ -33,13 +35,24 @@ public partial class LifeSettingsWindow : Window
 
     public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders,
         OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline,
-        ThemeService theme, SystemToastInboxService? toastInbox = null)
+        ThemeService theme, SystemToastInboxService? toastInbox = null, KnowledgeBaseSettingsService? knowledgeSettings = null)
     {
         InitializeComponent();
         this.settings = settings;
         this.preferences = preferences;
         this.reminders = reminders;
         this.ai = ai;
+        this.knowledgeSettings = knowledgeSettings ?? new KnowledgeBaseSettingsService();
+        try
+        {
+            KnowledgeVaultPath.Text = this.knowledgeSettings.LoadPath();
+            var remote = this.knowledgeSettings.LoadRemote();
+            UseRemoteKnowledge.IsChecked = remote is not null;
+            KnowledgeRemoteUrl.Text = remote?.BaseUrl ?? "";
+            KnowledgeRemoteKey.Password = remote?.ApiKey ?? "";
+            KnowledgeVaultStatus.Text = remote is null ? "当前目录：" + this.knowledgeSettings.ResolveVaultPath() : "当前使用远程项目知识库。";
+        }
+        catch (KnowledgeBaseException error) { KnowledgeVaultStatus.Text = error.Message; }
         this.autoStart = autoStart;
         this.theme = theme;
         this.toastInbox = toastInbox;
@@ -88,6 +101,12 @@ public partial class LifeSettingsWindow : Window
         AutoStartStatus.Text = autoStart.Status;
         loading = false;
         RefreshAuditEntries();
+    }
+
+    void Section_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button { Tag: string name } && FindName(name) is FrameworkElement section)
+            section.BringIntoView();
     }
 
     void ToastInbox_AccessChanged(ToastInboxAccess _) => Dispatcher.BeginInvoke(RefreshToastInboxStatus);
@@ -142,7 +161,31 @@ public partial class LifeSettingsWindow : Window
     }
 
     void Close_Click(object sender, RoutedEventArgs e) => Close();
+    void BrowseKnowledgeVault_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "选择 Obsidian 知识库或其中的资料目录", Multiselect = false };
+        if (dialog.ShowDialog(this) == true)
+        {
+            KnowledgeVaultPath.Text = dialog.FolderName;
+            KnowledgeVaultStatus.Text = "保存后生效，下次提问时自动读取。";
+        }
+    }
+
     ProviderSettings Value() => new(Url.Text.Trim(), Model.Text.Trim(), Key.Password);
+
+    async void TestKnowledgeRemote_Click(object sender, RoutedEventArgs e)
+    {
+        TestKnowledgeRemote.IsEnabled = false;
+        KnowledgeRemoteStatus.Text = "正在连接…";
+        try
+        {
+            var remote = new RemoteKnowledgeClient(KnowledgeBaseSettingsService.ValidateRemote(KnowledgeRemoteUrl.Text, KnowledgeRemoteKey.Password));
+            KnowledgeRemoteStatus.Text = await remote.TestAsync() ? "连接正常，服务器已有资料。保存后生效。" : "连接正常，服务器尚未同步资料。";
+        }
+        catch (Exception error) when (error is KnowledgeBaseException or System.Net.Http.HttpRequestException or OperationCanceledException)
+        { KnowledgeRemoteStatus.Text = error is KnowledgeBaseException ? error.Message : "连接失败或超时，请检查网络、证书及接口地址。"; }
+        finally { TestKnowledgeRemote.IsEnabled = UseRemoteKnowledge.IsChecked == true; }
+    }
 
     void ThemeSelection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -181,6 +224,21 @@ public partial class LifeSettingsWindow : Window
 
     async void Save_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            if (UseRemoteKnowledge.IsChecked == true)
+                knowledgeSettings.SaveRemote(true, KnowledgeRemoteUrl.Text, KnowledgeRemoteKey.Password);
+            else
+            {
+                knowledgeSettings.SavePath(KnowledgeVaultPath.Text);
+                knowledgeSettings.SaveRemote(false, "", "");
+            }
+        }
+        catch (Exception error) when (error is KnowledgeBaseException or System.IO.IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        {
+            KnowledgeVaultStatus.Text = error is KnowledgeBaseException ? error.Message : "知识库设置保存失败，请检查目录权限。";
+            return;
+        }
         settings.Save(Value());
         var current = preferences.Load();
         var updated = current with

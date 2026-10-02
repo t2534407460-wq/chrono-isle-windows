@@ -21,7 +21,7 @@ public sealed class QuickAskConversationContractTests
         var source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml"));
 
-        Assert.Contains("<TextBox x:Name=\"QuickAskAnswer\"", source, StringComparison.Ordinal);
+        Assert.Contains("<views:MarkdownView x:Name=\"QuickAskAnswer\"", source, StringComparison.Ordinal);
         Assert.Contains("IsReadOnly=\"True\"", source, StringComparison.Ordinal);
         Assert.Contains("TextWrapping=\"Wrap\"", source, StringComparison.Ordinal);
     }
@@ -45,7 +45,7 @@ public sealed class QuickAskConversationContractTests
     {
         var source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml"));
-        var start = source.IndexOf("<TextBox x:Name=\"QuickAskAnswer\"", StringComparison.Ordinal);
+        var start = source.IndexOf("<views:MarkdownView x:Name=\"QuickAskAnswer\"", StringComparison.Ordinal);
         var end = source.IndexOf("<TextBox x:Name=\"QuickAskInput\"", start, StringComparison.Ordinal);
         var answer = source[start..end];
 

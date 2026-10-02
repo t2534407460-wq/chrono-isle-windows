@@ -1,0 +1,33 @@
+<Window x:Class="ChronoIsle.App.Views.MarkdownViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Style="{StaticResource Window.Display}" Title="Markdown 查看器"
+        Width="1000" Height="760" MinWidth="620" MinHeight="420"
+        WindowStartupLocation="CenterOwner" Background="Transparent" Foreground="{DynamicResource Brush.TextPrimary}"
+        WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResize"
+        AutomationProperties.AutomationId="MarkdownViewerWindow">
+  <WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="8" CornerRadius="16" UseAeroCaptionButtons="False"/></WindowChrome.WindowChrome>
+  <Grid>
+    <Border Background="{DynamicResource Brush.Window}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}" Style="{StaticResource Border.SmoothDecoration}"/>
+    <Border RenderOptions.ClearTypeHint="Enabled" Background="Transparent" BorderThickness="1" CornerRadius="{StaticResource Radius.Window}">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Grid Background="Transparent" MouseLeftButtonDown="TitleBar_MouseDown" AutomationProperties.AutomationId="MarkdownTitleBar">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Image Source="pack://application:,,,/ChronoIsle;component/Assets/island-mascot.png" Width="54" Height="34" Margin="18,0,0,0" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="False"/>
+            <TextBlock Grid.Column="1" Text="{Binding Title,RelativeSource={RelativeSource AncestorType=Window}}" Margin="8,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+          </Grid>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+            <Button Click="Minimize_Click" Style="{StaticResource WindowControl}" ToolTip="最小化" AutomationProperties.AutomationId="MarkdownMinimize"><Viewbox Width="12" Height="12"><Path Data="M 1 6 L 11 6" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeStartLineCap="Round"/></Viewbox></Button>
+            <Button Click="Maximize_Click" Style="{StaticResource WindowControl}" ToolTip="最大化/还原" AutomationProperties.AutomationId="MarkdownMaximize"><Viewbox Width="12" Height="12"><Path Data="M 2 2 L 10 2 L 10 10 L 2 10 Z" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeLineJoin="Round"/></Viewbox></Button>
+            <Button Click="Close_Click" Style="{StaticResource WindowCloseControl}" ToolTip="关闭" AutomationProperties.AutomationId="MarkdownClose"><Viewbox Width="12" Height="12"><Path Data="M 2 2 L 10 10 M 10 2 L 2 10" Stroke="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
+          </StackPanel>
+        </Grid>
+        <Border x:Name="DocumentHost" Grid.Row="1"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

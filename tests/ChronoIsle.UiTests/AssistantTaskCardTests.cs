@@ -142,6 +142,8 @@ public sealed class AssistantTaskCardTests
                 }
 
                 VerifyContinuePlanningButton(data, Path.Combine(directory, "life.db"), card, output);
+                LayoutRefreshChecks.Verify(themeService, output);
+                KnowledgeUiChecks.Verify(data, themeService, output);
             }
             catch (Exception e) { completed.TrySetException(e); }
             finally
@@ -155,7 +157,7 @@ public sealed class AssistantTaskCardTests
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(60));
     }
 
     static void VerifyContinuePlanningButton(LifeDataService data, string path, AssistantTaskCard card, string? output)

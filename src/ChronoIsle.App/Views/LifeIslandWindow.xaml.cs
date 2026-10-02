@@ -247,6 +247,7 @@ public partial class LifeIslandWindow : Window
         networkSpeedTest.SnapshotChanged += networkSpeedTestSnapshotChanged;
         this.assistant = assistant;
         QuickAskTaskCard.DataContext = assistant;
+        QuickAskKnowledgeMode.DataContext = assistant;
         QuickAskLegacyConfirmation.DataContext = assistant;
         media.SnapshotChanged += _ =>
         {
@@ -988,8 +989,8 @@ public partial class LifeIslandWindow : Window
     System.Windows.Media.Brush CalendarForeground(bool inMonth, OfficialCalendarDay officialDay) =>
         !inMonth ? (System.Windows.Media.Brush)FindResource("Brush.TextTertiary") : officialDay.Kind switch
         {
-            OfficialCalendarDayKind.StatutoryHoliday => new SolidColorBrush(Color.FromRgb(255, 105, 97)),
-            OfficialCalendarDayKind.AdjustedWorkday => new SolidColorBrush(Color.FromRgb(255, 159, 10)),
+            OfficialCalendarDayKind.StatutoryHoliday => (System.Windows.Media.Brush)FindResource("Brush.Danger"),
+            OfficialCalendarDayKind.AdjustedWorkday => (System.Windows.Media.Brush)FindResource("Brush.Warning"),
             _ => (System.Windows.Media.Brush)FindResource("Brush.TextPrimary")
         };
 
@@ -1095,20 +1096,13 @@ public partial class LifeIslandWindow : Window
             Text = DateTime.Now.AddHours(1).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
             Margin = new Thickness(0, 8, 0, 4), Padding = new Thickness(7), MinWidth = 230
         };
-        var error = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(255, 105, 97)), FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        var dialog = new Window
-        {
-            Style = (Style)FindResource("Window.Display"),
-            Title = title, Owner = this, Width = 360, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-        SetThemeResource(dialog, BackgroundProperty, "Brush.Card");
-        SetThemeResource(dialog, ForegroundProperty, "Brush.TextPrimary");
-        var panel = new StackPanel { Margin = new Thickness(18) };
-        panel.Children.Add(new TextBlock { Text = "请输入明确时间（yyyy-MM-dd HH:mm）" });
+        var error = SetThemeResource(new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap }, TextBlock.ForegroundProperty, "Brush.Danger");
+        var panel = new StackPanel();
+        panel.Children.Add(new TextBlock { Text = "请输入明确时间（yyyy-MM-dd HH:mm）", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(input);
         panel.Children.Add(error);
-        var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 7, 0, 0) };
+        var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        var dialog = DialogLayout.Create(title, this, panel, actions, 420, 290);
         var cancel = new Button { Content = "取消", Style = (Style)FindResource("Button.Secondary"), Padding = new Thickness(10, 4, 10, 4) };
         cancel.Click += (_, _) => dialog.DialogResult = false;
         var confirm = new Button { Content = "确定", Style = (Style)FindResource("Button.Primary"), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0) };
@@ -1123,8 +1117,7 @@ public partial class LifeIslandWindow : Window
         };
         actions.Children.Add(cancel);
         actions.Children.Add(confirm);
-        panel.Children.Add(actions);
-        dialog.Content = panel;
+
         return dialog.ShowDialog() == true ? (DateTime?)dialog.Tag : null;
     }
 
@@ -1170,7 +1163,7 @@ public partial class LifeIslandWindow : Window
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(14),
             Margin = new Thickness(12, 0, 12, 12),
-            Padding = new Thickness(14),
+            Padding = new Thickness(16),
             Child = panel
         };
         SetThemeResource(todayPanel, Border.BackgroundProperty, "Brush.Card");
@@ -1192,7 +1185,7 @@ public partial class LifeIslandWindow : Window
         {
             activeFocus = runningFocus;
             focusTitle ??= data.Todos().FirstOrDefault(item => item.Id == runningFocus.ItemId)?.Title ?? "待办";
-            var focusRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+            var focusRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) };
             var endFocus = new Button { Content = "结束专注", Style = (Style)FindResource("IslandType"), Background = new SolidColorBrush(Color.FromRgb(74, 37, 40)), Foreground = Brushes.White };
             var pauseFocus = new Button { Content = runningFocus.IsPaused ? "继续专注" : "暂停专注", Style = (Style)FindResource("IslandType"), Margin = new Thickness(6, 0, 0, 0) };
             var deepDnd = new Button { Content = reminders.IsDoNotDisturbEnabled ? "退出深度勿扰" : "深度勿扰", Style = (Style)FindResource("IslandType"), Margin = new Thickness(6, 0, 0, 0) };
@@ -1203,20 +1196,17 @@ public partial class LifeIslandWindow : Window
                 reminders.SetDoNotDisturb(!reminders.IsDoNotDisturbEnabled);
                 BuildTodayDashboard();
             };
-            DockPanel.SetDock(endFocus, Dock.Right);
-            DockPanel.SetDock(pauseFocus, Dock.Right);
-            DockPanel.SetDock(deepDnd, Dock.Right);
             focusRow.Children.Add(endFocus);
             focusRow.Children.Add(pauseFocus);
             focusRow.Children.Add(deepDnd);
-            focusRow.Children.Add(new TextBlock { Text = $"正在专注：{focusTitle}", Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), VerticalAlignment = VerticalAlignment.Center });
+            focusRow.Children.Add(new TextBlock { Text = $"正在专注：{focusTitle}", Foreground = (System.Windows.Media.Brush)FindResource("Brush.Success"), VerticalAlignment = VerticalAlignment.Center });
             todayDashboardContent.Children.Add(focusRow);
         }
         if (pendingFocusCompletion is not null)
         {
             var pending = pendingFocusCompletion;
             var completionRow = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
-            completionRow.Children.Add(new TextBlock { Text = $"专注结束（实际 {pending.Session.ActualMinutes} 分钟）。要完成对应待办吗？", Foreground = new SolidColorBrush(Color.FromRgb(255, 214, 10)), TextWrapping = TextWrapping.Wrap });
+            completionRow.Children.Add(new TextBlock { Text = $"专注结束（实际 {pending.Session.ActualMinutes} 分钟）。要完成对应待办吗？", Foreground = (System.Windows.Media.Brush)FindResource("Brush.Warning"), TextWrapping = TextWrapping.Wrap });
             var choices = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
             var complete = new Button { Content = "完成任务", Style = (Style)FindResource("IslandType"), Background = new SolidColorBrush(Color.FromRgb(48, 107, 64)), Foreground = Brushes.White };
             complete.Click += (_, _) => CompleteFocusedTodo();
@@ -1230,9 +1220,9 @@ public partial class LifeIslandWindow : Window
         var conflicts = CalendarConflictDetector.Find(data.AgendaFor(DateTime.Today));
         if (conflicts.Count > 0)
         {
-            todayDashboardContent.Children.Add(new TextBlock { Text = $"日程冲突：今日有 {conflicts.Count} 组重叠日程", Foreground = new SolidColorBrush(Color.FromRgb(255, 105, 97)), Margin = new Thickness(0, 5, 0, 2), FontWeight = FontWeights.SemiBold });
+            todayDashboardContent.Children.Add(new TextBlock { Text = $"日程冲突：今日有 {conflicts.Count} 组重叠日程", Foreground = (System.Windows.Media.Brush)FindResource("Brush.Danger"), Margin = new Thickness(0, 5, 0, 2), FontWeight = FontWeights.SemiBold });
             foreach (var conflict in conflicts.Take(2))
-                todayDashboardContent.Children.Add(new TextBlock { Text = $"{conflict.First.StartsAt:HH:mm}–{conflict.First.EndsAt:HH:mm}  {conflict.First.Title} / {conflict.Second.Title}", Foreground = new SolidColorBrush(Color.FromRgb(255, 159, 10)), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
+                todayDashboardContent.Children.Add(new TextBlock { Text = $"{conflict.First.StartsAt:HH:mm}–{conflict.First.EndsAt:HH:mm}  {conflict.First.Title} / {conflict.Second.Title}", Foreground = (System.Windows.Media.Brush)FindResource("Brush.Warning"), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
         }
 
         var quickActions = new WrapPanel { Margin = new Thickness(0, 0, 0, 9) };
@@ -1266,9 +1256,9 @@ public partial class LifeIslandWindow : Window
         todayDashboardContent.Children.Add(quickRow);
 
         var counts = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 13) };
-        counts.Children.Add(DashboardCount("今日", snapshot.Today, snapshot.GeneratedAtUtc, Color.FromRgb(174, 174, 178)));
-        counts.Children.Add(DashboardCount("逾期", snapshot.Overdue, snapshot.GeneratedAtUtc, Color.FromRgb(255, 69, 58)));
-        counts.Children.Add(DashboardCount("待整理", snapshot.Inbox, snapshot.GeneratedAtUtc, Color.FromRgb(255, 159, 10)));
+        counts.Children.Add(DashboardCount("今日", snapshot.Today, snapshot.GeneratedAtUtc));
+        counts.Children.Add(DashboardCount("逾期", snapshot.Overdue, snapshot.GeneratedAtUtc));
+        counts.Children.Add(DashboardCount("待整理", snapshot.Inbox, snapshot.GeneratedAtUtc));
         todayDashboardContent.Children.Add(counts);
         var overview = new Grid { Margin = new Thickness(0, 3, 0, 10) };
         overview.ColumnDefinitions.Add(new ColumnDefinition());
@@ -1735,7 +1725,7 @@ public partial class LifeIslandWindow : Window
         return null;
     }
 
-    Border DashboardCount(string label, IReadOnlyList<TodayDashboardItem> items, DateTimeOffset nowUtc, Color color)
+    Border DashboardCount(string label, IReadOnlyList<TodayDashboardItem> items, DateTimeOffset nowUtc)
     {
         var labelText = SetThemeResource(
             new TextBlock
@@ -1756,7 +1746,7 @@ public partial class LifeIslandWindow : Window
             {
                 Children =
                 {
-                    new TextBlock { Text = items.Count.ToString(), Foreground = new SolidColorBrush(color), FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center },
+                    new TextBlock { Text = items.Count.ToString(), Foreground = (System.Windows.Media.Brush)FindResource(label == "逾期" ? "Brush.Danger" : label == "待整理" ? "Brush.Warning" : "Brush.TextPrimary"), FontSize = 18, FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center },
                     labelText
                 }
             }
@@ -1768,46 +1758,9 @@ public partial class LifeIslandWindow : Window
 
     void ShowDashboardDetails(string label, IReadOnlyList<TodayDashboardItem> items, DateTimeOffset nowUtc)
     {
-        var dialog = new Window
-        {
-            Style = (Style)FindResource("Window.Display"),
-            Title = $"{label}详情",
-            Width = 500,
-            Height = 520,
-            MinWidth = 400,
-            MinHeight = 300,
-            ResizeMode = ResizeMode.NoResize,
-            WindowStyle = WindowStyle.None,
-            AllowsTransparency = true,
-            Background = Brushes.Transparent,
-            ShowInTaskbar = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-        if (IsVisible) dialog.Owner = this;
-        SetThemeResource(dialog, ForegroundProperty, "Brush.TextPrimary");
-
-        var shell = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16) };
-        RenderOptions.SetClearTypeHint(shell, ClearTypeHint.Enabled);
-        SetThemeResource(shell, Border.BackgroundProperty, "Brush.Window");
-        SetThemeResource(shell, Border.BorderBrushProperty, "Brush.Stroke");
-        var layout = new Grid();
-        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
-        layout.RowDefinitions.Add(new RowDefinition());
-        var titleBar = new Grid { Margin = new Thickness(18, 0, 10, 0) };
-        titleBar.ColumnDefinitions.Add(new ColumnDefinition());
-        titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        titleBar.Children.Add(new TextBlock { Text = $"{label}事项", FontWeight = FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
-        var titleClose = new Button { Content = "×", Style = (Style)FindResource("IslandType"), Width = 32, Height = 28, Padding = new Thickness(0), ToolTip = "关闭" };
-        titleClose.Click += (_, _) => dialog.Close();
-        Grid.SetColumn(titleClose, 1);
-        titleBar.Children.Add(titleClose);
-        layout.Children.Add(titleBar);
-
-        var body = new Grid { Margin = new Thickness(18, 0, 18, 18) };
-        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        body.RowDefinitions.Add(new RowDefinition());
-        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var content = new StackPanel();
+        var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        var dialog = DialogLayout.Create($"{label}详情", IsVisible ? this : null, content, actions, 540, 560);
         content.Children.Add(SetThemeResource(
             new TextBlock { Text = $"{label}事项（{items.Count}）", FontWeight = FontWeights.SemiBold, FontSize = 16 },
             TextBlock.ForegroundProperty,
@@ -1845,19 +1798,10 @@ public partial class LifeIslandWindow : Window
                 rows.Children.Add(itemButton);
             }
         }
-        Grid.SetRow(content, 0);
-        body.Children.Add(content);
-        var scroller = new ScrollViewer { Content = rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 2, 0, 10) };
-        Grid.SetRow(scroller, 1);
-        body.Children.Add(scroller);
-        var close = new Button { Content = "关闭", Style = (Style)FindResource("IslandType"), Width = 70, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        content.Children.Add(rows);
+        var close = new Button { Content = "关闭", Style = (Style)FindResource("Button.Secondary"), MinWidth = 88, IsCancel = true };
         close.Click += (_, _) => dialog.Close();
-        Grid.SetRow(close, 2);
-        body.Children.Add(close);
-        Grid.SetRow(body, 1);
-        layout.Children.Add(body);
-        shell.Child = layout;
-        dialog.Content = shell;
+        actions.Children.Add(close);
         dialog.ShowDialog();
     }
 
@@ -2794,7 +2738,7 @@ public partial class LifeIslandWindow : Window
         QuickAskSend.IsEnabled = !assistant.IsSending && !string.IsNullOrWhiteSpace(QuickAskInput.Text);
         QuickAskStop.Visibility = assistant.IsSending ? Visibility.Visible : Visibility.Collapsed;
         var latest = assistant.Messages.LastOrDefault(message => message.Role == "assistant");
-        if (latest is not null) QuickAskAnswer.Text = latest.Content;
+        if (latest is not null) QuickAskAnswer.Markdown = latest.Content;
         ResizeExpandedToContent();
     }
 
@@ -2803,7 +2747,7 @@ public partial class LifeIslandWindow : Window
         var text = QuickAskInput.Text.Trim();
         if (text.Length == 0 || assistant.IsSending) return;
         QuickAskInput.Clear();
-        QuickAskAnswer.Text = string.Empty;
+        QuickAskAnswer.Markdown = string.Empty;
         UpdateQuickAskView();
         await assistant.SubmitQuickAskAsync(text);
         UpdateQuickAskView();
@@ -2833,7 +2777,7 @@ public partial class LifeIslandWindow : Window
     {
         if (assistant.IsSending) return;
         assistant.BeginQuickAskConversation();
-        QuickAskAnswer.Text = "输入一个问题，或描述想创建、查询、修改的事项。";
+        QuickAskAnswer.Markdown = "输入一个问题，或描述想创建、查询、修改的事项。";
         QuickAskInput.Clear();
         UpdateQuickAskView();
     }
@@ -3289,7 +3233,7 @@ public partial class LifeIslandWindow : Window
             var time = item.Kind == "event" && item.EndsAt is not null ? $"{item.StartsAt:HH:mm}–{item.EndsAt:HH:mm}" : item.StartsAt.TimeOfDay == TimeSpan.Zero ? "待办" : item.StartsAt.ToString("HH:mm");
             var timeRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
             timeRow.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = IndicatorBrush(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
-            timeRow.Children.Add(new TextBlock { Text = time, Foreground = new SolidColorBrush(Color.FromRgb(124, 196, 127)), FontSize = 12 });
+            timeRow.Children.Add(new TextBlock { Text = time, Foreground = (System.Windows.Media.Brush)FindResource("Brush.Success"), FontSize = 12 });
             copy.Children.Add(timeRow);
             copy.Children.Add(SetThemeResource(
                 new TextBlock { Text = item.Title, TextDecorations = item.IsCompleted ? TextDecorations.Strikethrough : null },

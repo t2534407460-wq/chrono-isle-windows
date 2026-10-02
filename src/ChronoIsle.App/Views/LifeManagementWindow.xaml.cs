@@ -96,7 +96,7 @@ public partial class LifeManagementWindow : Window
             var result = markdownTransfer.Import(preview);
             reminders.RefreshSchedule();
             RefreshItems();
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Success");
             Result.Text = $"已导入 {result.ImportedCount} 项。";
         }
         catch (MarkdownItemDocumentException exception)
@@ -114,7 +114,7 @@ public partial class LifeManagementWindow : Window
         try
         {
             File.WriteAllText(path, content, new UTF8Encoding(false));
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Success");
             Result.Text = successMessage;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -125,7 +125,7 @@ public partial class LifeManagementWindow : Window
 
     void ShowTransferError(string message)
     {
-        Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+        SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
         Result.Text = message;
     }
     void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
@@ -199,10 +199,10 @@ public partial class LifeManagementWindow : Window
             panel.Children.Add(check);
 
             var text = new StackPanel { Margin = new Thickness(12, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
-            var title = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+            var title = new DockPanel();
             var indicator = itemIndicators[item.Id];
             title.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = LifeIslandWindow.IndicatorBrush(indicator), ToolTip = LifeIslandWindow.IndicatorDescription(indicator), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) });
-            title.Children.Add(new TextBlock { Text = item.Title, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            title.Children.Add(new TextBlock { Text = item.Title, ToolTip = item.Title, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
             text.Children.Add(title);
             text.Children.Add(SetThemeResource(new TextBlock { Text = ItemDetails(item), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
             Grid.SetColumn(text, 1);
@@ -335,11 +335,11 @@ public partial class LifeManagementWindow : Window
             panel.Children.Add(SetThemeResource(new TextBlock
             {
                 Text = $"{item.Reason} · 归档于 {item.ArchivedAt:yyyy-MM-dd HH:mm} · 将于 {item.ArchivedAt.AddDays(7):MM-dd HH:mm} 自动删除",
-                FontSize = 12,
+                FontSize = 12, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 4, 0, 10)
             }, TextBlock.ForegroundProperty, "Brush.TextSecondary"));
-            var controls = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
-            var restore = new Button { Content = "恢复", Height = 30, Style = (Style)FindResource("Action"), Padding = new Thickness(12, 4, 12, 4) };
+            var controls = new WrapPanel();
+            var restore = new Button { Content = "恢复", Height = 32, Style = (Style)FindResource("Action"), Padding = new Thickness(12, 4, 12, 4) };
             SetThemeResource(restore, Button.BackgroundProperty, "Brush.AccentSoft");
             SetThemeResource(restore, Button.ForegroundProperty, "Brush.Accent");
             if (item.Kind == "recurring")
@@ -354,7 +354,7 @@ public partial class LifeManagementWindow : Window
                 controls.Children.Add(date);
             }
             controls.Children.Add(restore);
-            var delete = new Button { Content = "删除", Height = 30, Style = (Style)FindResource("Button.Danger"), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
+            var delete = new Button { Content = "删除", Height = 32, MinHeight = 32, Style = (Style)FindResource("Button.Danger"), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
             delete.Click += (_, _) => DeleteArchivedItem(item);
             controls.Children.Add(delete);
             panel.Children.Add(controls);
@@ -372,7 +372,7 @@ public partial class LifeManagementWindow : Window
         {
             Content = selected.ToString("yyyy-MM-dd"),
             Tag = selected,
-            Height = 30,
+            Height = 32,
             Style = (Style)FindResource("Action"),
             Margin = new Thickness(0, 0, 8, 0),
             Padding = new Thickness(10, 4, 10, 4)
@@ -417,10 +417,10 @@ public partial class LifeManagementWindow : Window
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition());
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var previous = new Button { Content = "‹", Width = 28, Height = 28, Style = (Style)FindResource("Action"), Padding = new Thickness(0) };
+            var previous = new Button { Content = "‹", Width = 30, Height = 30, MinHeight = 30, Style = (Style)FindResource("Action"), Padding = new Thickness(0) };
             previous.Click += (_, _) => { displayedMonth = displayedMonth.AddMonths(-1); RenderMonth(); };
             var title = new TextBlock { Text = displayedMonth.ToString("yyyy 年 M 月"), FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            var next = new Button { Content = "›", Width = 28, Height = 28, Style = (Style)FindResource("Action"), Padding = new Thickness(0) };
+            var next = new Button { Content = "›", Width = 30, Height = 30, MinHeight = 30, Style = (Style)FindResource("Action"), Padding = new Thickness(0) };
             next.Click += (_, _) => { displayedMonth = displayedMonth.AddMonths(1); RenderMonth(); };
             SetThemeResource(title, TextBlock.ForegroundProperty, "Brush.TextPrimary");
             Grid.SetColumn(title, 1);
@@ -441,7 +441,7 @@ public partial class LifeManagementWindow : Window
             for (var day = 1; day <= DateTime.DaysInMonth(displayedMonth.Year, displayedMonth.Month); day++)
             {
                 var value = displayedMonth.AddDays(day - 1);
-                var cell = new Button { Content = day.ToString(), Height = 28, Style = (Style)FindResource("Action"), Padding = new Thickness(0), Margin = new Thickness(1) };
+                var cell = new Button { Content = day.ToString(), Height = 30, MinHeight = 30, Style = (Style)FindResource("Action"), Padding = new Thickness(0), Margin = new Thickness(1) };
                 if (value == selected) SetThemeResource(cell, System.Windows.Controls.Control.BackgroundProperty, "Brush.AccentSoft");
                 cell.Click += (_, _) =>
                 {
@@ -464,7 +464,7 @@ public partial class LifeManagementWindow : Window
     {
         if (item.Kind is not ("recurring" or "long_term") && selectedDate is null)
         {
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
             Result.Text = "请选择恢复日期。";
             return;
         }
@@ -472,11 +472,11 @@ public partial class LifeManagementWindow : Window
         var scheduledAt = selectedDate?.Date.Add(time);
         if (!data.RestoreArchivedItem(item.Id, scheduledAt))
         {
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
             Result.Text = "恢复日期需要晚于当前时间。";
             return;
         }
-        Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+        SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Success");
         reminders.RefreshSchedule();
         Result.Text = item.Kind == "recurring" ? "已恢复周期提醒。" : $"已恢复到 {scheduledAt:yyyy-MM-dd HH:mm}。";
         RefreshItems();
@@ -486,7 +486,7 @@ public partial class LifeManagementWindow : Window
     void DeleteArchivedItem(ArchivedTodoItem item)
     {
         if (!data.DeleteArchivedItem(item.Id)) return;
-        Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+        SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Success");
         Result.Text = "已永久删除归档事项。";
         RefreshItems();
     }
@@ -509,7 +509,7 @@ public partial class LifeManagementWindow : Window
         var baseColor = row.Background is SolidColorBrush brush ? brush.Color : Color.FromRgb(36, 36, 38);
         var highlight = new SolidColorBrush(baseColor);
         row.Background = highlight;
-        highlight.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(baseColor, Color.FromRgb(55, 96, 145), TimeSpan.FromMilliseconds(260))
+        highlight.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(baseColor, ((SolidColorBrush)row.FindResource("Brush.AccentSoft")).Color, TimeSpan.FromMilliseconds(260))
         {
             AutoReverse = true,
             RepeatBehavior = new System.Windows.Media.Animation.RepeatBehavior(2)
@@ -521,42 +521,52 @@ public partial class LifeManagementWindow : Window
         container.Children.Add(row);
         var editor = new WrapPanel { Margin = new Thickness(36, 8, 0, 0) };
         var priorityOptions = Enum.GetValues<LifePriority>().Select(value => new ComboBoxItem { Content = TaskDisplayLabels.Priority(value), Tag = value }).ToArray();
-        var priority = new System.Windows.Controls.ComboBox { Width = 76, Height = 27, ItemsSource = priorityOptions, SelectedItem = priorityOptions.Single(item => (LifePriority)item.Tag == attributes.Priority), Margin = new Thickness(0, 0, 8, 4), ToolTip = "优先级" };
-        var category = new System.Windows.Controls.ComboBox { Width = 86, Height = 27, ItemsSource = CommonCategories, IsEditable = true, Text = attributes.Category ?? "", Margin = new Thickness(0, 0, 5, 4), ToolTip = "分类" };
+        var priority = new System.Windows.Controls.ComboBox { Width = 96, Height = 34, ItemsSource = priorityOptions, SelectedItem = priorityOptions.Single(item => (LifePriority)item.Tag == attributes.Priority), Margin = new Thickness(0, 0, 8, 4), ToolTip = "优先级" };
+        var category = new System.Windows.Controls.ComboBox { Width = 120, Height = 34, ItemsSource = CommonCategories, IsEditable = true, Text = attributes.Category ?? "", Margin = new Thickness(0, 0, 5, 4), ToolTip = "分类" };
         var estimatedMinutes = attributes.EstimatedMinutes ?? 30;
         var estimateUnitMinutes = estimatedMinutes >= 60 && estimatedMinutes % 60 == 0 ? 60 : 1;
         var estimateStepper = PositiveNumberStepper(estimatedMinutes / estimateUnitMinutes, "预计时长", out var estimateValue);
         var estimateUnit = TimeUnitSelector(estimateUnitMinutes);
         var energyOptions = new ComboBoxItem[] { new() { Content = "不限", Tag = null } }
             .Concat(Enum.GetValues<EnergyLevel>().Select(value => new ComboBoxItem { Content = TaskDisplayLabels.Energy(value), Tag = value })).ToArray();
-        var energy = new System.Windows.Controls.ComboBox { Width = 92, Height = 27, ItemsSource = energyOptions, SelectedItem = energyOptions.Single(item => Equals(item.Tag, attributes.Energy)), Margin = new Thickness(0, 0, 5, 4), ToolTip = "能量" };
+        var energy = new System.Windows.Controls.ComboBox { Width = 92, Height = 34, ItemsSource = energyOptions, SelectedItem = energyOptions.Single(item => Equals(item.Tag, attributes.Energy)), Margin = new Thickness(0, 0, 5, 4), ToolTip = "能量" };
         var overdueGraceStepper = PositiveNumberStepper(attributes.OverdueGraceMinutes, "超时宽限分钟", out var overdueGrace);
         var details = new WrapPanel { Margin = new Thickness(36, 4, 0, 0), Visibility = Visibility.Collapsed };
-        var more = new Button { Content = "更多设置 ▾", Height = 27, Style = (Style)FindResource("Action"), Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(0, 0, 6, 4) };
+        var more = new Button { Content = "更多设置 ▾", Height = 34, Style = (Style)FindResource("Action"), Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(0, 0, 6, 4) };
         more.Click += (_, _) =>
         {
             var expanded = details.Visibility != Visibility.Visible;
             details.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
             more.Content = expanded ? "收起设置 ▴" : "更多设置 ▾";
         };
-        var save = new Button { Content = "保存", Height = 27, Style = (Style)FindResource("Action"), Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 0, 4) };
+        var save = new Button { Content = "保存", Height = 34, Style = (Style)FindResource("Action"), Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 0, 4) };
         SetThemeResource(save, Button.BackgroundProperty, "Brush.AccentSoft");
         SetThemeResource(save, Button.ForegroundProperty, "Brush.Accent");
         save.Click += (_, _) => SaveTaskAttributes(attributes, priority, category, estimateValue, estimateUnit, energy, overdueGrace);
-        editor.Children.Add(SecondaryLabel("优先级", new Thickness(0, 0, 5, 4)));
-        editor.Children.Add(priority);
-        editor.Children.Add(SecondaryLabel("超时宽限", new Thickness(0, 0, 3, 4)));
-        editor.Children.Add(overdueGraceStepper);
-        editor.Children.Add(SecondaryLabel("分钟", new Thickness(0, 0, 8, 4)));
+        var priorityField = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        priorityField.Children.Add(SecondaryLabel("优先级", new Thickness(0, 0, 5, 4)));
+        priorityField.Children.Add(priority);
+        editor.Children.Add(priorityField);
+        var graceField = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        graceField.Children.Add(SecondaryLabel("超时宽限", new Thickness(0, 0, 3, 4)));
+        graceField.Children.Add(overdueGraceStepper);
+        graceField.Children.Add(SecondaryLabel("分钟", new Thickness(0, 0, 8, 4)));
+        editor.Children.Add(graceField);
         editor.Children.Add(more);
         editor.Children.Add(save);
-        details.Children.Add(SecondaryLabel("分类", new Thickness(0, 0, 4, 4)));
-        details.Children.Add(category);
-        details.Children.Add(SecondaryLabel("预计", new Thickness(0, 0, 4, 4)));
-        details.Children.Add(estimateStepper);
-        details.Children.Add(estimateUnit);
-        details.Children.Add(SecondaryLabel("能量", new Thickness(0, 0, 4, 4)));
-        details.Children.Add(energy);
+        var categoryField = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        categoryField.Children.Add(SecondaryLabel("分类", new Thickness(0, 0, 4, 4)));
+        categoryField.Children.Add(category);
+        details.Children.Add(categoryField);
+        var estimateField = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        estimateField.Children.Add(SecondaryLabel("预计", new Thickness(0, 0, 4, 4)));
+        estimateField.Children.Add(estimateStepper);
+        estimateField.Children.Add(estimateUnit);
+        details.Children.Add(estimateField);
+        var energyField = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        energyField.Children.Add(SecondaryLabel("能量", new Thickness(0, 0, 4, 4)));
+        energyField.Children.Add(energy);
+        details.Children.Add(energyField);
         var completed = attributes.CompletedAtUtc is null ? "未完成" : attributes.CompletedAtUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
         details.Children.Add(SetThemeResource(new TextBlock
         {
@@ -578,7 +588,7 @@ public partial class LifeManagementWindow : Window
     TextBox EditableTextBox(double width, string text, string toolTip) => new()
     {
         Width = width,
-        Height = 27,
+        Height = 34,
         Text = text,
         Margin = new Thickness(0, 0, 5, 4),
         ToolTip = toolTip,
@@ -611,8 +621,8 @@ public partial class LifeManagementWindow : Window
 
     System.Windows.Controls.ComboBox TimeUnitSelector(int selectedMinutes) => new()
     {
-        Width = 58,
-        Height = 27,
+        Width = 82,
+        Height = 34,
         ItemsSource = new[]
         {
             new ComboBoxItem { Content = "分钟", Tag = 1 },
@@ -625,7 +635,7 @@ public partial class LifeManagementWindow : Window
 
     Button StepperButton(string content, Action action)
     {
-        var button = new Button { Content = content, Width = 18, Height = 13, MinHeight = 13, Padding = new Thickness(0), FontSize = 8, Style = (Style)FindResource("Action") };
+        var button = new Button { Content = content, Width = 18, Height = 16, MinHeight = 16, Padding = new Thickness(0), FontSize = 8, Style = (Style)FindResource("Action") };
         button.Click += (_, _) => action();
         return button;
     }
@@ -637,20 +647,20 @@ public partial class LifeManagementWindow : Window
         if (priorityBox.SelectedItem is not ComboBoxItem { Tag: LifePriority priority }) return;
         if (!int.TryParse(estimateValueBox.Text.Trim(), out var estimateValue) || estimateValue <= 0)
         {
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
             Result.Text = "预计时长必须大于 0。";
             return;
         }
         var unitMinutes = estimateUnitBox.SelectedItem is ComboBoxItem { Tag: int unit } ? unit : 1;
         if (estimateValue > int.MaxValue / unitMinutes)
         {
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
             Result.Text = "预计时长过大。";
             return;
         }
         if (!int.TryParse(overdueGraceBox.Text.Trim(), out var overdueGrace) || overdueGrace <= 0)
         {
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
             Result.Text = "超时宽限必须是正整数分钟。";
             return;
         }
@@ -663,9 +673,7 @@ public partial class LifeManagementWindow : Window
             OverdueGraceMinutes = overdueGrace
         };
         var result = taskAttributes.Update(updated);
-        Result.Foreground = result == TaskAttributesUpdateResult.Succeeded
-            ? new SolidColorBrush(Color.FromRgb(157, 214, 157))
-            : new SolidColorBrush(Color.FromRgb(255, 120, 120));
+        SetThemeResource(Result, TextBlock.ForegroundProperty, result == TaskAttributesUpdateResult.Succeeded ? "Brush.Success" : "Brush.Danger");
         Result.Text = result switch
         {
             TaskAttributesUpdateResult.Succeeded => "任务属性已保存。",
@@ -683,19 +691,19 @@ public partial class LifeManagementWindow : Window
             var active = focus.RestoreActive();
             if (active is not null)
             {
-                Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+                SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Success");
                 Result.Text = active.ItemId == item.Id
                     ? $"正在专注：{item.Title}。"
                     : "已有进行中的专注，请先在灵动岛结束当前专注。";
                 return;
             }
             var session = focus.Start(item.Id, 25);
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(157, 214, 157));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Success");
             Result.Text = $"已开始专注：{item.Title}（25 分钟）。灵动岛会显示倒计时。";
         }
         catch (Exception exception)
         {
-            Result.Foreground = new SolidColorBrush(Color.FromRgb(255, 120, 120));
+            SetThemeResource(Result, TextBlock.ForegroundProperty, "Brush.Danger");
             Result.Text = $"无法开始专注：{exception.Message}";
         }
     }

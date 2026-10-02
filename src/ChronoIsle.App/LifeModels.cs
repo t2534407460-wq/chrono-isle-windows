@@ -100,7 +100,10 @@ public sealed record ArchivedTodoItem(
     string Kind = "todo");
 
 public sealed record ChatSession(string Id, string Title, DateTime CreatedAt, DateTime UpdatedAt);
-public sealed record ChatMessage(string Id, string SessionId, string Role, string Content, DateTime CreatedAt);
+public sealed record ChatMessage(string Id, string SessionId, string Role, string Content, DateTime CreatedAt)
+{
+    public bool IsKnowledgeAnswer => Role == "assistant" && Content.StartsWith("知识库问答\n", StringComparison.Ordinal);
+}
 
 public sealed record AssistantAction(
     string Id,
@@ -129,7 +132,7 @@ public sealed record LifePreferences(
     bool LyricsEnabled = true,
     int LyricsOffsetMs = 0,
     bool MoveIslandDuringFullscreen = true,
-    string ThemeMode = "System",
+    string ThemeMode = "Dark",
     bool TelemetryEnabled = true,
     bool ToastInboxEnabled = true,
     bool GlowBorderEnabled = true,

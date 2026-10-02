@@ -33,6 +33,7 @@ function Find-SdkTool([string]$name) {
 
 $makeAppx = Find-SdkTool 'MakeAppx.exe'
 $signTool = Find-SdkTool 'SignTool.exe'
+$makePri = Find-SdkTool 'MakePri.exe'
 $outputDirectory = Join-Path $env:LOCALAPPDATA 'ChronoIsle\package-identity'
 $layoutDirectory = Join-Path $outputDirectory 'layout'
 $packagePath = Join-Path $outputDirectory 'ChronoIsle.Identity.msix'
@@ -44,10 +45,23 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Package.appxmanifest') -Destina
 $logoSourceDirectory = Join-Path $PSScriptRoot 'Assets'
 foreach ($logoDirectory in @((Join-Path $layoutDirectory 'Assets'), (Join-Path $PublishDirectory 'Assets'))) {
     New-Item -ItemType Directory -Force -Path $logoDirectory | Out-Null
-    foreach ($logoName in @('storelogo.png', 'Square44x44Logo.png', 'Square150x150Logo.png')) {
+    foreach ($logoName in (Get-ChildItem -LiteralPath $logoSourceDirectory -Filter '*.png' -File).Name) {
         Copy-Item -LiteralPath (Join-Path $logoSourceDirectory $logoName) -Destination (Join-Path $logoDirectory $logoName) -Force
     }
 }
+
+# Windows only selects targetsize/altform variants when they are indexed in resources.pri.
+$priConfig = Join-Path $outputDirectory 'priconfig.xml'
+& $makePri createconfig /cf $priConfig /dq zh-CN /o
+if ($LASTEXITCODE -ne 0) { throw 'MakePri did not create its configuration.' }
+[xml]$configuration = Get-Content -LiteralPath $priConfig -Raw
+foreach ($packaging in @($configuration.SelectNodes('//packaging'))) { $packaging.ParentNode.RemoveChild($packaging) | Out-Null }
+$configuration.Save($priConfig)
+$priPath = Join-Path $layoutDirectory 'resources.pri'
+& $makePri new /pr $layoutDirectory /cf $priConfig /of $priPath /o
+if ($LASTEXITCODE -ne 0) { throw 'MakePri did not index the package icons.' }
+Copy-Item -LiteralPath $priPath -Destination (Join-Path $PublishDirectory 'resources.pri') -Force
+Copy-Item -LiteralPath $priPath -Destination (Join-Path $PSScriptRoot 'resources.pri') -Force
 
 & $makeAppx pack /o /d $layoutDirectory /nv /p $packagePath
 if ($LASTEXITCODE -ne 0) { throw 'MakeAppx did not create the external-location package.' }

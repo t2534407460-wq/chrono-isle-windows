@@ -94,4 +94,22 @@ public sealed class PackageIdentityContractTests
             if (File.Exists(Path.Combine(directory.FullName, "ChronoIsle.sln"))) return directory.FullName;
         throw new DirectoryNotFoundException("ChronoIsle.sln was not found from the UI test host.");
     }
+
+    [Fact]
+    public void Taskbar_variants_are_unplated_and_keep_transparent_corners()
+    {
+        Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, "resources.pri")), "Unplated variants require the deployed resource index.");
+        foreach (var size in new[] { 16, 24, 32, 48, 256 })
+        foreach (var mode in new[] { "unplated", "lightunplated" })
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "Assets", $"Square44x44Logo.targetsize-{size}_altform-{mode}.png");
+            using var stream = File.OpenRead(path);
+            var decoder = new System.Windows.Media.Imaging.PngBitmapDecoder(stream, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+            var image = new System.Windows.Media.Imaging.FormatConvertedBitmap(decoder.Frames[0], System.Windows.Media.PixelFormats.Bgra32, null, 0);
+            Assert.Equal(size, image.PixelWidth); Assert.Equal(size, image.PixelHeight);
+            var pixels = new byte[size * size * 4]; image.CopyPixels(pixels, size * 4, 0);
+            Assert.Equal(0, pixels[3]); Assert.Equal(0, pixels[^1]);
+            Assert.Contains(Enumerable.Range(0, size * size), i => pixels[i * 4 + 3] > 200);
+        }
+    }
 }

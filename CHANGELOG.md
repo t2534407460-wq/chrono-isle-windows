@@ -6,6 +6,22 @@ All notable changes to ChronoIsle will be documented here.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-02
+
+### Added
+
+- 本地 Obsidian 与远程项目知识库问答，支持来源核对、Markdown 和图片查看。
+
+### Changed
+
+- 合入全页面布局及浅色主题优化，保留已有业务流程和主题选择。
+- 首次启动默认深色（黑色背景）主题，升级保留已保存的主题。
+- 生成 Windows x64 自包含安装包，统一安装包、应用及程序集版本。
+
+### Fixed
+
+- 补齐任务栏无底板图标变体与资源索引，并保留 Markdown 首次点击、滚动和窗口工作区修正。
+
 ## [0.4.2] - 2026-07-27
 
 ### Added

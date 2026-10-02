@@ -20,20 +20,20 @@ public partial class LifeIslandWindow
 
         weeklyReportText = new TextBlock
         {
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap
         };
         SetThemeResource(weeklyReportText, TextBlock.ForegroundProperty, "Brush.Success");
         monthlyReportText = new TextBlock
         {
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 5, 0, 0)
         };
         SetThemeResource(monthlyReportText, TextBlock.ForegroundProperty, "Brush.TextSecondary");
         nextWeekPlanText = new TextBlock
         {
-            FontSize = 11,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 5, 0, 0),
             Visibility = Visibility.Collapsed
@@ -44,7 +44,7 @@ public partial class LifeIslandWindow
             Content = "生成下周计划",
             Style = (Style)FindResource("IslandType"),
             Padding = new Thickness(7, 2, 7, 2),
-            FontSize = 10,
+            FontSize = 12,
             Margin = new Thickness(8, 0, 0, 0)
         };
         plan.Click += (_, _) =>
@@ -71,8 +71,8 @@ public partial class LifeIslandWindow
         weeklyReportPanel = new Border
         {
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(9),
-            Padding = new Thickness(10),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14),
             Margin = new Thickness(12, 0, 12, 8),
             Visibility = Visibility.Collapsed,
             Child = content

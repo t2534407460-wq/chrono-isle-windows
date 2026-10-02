@@ -4,6 +4,7 @@ using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ChronoIsle.App.Services;
+using ChronoIsle.App.Services.Knowledge;
 using ChronoIsle.App.Services.Commanding;
 using ChronoIsle.App.Services.Productivity;
 using ChronoIsle.App.Services.State;
@@ -16,12 +17,23 @@ public partial class LifeViewModel : ObservableObject
     readonly AssistantActionService actions;
     readonly ProviderSettingsService settings;
     readonly ReminderService reminders;
+    readonly KnowledgeQuestionService? knowledge;
     CancellationTokenSource? sendCancellation;
 
     [ObservableProperty] string chatInput = "";
     readonly IIslandStateCoordinator islandState;
     [ObservableProperty] string status = "准备就绪";
     [ObservableProperty] bool isSending;
+    [ObservableProperty] bool isKnowledgeMode;
+    public bool CanChangeKnowledgeMode => !IsSending;
+    public string ChatHint => IsKnowledgeMode ? "输入完整问题，可加项目名、版本或笔记关键词" : "例如：明早九点提醒我开会";
+    public string ChatDescription => IsKnowledgeMode ? "自动读取本地笔记，核对原文后回答；相关片段会发送到已配置的模型。" : "用一句自然语言创建、安排和回顾你的事项";
+
+    partial void OnIsKnowledgeModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ChatHint));
+        OnPropertyChanged(nameof(ChatDescription));
+    }
     [ObservableProperty] ChatSession? selectedSession;
     [ObservableProperty] AssistantAction? pendingAction;
     [ObservableProperty] string pendingActionText = "";
@@ -95,12 +107,14 @@ public partial class LifeViewModel : ObservableObject
     public ObservableCollection<ChatMessage> Messages { get; } = [];
     public bool HasPendingAction => PendingAction is not null;
 
-    public LifeViewModel(LifeDataService data, AssistantActionService actions, ProviderSettingsService settings, ReminderService reminders, IIslandStateCoordinator islandState)
+    public LifeViewModel(LifeDataService data, AssistantActionService actions, ProviderSettingsService settings, ReminderService reminders, IIslandStateCoordinator islandState,
+        KnowledgeQuestionService? knowledge = null)
     {
         this.data = data;
         this.actions = actions;
         this.settings = settings;
         this.reminders = reminders;
+        this.knowledge = knowledge;
         RefreshSessions();
         this.islandState = islandState;
         if (Sessions.Count == 0) NewChat();
@@ -111,6 +125,7 @@ public partial class LifeViewModel : ObservableObject
     partial void OnChatInputChanged(string value) => SendCommand.NotifyCanExecuteChanged();
     partial void OnIsSendingChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanChangeKnowledgeMode));
         SendCommand.NotifyCanExecuteChanged();
         StopGeneratingCommand.NotifyCanExecuteChanged();
         UpdateInteractionCommands();
@@ -182,12 +197,19 @@ public partial class LifeViewModel : ObservableObject
         var text = ChatInput.Trim();
         var history = data.Messages(session.Id);
         ChatInput = "";
+        if (IsKnowledgeMode)
+        {
+            await RunTurnAsync(session, text, (_, token) => knowledge is null
+                ? Task.FromResult(new AssistantConversationResult("知识库服务暂时不可用，请重启应用后重试。", null, true))
+                : knowledge.AskAsync(settings.Load(), text, token), knowledgeTurn: true);
+            return;
+        }
         await RunTurnAsync(session, text, (delta, token) =>
             actions.HandleAsync(settings.Load(), session, history, text, delta, token));
     }
 
     async Task RunTurnAsync(ChatSession session, string text,
-        Func<Action<string>, CancellationToken, Task<AssistantConversationResult>> handle)
+        Func<Action<string>, CancellationToken, Task<AssistantConversationResult>> handle, bool knowledgeTurn = false)
     {
         if (IsSending) return;
         IsSending = true;
@@ -196,7 +218,7 @@ public partial class LifeViewModel : ObservableObject
         sendCancellation = cancellation;
         var streamed = new StringBuilder();
         var streamingIndex = -1;
-        Status = "正在处理…";
+        Status = knowledgeTurn ? "正在检索并核对知识库…" : "正在处理…";
         try
         {
             var stopwatch = Stopwatch.StartNew();
@@ -225,6 +247,11 @@ public partial class LifeViewModel : ObservableObject
             }
             SaveReply(reply);
             if (SelectedSession?.Id != session.Id) return;
+            if (knowledgeTurn)
+            {
+                Status = result.IsFailure ? "需要处理" : "知识库问答完成";
+                return; // Keep existing task confirmations and draft cards intact.
+            }
             PendingAction = result.PendingAction?.Status == "awaiting_confirmation" ? result.PendingAction : null;
             PendingPlan = PendingAction is null ? null : result.PendingPlan;
             PendingActionText = PendingAction is null ? "" : result.Reply;
@@ -244,7 +271,7 @@ public partial class LifeViewModel : ObservableObject
         }
         catch (Exception)
         {
-            SaveReply("处理暂时中断。请查看任务卡片核验状态后继续。");
+            SaveReply(knowledgeTurn ? "知识库问答暂时中断，请检查目录或模型设置后重试。" : "处理暂时中断。请查看任务卡片核验状态后继续。");
             if (SelectedSession?.Id == session.Id)
             {
                 Status = "需要处理";

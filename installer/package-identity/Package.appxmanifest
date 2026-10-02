@@ -6,7 +6,7 @@
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:virtualization="http://schemas.microsoft.com/appx/manifest/virtualization/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
-  <Identity Name="Tr11111.ChronoIsle" Publisher="CN=ChronoIsle Development" Version="1.0.0.2" ProcessorArchitecture="neutral" />
+  <Identity Name="Tr11111.ChronoIsle" Publisher="CN=ChronoIsle Development" Version="1.0.0.3" ProcessorArchitecture="neutral" />
   <Properties>
     <DisplayName>ChronoIsle</DisplayName>
     <PublisherDisplayName>Tr11111</PublisherDisplayName>

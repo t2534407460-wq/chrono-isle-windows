@@ -109,14 +109,14 @@ public sealed class SystemStatusUiContractTests
         Assert.Contains("#39C98B", tokens, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("#5B7CFA", tokens, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
-            "<Setter Property=\"Foreground\" Value=\"{DynamicResource Brush.Island}\"/>",
+            "<Setter Property=\"Foreground\" Value=\"{DynamicResource Brush.OnAccent}\"/>",
             controls,
             StringComparison.Ordinal);
         var checkMark = System.Xml.Linq.XDocument.Parse(controls).Descendants()
             .Single(element => element.Attribute(
                 System.Xml.Linq.XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value == "Mark");
         Assert.Equal("Path", checkMark.Name.LocalName);
-        Assert.Equal("{DynamicResource Brush.Island}", checkMark.Attribute("Stroke")?.Value);
+        Assert.Equal("{DynamicResource Brush.OnAccent}", checkMark.Attribute("Stroke")?.Value);
         Assert.Contains("Brush.AccentSoft", island, StringComparison.Ordinal);
         var source = File.ReadAllText(Path.Combine(
             workspace, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml.cs"));

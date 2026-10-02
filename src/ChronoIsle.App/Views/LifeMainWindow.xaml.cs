@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,12 +11,27 @@ namespace ChronoIsle.App.Views;
 public partial class LifeMainWindow : Window
 {
     private readonly IServiceProvider services;
+    HwndSource? windowSource;
 
     public LifeMainWindow(ChronoIsle.App.ViewModels.LifeViewModel vm, IServiceProvider serviceProvider)
     {
         InitializeComponent();
         DataContext = vm;
         services = serviceProvider;
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        windowSource?.AddHook(WindowWorkArea.ConstrainMaximizedBounds);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (windowSource is { IsDisposed: false }) windowSource.RemoveHook(WindowWorkArea.ConstrainMaximizedBounds);
+        windowSource = null;
+        base.OnClosed(e);
     }
 
     public void OpenSettings()
@@ -44,6 +60,7 @@ public partial class LifeMainWindow : Window
     void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
 
     void Manage_Click(object sender, RoutedEventArgs e) => OpenManagement();
+    void Markdown_Click(object sender, RoutedEventArgs e) => new MarkdownViewerWindow { Owner = this }.Show();
 
     public void OpenManagement(ItemNavigationTarget? target = null)
     {

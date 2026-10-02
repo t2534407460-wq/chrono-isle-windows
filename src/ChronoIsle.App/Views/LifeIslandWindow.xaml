@@ -73,7 +73,7 @@
     </Style>
     <Style x:Key="IslandDeleteButton" TargetType="Button" BasedOn="{StaticResource Button.Ghost}">
       <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="0"/>
-      <Setter Property="Background" Value="#2B272E"/><Setter Property="Foreground" Value="#E5A2AA"/>
+      <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}"/><Setter Property="Foreground" Value="{DynamicResource Brush.Danger}"/>
     </Style>
     <Style x:Key="IslandTab" TargetType="Button" BasedOn="{StaticResource IslandType}">
       <Setter Property="MinHeight" Value="31"/><Setter Property="Padding" Value="10,6"/><Setter Property="FontWeight" Value="SemiBold"/>
@@ -443,7 +443,7 @@
               </DockPanel>
             </Border>
             <Grid x:Name="DashboardTabs" Margin="12,12,12,10">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <StackPanel Orientation="Horizontal">
                 <Button x:Name="TodayDashboardTab" Content="今天" Click="TodayTab_Click" Style="{StaticResource IslandTab}"/>
                 <Button x:Name="CalendarDashboardTab" Content="月历" Click="CalendarTab_Click" Style="{StaticResource IslandTab}" Background="{DynamicResource Brush.Hover}" BorderBrush="{DynamicResource Brush.TextTertiary}" Foreground="{DynamicResource Brush.TextPrimary}" Margin="7,0,0,0"/>
@@ -451,7 +451,7 @@
                 <Button x:Name="QuickAskDashboardTab" Content="快问" Click="QuickAskTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
                 <Button x:Name="ToolsDashboardTab" Content="工具" Click="ToolsTab_Click" Style="{StaticResource IslandTab}" Margin="7,0,0,0"/>
               </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+              <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
                 <Button x:Name="ExpandedPinButton" Click="ExpandedPin_Click" Style="{StaticResource IslandIcon}"
                         Width="30" Height="30" Padding="0" Margin="0,0,7,0"
                         AutomationProperties.Name="切换展开图钉状态">
@@ -474,7 +474,7 @@
                         AutomationProperties.AutomationId="IslandSettingsButton"/>
               </StackPanel>
             </Grid>
-            <Border RenderOptions.ClearTypeHint="Enabled" x:Name="CalendarPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="14">
+            <Border RenderOptions.ClearTypeHint="Enabled" x:Name="CalendarPanel" Background="{DynamicResource Brush.Card}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="14" Margin="12,0,12,12" Padding="16">
               <StackPanel>
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -489,8 +489,8 @@
                   <TextBlock Text="日" Foreground="{DynamicResource Brush.TextTertiary}" HorizontalAlignment="Center"/>
                 </UniformGrid>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,7">
-                  <TextBlock Text="休" Foreground="#FF6961" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="法定节假日" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="3,0,10,0"/>
-                  <TextBlock Text="班" Foreground="#FFB02E" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="调休上班" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="3,0,0,0"/>
+                  <TextBlock Text="休" Foreground="{DynamicResource Brush.Danger}" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="法定节假日" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="3,0,10,0"/>
+                  <TextBlock Text="班" Foreground="{DynamicResource Brush.Warning}" FontSize="11" FontWeight="SemiBold"/><TextBlock Text="调休上班" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="11" Margin="3,0,0,0"/>
                 </StackPanel>
                 <UniformGrid x:Name="CalendarGrid" Columns="7"/>
                 <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="1" CornerRadius="10" Margin="0,12,0,9" Padding="12">
@@ -574,15 +574,16 @@
                   </StackPanel>
                 </Grid>
                 <TextBlock x:Name="QuickAskStatus" Text="准备就绪" Foreground="{DynamicResource Brush.TextTertiary}" FontSize="12" Margin="0,5,0,10"/>
-                <Border Background="{DynamicResource Brush.Surface}" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="1" CornerRadius="10" Padding="12" MinHeight="72" MaxHeight="180">
+                <CheckBox x:Name="QuickAskKnowledgeMode" Content="知识库问答 · 相关原文会发送到模型" IsChecked="{Binding IsKnowledgeMode}" IsEnabled="{Binding CanChangeKnowledgeMode}" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" AutomationProperties.AutomationId="QuickAskKnowledgeModeToggle" Margin="0,0,0,10"/>
+                <Border Background="Transparent" BorderBrush="{DynamicResource Brush.StrokeSoft}" BorderThickness="0,1,0,1" CornerRadius="0" Padding="4,10" MinHeight="96" MaxHeight="220">
                   <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <TextBox x:Name="QuickAskAnswer" Text="输入一个问题，回答会在这里流式显示。" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Padding="0" Foreground="{DynamicResource Brush.TextPrimary}">
-                      <TextBox.ContextMenu>
+                    <views:MarkdownView x:Name="QuickAskAnswer" Markdown="输入一个问题，回答会在这里流式显示。" IsReadOnly="True">
+                      <views:MarkdownView.ContextMenu>
                         <ContextMenu Style="{StaticResource IslandContextMenu}">
                           <MenuItem Header="复制" Style="{StaticResource IslandContextMenuItem}" Command="ApplicationCommands.Copy" CommandTarget="{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
                         </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
+                      </views:MarkdownView.ContextMenu>
+                    </views:MarkdownView>
                   </ScrollViewer>
                 </Border>
                 <views:AssistantTaskCard x:Name="QuickAskTaskCard" Margin="0,10,0,0"/>
@@ -593,7 +594,7 @@
                     <Button Content="取消" Command="{Binding CancelPendingActionCommand}" Style="{StaticResource IslandIcon}"/>
                   </WrapPanel>
                 </StackPanel>
-                <TextBox x:Name="QuickAskInput" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="38" MaxHeight="82" Margin="0,12,0,8" Style="{StaticResource IslandTextInput}" TextChanged="QuickAskInput_TextChanged" KeyDown="QuickAskInput_KeyDown">
+                <TextBox x:Name="QuickAskInput" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" MaxHeight="120" Padding="10,8" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" Margin="0,12,0,8" Style="{StaticResource IslandTextInput}" TextChanged="QuickAskInput_TextChanged" KeyDown="QuickAskInput_KeyDown">
                   <TextBox.ContextMenu>
                     <ContextMenu Style="{StaticResource IslandContextMenu}">
                       <MenuItem Header="剪切" Style="{StaticResource IslandContextMenuItem}" Command="ApplicationCommands.Cut" CommandTarget="{Binding PlacementTarget,RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
@@ -630,7 +631,7 @@
                   <ScrollViewer x:Name="NamingContentScroller" VerticalScrollBarVisibility="Auto"
                                 HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,0,10,0">
-                      <Border Style="{StaticResource Card.Standard}" Padding="18" Margin="0,0,0,14">
+                      <Border Style="{StaticResource Card.Subtle}" Padding="16" Margin="0,0,0,14">
                         <StackPanel>
                           <TextBlock Text="中文含义" Style="{StaticResource Text.SectionTitle}"/>
                           <TextBlock Text="可以是一句话，例如“当前登录用户的最后活跃时间”。"
@@ -719,7 +720,7 @@
                         </StackPanel>
                       </Border>
 
-                      <Border x:Name="ResultCard" Style="{StaticResource Card.Standard}" Padding="18"
+                      <Border x:Name="ResultCard" Style="{StaticResource Card.Subtle}" Padding="16"
                               Visibility="Collapsed" AutomationProperties.AutomationId="NamingResultCard">
                         <StackPanel>
                           <Grid Margin="0,0,0,15">

@@ -17,13 +17,13 @@
     </Style>
   </Window.Resources>
   <Grid>
-    <Border Margin="8" CornerRadius="22" Background="{DynamicResource Brush.Island}" IsHitTestVisible="False">
+    <Border Margin="8" CornerRadius="16" Background="{DynamicResource Brush.Island}" IsHitTestVisible="False">
       <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="3" Opacity=".22"/></Border.Effect>
     </Border>
-  <Border x:Name="NotificationCard" Margin="8" Padding="16,14" RenderOptions.ClearTypeHint="Enabled"
+  <Border x:Name="NotificationCard" Margin="8" Padding="16" RenderOptions.ClearTypeHint="Enabled"
           Background="{DynamicResource Brush.Island}"
           BorderBrush="{DynamicResource Brush.Stroke}"
-          BorderThickness="1" CornerRadius="22">
+          BorderThickness="1" CornerRadius="16">
     <Grid>
       <Grid.RenderTransform><TranslateTransform x:Name="NotificationTranslate"/></Grid.RenderTransform>
       <Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -51,7 +51,7 @@
         <TextBlock x:Name="NotificationBody" Margin="0,4,0,0" FontSize="13" LineHeight="20" MaxHeight="60"
                    Foreground="{DynamicResource Brush.TextSecondary}"
                    TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
-        <Grid Margin="-8,10,-6,-4">
+        <Grid Margin="0,12,0,0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <Button x:Name="OpenAppButton" Content="打开应用 ↗" HorizontalAlignment="Left"
                   Style="{StaticResource NotificationAction}" Click="OpenApp_Click"

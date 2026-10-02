@@ -38,3 +38,5 @@ desktop.ini
 .mcp.json
 installer-output/
 tmp/
+deploy/knowledge/secrets.json
+deploy/knowledge/data/

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Share the existing retrieval implementation with the Linux service. -->
+    <Compile Include="../ChronoIsle.App/Services/Knowledge/ObsidianKnowledgeIndex.cs" Link="ObsidianKnowledgeIndex.cs" />
+  </ItemGroup>
+</Project>

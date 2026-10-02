@@ -16,6 +16,7 @@
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.4.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageReference Include="Microsoft.Identity.Client.Broker" Version="4.81.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
@@ -26,8 +27,11 @@
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.12" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="App.xaml.cs;GlobalAliases.cs;LifeModels.cs;MarkdownTextBlock.cs" />
+    <Compile Include="App.xaml.cs;GlobalAliases.cs;LifeModels.cs" />
     <Compile Include="Services\Domain\*.cs" />
+    <Compile Include="Services\Knowledge\*.cs" />
+    <Compile Remove="Services\Knowledge\ObsidianKnowledgeIndex.cs" />
+    <Compile Include="Services\Markdown\*.cs;Views\MarkdownView.cs;Views\MarkdownViewerWindow.cs;Views\WindowWorkArea.cs;Views\DialogLayout.cs" />
     <Compile Include="Services\NativeToastBannerService.cs" />
     <Compile Include="Services\NotificationAppLauncher.cs" />
     <Compile Include="Services\Persistence\*.cs" />
@@ -48,17 +52,22 @@
     <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\IslandNotificationWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs;Views\TrayMenuWindow.xaml.cs;Views\IslandWindowStyles.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\ChronoIsle.Knowledge\ChronoIsle.Knowledge.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="Views\LifeMainWindow.xaml;Views\LifeSettingsWindow.xaml;Views\LifeIslandWindow.xaml;Views\IslandNotificationWindow.xaml;Views\LifeManagementWindow.xaml;Views\TrayMenuWindow.xaml" />
     <Page Include="Views\AssistantTaskCard.xaml" />
+    <Page Include="Views\MarkdownViewerWindow.xaml" />
     <Page Include="Resources\DesignTokens.xaml" />
     <Page Include="Resources\Controls.xaml" />
     <Page Include="Resources\Components.xaml" />
   </ItemGroup>
   <ItemGroup>
     <!-- Sparse identity logos are resolved beside the executable, outside the identity package. -->
-    <Content Include="..\..\installer\package-identity\Assets\*.png"
-             Link="Assets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="ThirdPartyNotices\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\package-identity\resources.pri" Link="resources.pri" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\package-identity\Assets\*.png" Link="Assets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Assets\face.ico" />
     <Resource Include="Assets\island-mascot.png" />
     <Resource Include="Assets\platform-league.ico" />

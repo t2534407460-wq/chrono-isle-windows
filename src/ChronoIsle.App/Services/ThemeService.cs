@@ -42,6 +42,7 @@ public sealed class ThemeService : IDisposable
             ["Brush.Success"] = "#39C98B",
             ["Brush.Warning"] = "#DFAF57",
             ["Brush.Danger"] = "#E76C72",
+            ["Brush.DangerSoft"] = "#352025",
             ["Brush.Reminder"] = "#A99BCD",
             ["Brush.Stroke"] = "#303A40",
             ["Brush.StrokeSoft"] = "#242D33"
@@ -50,23 +51,24 @@ public sealed class ThemeService : IDisposable
     static readonly IReadOnlyDictionary<string, string> LightPalette =
         new Dictionary<string, string>
         {
-            ["Brush.Window"] = "#F3F6F8",
+            ["Brush.Window"] = "#EAF0F4",
             ["Brush.Island"] = "#FFFFFF",
             ["Brush.Card"] = "#FFFFFF",
-            ["Brush.Surface"] = "#F0F4F7",
+            ["Brush.Surface"] = "#F2F5F8",
             ["Brush.Control"] = "#E4EBF0",
             ["Brush.Hover"] = "#D8E3EB",
             ["Brush.TextPrimary"] = "#1C2933",
             ["Brush.TextSecondary"] = "#4E606E",
-            ["Brush.TextTertiary"] = "#5F707C",
+            ["Brush.TextTertiary"] = "#566873",
             ["Brush.Accent"] = "#168A5F",
             ["Brush.AccentSoft"] = "#D9F1E7",
-            ["Brush.Success"] = "#168A5F",
+            ["Brush.Success"] = "#137F57",
             ["Brush.Warning"] = "#A66C14",
-            ["Brush.Danger"] = "#C54850",
+            ["Brush.Danger"] = "#B63843",
+            ["Brush.DangerSoft"] = "#F9E5E7",
             ["Brush.Reminder"] = "#6F5BA7",
             ["Brush.Stroke"] = "#C5D1DA",
-            ["Brush.StrokeSoft"] = "#E0E7ED"
+            ["Brush.StrokeSoft"] = "#CDD8E0"
         };
 
     readonly LifePreferencesService preferences;
@@ -126,6 +128,7 @@ public sealed class ThemeService : IDisposable
         var accent = AccentColors(theme, accentScheme);
         ApplyColor(application, "Brush.Accent", accent.Accent);
         ApplyColor(application, "Brush.AccentSoft", accent.AccentSoft);
+        ApplyColor(application, "Brush.OnAccent", theme == AppThemeMode.Light ? "#FFFFFF" : "#07090A");
         EffectiveTheme = theme;
         EffectiveAccentScheme = accentScheme;
         ThemeChanged?.Invoke(theme);

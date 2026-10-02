@@ -21,7 +21,7 @@ public partial class LifeIslandWindow
 
         weeklyHistoryText = new TextBlock
         {
-            FontSize = 10,
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap
         };
         SetThemeResource(weeklyHistoryText, TextBlock.ForegroundProperty, "Brush.TextSecondary");
@@ -30,7 +30,7 @@ public partial class LifeIslandWindow
         {
             Text = "历史周报",
             FontWeight = FontWeights.SemiBold,
-            FontSize = 11,
+            FontSize = 12,
             Margin = new Thickness(0, 0, 0, 4)
         };
         SetThemeResource(historyHeading, TextBlock.ForegroundProperty, "Brush.TextPrimary");
@@ -38,8 +38,8 @@ public partial class LifeIslandWindow
         weeklyHistoryPanel = new Border
         {
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(9),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14),
             Margin = new Thickness(12, 0, 12, 8),
             Visibility = Visibility.Collapsed,
             Child = new StackPanel

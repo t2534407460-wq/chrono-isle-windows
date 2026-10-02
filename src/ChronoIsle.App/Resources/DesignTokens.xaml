@@ -36,6 +36,9 @@
   <SolidColorBrush x:Key="Brush.Stroke" Color="{StaticResource Color.Stroke}"/>
   <SolidColorBrush x:Key="Brush.StrokeSoft" Color="{StaticResource Color.StrokeSoft}"/>
 
+  <SolidColorBrush x:Key="Brush.OnAccent" Color="#07090A"/>
+  <SolidColorBrush x:Key="Brush.DangerSoft" Color="#352025"/>
+
   <CornerRadius x:Key="Radius.Window">16</CornerRadius>
   <CornerRadius x:Key="Radius.Card">14</CornerRadius>
   <CornerRadius x:Key="Radius.Control">9</CornerRadius>

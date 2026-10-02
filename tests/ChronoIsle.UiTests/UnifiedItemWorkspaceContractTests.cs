@@ -17,9 +17,11 @@ public sealed class UnifiedItemWorkspaceContractTests
         Assert.Contains("taskAttributes.Recommend", workspaceCode, StringComparison.Ordinal);
         Assert.Contains("IslandQuickAction.ManageItems", islandCode, StringComparison.Ordinal);
         Assert.DoesNotContain("可执行推荐", islandCode, StringComparison.Ordinal);
-        Assert.Contains("WindowStyle = WindowStyle.None", islandCode, StringComparison.Ordinal);
-        Assert.Contains("AllowsTransparency = true", islandCode, StringComparison.Ordinal);
-        Assert.Contains("Brush.Window", islandCode, StringComparison.Ordinal);
+        var dialogCode = File.ReadAllText(Path.Combine(root, "src", "ChronoIsle.App", "Views", "DialogLayout.cs"));
+        Assert.Contains("DialogLayout.Create", islandCode, StringComparison.Ordinal);
+        Assert.Contains("WindowStyle = WindowStyle.None", dialogCode, StringComparison.Ordinal);
+        Assert.Contains("AllowsTransparency = true", dialogCode, StringComparison.Ordinal);
+        Assert.Contains("Brush.Card", dialogCode, StringComparison.Ordinal);
     }
 
     static string FindRepositoryRoot()

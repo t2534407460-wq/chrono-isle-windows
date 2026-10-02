@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using ChronoIsle.App.Services;
+using ChronoIsle.App.Services.Knowledge;
 using ChronoIsle.App.Services.ImportExport;
 using ChronoIsle.App.Services.Commanding;
 using ChronoIsle.App.Services.Domain;
@@ -48,6 +49,9 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<ProviderSettingsService>();
         collection.AddSingleton<LifePreferencesService>();
         collection.AddSingleton<OpenAiChatService>();
+        collection.AddSingleton<KnowledgeBaseSettingsService>();
+        collection.AddSingleton<ObsidianKnowledgeIndex>();
+        collection.AddSingleton<KnowledgeQuestionService>();
         collection.AddSingleton<MediaSessionService>();
         collection.AddSingleton<LyricsService>();
         collection.AddSingleton<AudioSpectrumService>();
