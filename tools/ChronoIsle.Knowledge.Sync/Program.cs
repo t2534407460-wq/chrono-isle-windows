@@ -18,12 +18,13 @@ try
     }
     if (args is not ["--config", var configPath]) throw new ArgumentException("用法：--pack <项目知识库目录> <ZIP> 或 --config <加密配置文件>");
     var config = JsonSerializer.Deserialize<SyncSettings>(File.ReadAllText(configPath), json) ?? throw new InvalidDataException("配置无效。");
-    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("自动同步配置使用 Windows 当前用户加密。");
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("同步配置使用 Windows 当前用户加密。");
     if (!Uri.TryCreate(config.BaseUrl, UriKind.Absolute, out var endpoint) || endpoint.Scheme != "https" ||
         endpoint.UserInfo.Length > 0 || endpoint.Query.Length > 0 || endpoint.Fragment.Length > 0) throw new InvalidDataException("同步需要有效的 HTTPS 地址。");
     endpoint = new Uri(endpoint.AbsoluteUri.TrimEnd('/') + "/");
     var key = Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(config.ProtectedKey), null, DataProtectionScope.CurrentUser));
     using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(30), MaxResponseContentBufferSize = 16 * 1024 * 1024 };
+    client.DefaultRequestHeaders.ConnectionClose = true;
     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
     var timer = Stopwatch.StartNew();
     Console.WriteLine("正在读取远程资料清单…");
@@ -57,7 +58,7 @@ try
 catch (Exception error)
 {
     // No key, request body, note text or potentially credential-bearing exception is logged.
-    Console.Error.WriteLine($"同步未完成（{error.GetType().Name}）。远程已发布资料保留；请检查网络、密钥、目录和同步包，下一周期重试。");
+    Console.Error.WriteLine($"同步未完成（{error.GetType().Name}）。远程已发布资料保留；请检查网络、密钥、目录和同步包，确认后按需重试。");
     return 1;
 }
 

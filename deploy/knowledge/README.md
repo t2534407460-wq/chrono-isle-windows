@@ -49,7 +49,7 @@ docker compose run --rm -v "$PWD/project-vault.zip:/import.zip:ro" knowledge --i
 docker compose up -d
 ```
 
-自动同步使用 `ChronoIsle.Knowledge.Sync.exe --config <配置文件>`，配置 JSON 为 `vaultPath`、`baseUrl`、`protectedKey`。protectedKey 是当前 Windows 用户通过 DPAPI 加密的原始同步密钥（UTF-8 字节再加密、Base64 编码），配置不可跨用户直接复用。计划任务以同一用户运行，不允许同任务并行；不变文件不会上传。电脑关闭时无法同步，重新开机后的下一次任务补齐更新。非零退出码表示本轮未确认成功，应检查日志和上次成功时间。
+按需同步使用 `ChronoIsle.Knowledge.Sync.exe --config <配置文件>`，配置 JSON 为 `vaultPath`、`baseUrl`、`protectedKey`。protectedKey 是当前 Windows 用户通过 DPAPI 加密的原始同步密钥（UTF-8 字节再加密、Base64 编码），配置不可跨用户直接复用。任务以同一用户运行，不允许同任务并行；不变文件不会上传。任务仅供知识库 Skill 手动触发，不配置周期、登录或其他自动触发器。程序按需连接，请求关闭 HTTP 持久连接，同步完成或失败后释放客户端并退出；不后台驻留或自动重试。非零退出码表示本轮未确认成功，应检查日志和上次成功时间。
 
 Windows 计划任务应通过无窗口的 `wscript.exe` 启动同目录的 `run-sync-hidden.vbs`，由它以隐藏窗口方式启动 PowerShell 7 的 `run-sync.ps1`。直接把 `pwsh.exe -WindowStyle Hidden` 配为任务动作，控制台可能在 PowerShell 解析参数前闪现。将两个脚本与同步程序部署在同一目录，任务动作使用：
 
@@ -59,7 +59,7 @@ Windows 计划任务应通过无窗口的 `wscript.exe` 启动同目录的 `run-
 起始于：<同步目录>
 ```
 
-启动器等待同步结束并返回原退出码，保留每 5 分钟/登录触发、不允许重叠及运行时限；日志与 `status.json` 仍由原 PowerShell 脚本写入。该启动方式需要本机启用 Windows Script Host/VBScript，不更改系统脚本策略。
+启动器等待同步结束、返回原退出码并退出；保留不允许重叠及运行时限，日志与 `status.json` 仍由原 PowerShell 脚本写入。保留任务的按需启动能力，移除全部自动触发器；不要禁用任务导致 Skill 无法手动启动。该启动方式需要本机启用 Windows Script Host/VBScript，不更改系统脚本策略。远程知识库查询接口保持可用，关闭的是本机客户端连接和本轮同步进程。
 
 时屿在“设置 → Obsidian 知识库”启用远程模式，填写 HTTPS 根地址和该项目的读取密钥。点击测试确认服务已初始化，再保存；原有本地目录设置保留。其他项目按下面契约集成。
 
