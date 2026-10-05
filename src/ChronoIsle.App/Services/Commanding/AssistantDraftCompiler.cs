@@ -22,7 +22,7 @@ public static class AssistantDraftCompiler
             if (draft.UnhandledConstraints is { Count: > 0 })
                 return new([], [], draft.Evidence, Blocked: "这些条件尚不能可靠执行：" + string.Join("、", draft.UnhandledConstraints) + "。请修改需求后重新规划。");
             if (draft.Operation is "list_items" or "summarize_period") continue;
-            if (draft.Schedule is not null)
+            if (draft.Schedule is not null && draft.Operation is "create_reminder" or "create_recurring_task" or "update_todo" or "reschedule_item")
             {
                 var planned = AssistantScenarioPlanner.Compile(draft, turn, i, edit);
                 if (planned.Blocked is not null) return new([], [], planned.Summary, planned.Facts, [], planned.Blocked);
@@ -41,7 +41,7 @@ public static class AssistantDraftCompiler
             if ((creates || draft.Operation == "decompose_goal") && (string.IsNullOrWhiteSpace(draft.Title) || edit))
                 Add("title", "事项名称", "text", draft.Title);
             AssistantRecurrenceRuleV1? repeat = null;
-            var repeating = !string.IsNullOrWhiteSpace(draft.RepeatText) && draft.RepeatText != "不重复";
+            var repeating = creates && !string.IsNullOrWhiteSpace(draft.RepeatText) && draft.RepeatText != "不重复";
             if (repeating && !TryRecurrence(draft.RepeatText!, out repeat) || draft.Operation == "create_recurring_task" && !repeating)
                 Add("repeatText", "选择重复方式", "choice", options: RepeatOptions);
             if (edit && creates) Add("repeatText", "重复方式", "choice", draft.RepeatText ?? "不重复", RepeatOptions);
@@ -165,6 +165,9 @@ public static class AssistantDraftCompiler
 
     static AssistantTaskDraft Normalize(AssistantTaskDraft draft, AssistantDraftTurn turn)
     {
+        // Time/recurrence words can describe the target of a delete/complete, never a new rule.
+        if (draft.Operation is "delete_todo" or "complete_todo")
+            return draft with { Schedule = null, TimeText = null, EndText = null, DueText = null, ReminderText = null, RepeatText = null };
         draft = AssistantScenarioPlanner.Enrich(draft, turn.Tasks.Count == 1 ? turn.SourceText : draft.Evidence);
         if (draft.Operation == "create_recurring_task" && draft.RepeatText == "不重复")
             draft = draft with { Operation = draft.ItemKind switch

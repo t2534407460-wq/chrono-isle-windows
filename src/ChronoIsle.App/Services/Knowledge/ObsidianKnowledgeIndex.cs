@@ -24,14 +24,14 @@ public sealed class ObsidianKnowledgeIndex
     static readonly Regex Words = new(@"[\u3400-\u9fff]+|[a-z0-9_]+(?:\.[0-9]+)*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     static readonly string[] Noise = ["请问", "请帮我", "帮我", "告诉我", "知识库", "根据资料", "根据文档", "如何", "什么", "怎么", "哪些", "是否", "可以", "一下", "详细", "介绍", "说明"];
 
-    public async Task<KnowledgeSearchResult> SearchAsync(string root, string question, CancellationToken cancellationToken = default)
+    public async Task<KnowledgeSearchResult> SearchAsync(string root, string question, CancellationToken cancellationToken = default, Func<string, bool>? includePath = null)
     {
         await gate.WaitAsync(cancellationToken);
-        try { return await Task.Run(() => Search(root, question, cancellationToken), cancellationToken); }
+        try { return await Task.Run(() => Search(root, question, cancellationToken, includePath), cancellationToken); }
         finally { gate.Release(); }
     }
 
-    KnowledgeSearchResult Search(string root, string question, CancellationToken token)
+    KnowledgeSearchResult Search(string root, string question, CancellationToken token, Func<string, bool>? includePath)
     {
         root = VaultPaths.ValidateRoot(root);
         if (!string.Equals(root, indexedRoot, VaultPaths.Comparison)) { notes.Clear(); indexedRoot = root; }
@@ -60,6 +60,8 @@ public sealed class ObsidianKnowledgeIndex
                         if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
                         if ((attributes & FileAttributes.Directory) != 0) { directories.Push(path); continue; }
                         if (!Path.GetExtension(path).Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
+                        // Filter before reading, counting or ranking. Authorization is not a post-search trim.
+                        if (includePath is not null && !includePath(Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/'))) continue;
                         var info = new FileInfo(path);
                         if (info.Length > MaxFileBytes) { skipped++; continue; }
                         if (!notes.TryGetValue(path, out var note) || note.Length != info.Length || note.ModifiedUtc != info.LastWriteTimeUtc)

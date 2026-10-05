@@ -108,10 +108,12 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          repository: t2534407460-wq/chrono-isle-windows-releases
+          token: ${{ secrets.CHRONOISLE_RELEASE_TOKEN }}
           files: |
             publish/ChronoIsle-${{ steps.ver.outputs.tag }}-win-x64.zip
             installer-output/ChronoIsle-Setup-${{ steps.ver.outputs.version }}-win-x64.exe
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
             **ChronoIsle ${{ steps.ver.outputs.tag }}**
 
@@ -129,4 +131,4 @@ jobs:
 
             首次启动会自动注册 Claude Code hooks 到 `~/.claude/settings.json`。
 
-            完整变更：[CHANGELOG](https://gitee.com/Tr11111/chrono-isle-windows/blob/main/CHANGELOG.md)
+            发行说明与下载：[Releases](https://github.com/t2534407460-wq/chrono-isle-windows-releases/releases)

@@ -3,6 +3,19 @@ using System.Text.Json.Serialization;
 
 namespace ChronoIsle.App.Services.Domain;
 
+public sealed record ReminderDayOverride(string DayPattern, IReadOnlyList<TimeOnly> Times)
+{
+    public bool Matches(DateOnly day) => DayPattern switch
+    {
+        "official" => !new ChinaStatutoryHolidayCalendar().IsRestDay(day.ToDateTime(TimeOnly.MinValue)),
+        "rest" => new ChinaStatutoryHolidayCalendar().IsRestDay(day.ToDateTime(TimeOnly.MinValue)),
+        "holidays" => new ChinaStatutoryHolidayCalendar().Get(day).IsHoliday,
+        "weekdays" => day.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday),
+        "weekends" => day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday,
+        _ => false
+    };
+}
+
 public sealed record ReminderTimeWindow(TimeOnly Start, TimeOnly End)
 {
     // 18:00–00:00 ends at the boundary of this day; it does not run into the next day.
@@ -19,7 +32,8 @@ public sealed record ReminderDailySchedule(
     IReadOnlyList<TimeOnly> Times, string DayPattern, IReadOnlyList<DayOfWeek> Weekdays,
     DateOnly StartsOn, DateOnly? Until, string Description,
     int? IntervalMinutes = null, ReminderTimeWindow? Window = null,
-    IReadOnlyList<ReminderTimeWindow>? Exclusions = null, string? FirstTrigger = null, string? Rhythm = null)
+    IReadOnlyList<ReminderTimeWindow>? Exclusions = null, string? FirstTrigger = null, string? Rhythm = null,
+    IReadOnlyList<ReminderDayOverride>? DayOverrides = null)
 {
     public void Validate()
     {
@@ -31,6 +45,23 @@ public sealed record ReminderDailySchedule(
         if (Weekdays is null || DayPattern == "custom" && (Weekdays.Count == 0 || Weekdays.Any(d => !Enum.IsDefined(d))))
             throw new ArgumentException("至少选择一个星期。");
         if (Until < StartsOn) throw new ArgumentException("结束日期不能早于开始日期。");
+        if (DayOverrides is { Count: > 0 })
+        {
+            if (IntervalMinutes is not null || Window is not null || Exclusions is { Count: > 0 })
+                throw new ArgumentException("分日期时刻目前适用于固定时刻计划；间隔或排除时段请保持原规则，或另行明确修改。");
+            if (DayOverrides.Count > 2 || DayOverrides.Any(r => r is null ||
+                r.DayPattern is not ("official" or "rest" or "holidays" or "weekdays" or "weekends") ||
+                r.Times is null || r.Times.Count is < 1 or > 96 ||
+                !r.Times.SequenceEqual(r.Times.Distinct().OrderBy(t => t))))
+                throw new ArgumentException("请选择日期类别并填写有效时刻；最多设置两个不重叠的日期类别。");
+            if (DayOverrides.Count == 2)
+            {
+                var pair = DayOverrides.Select(r => r.DayPattern).ToHashSet();
+                if (!pair.SetEquals(["official", "rest"]) && !pair.SetEquals(["official", "holidays"]) &&
+                    !pair.SetEquals(["weekdays", "weekends"]))
+                    throw new ArgumentException("两个日期类别可能重叠，请选择法定工作日与休息日，或周一至周五与周末。");
+            }
+        }
         if (IntervalMinutes is { } interval)
         {
             if (Window is null || !Times.SequenceEqual(GenerateTimes(Window, interval, Exclusions ?? [], FirstTrigger!, Rhythm!)))
@@ -52,7 +83,7 @@ public sealed record ReminderDailySchedule(
     }
 
     public IEnumerable<DateTime> Occurrences(DateOnly day) => Matches(day)
-        ? Times.Select(t => day.ToDateTime(t)) : [];
+        ? (DayOverrides?.FirstOrDefault(rule => rule.Matches(day))?.Times ?? Times).Select(t => day.ToDateTime(t)) : [];
 
     public bool CanDeliver(DateTime occurrence, DateTime now)
     {

@@ -12,7 +12,7 @@ public sealed record AssistantSchedulePlan(AssistantTaskDraft Draft, AssistantCo
 public static class AssistantScenarioPlanner
 {
     static readonly Regex IntervalPattern = new(@"(?:每隔|间隔|每)\s*(?<n>\d+|[一二两三四五六七八九十半]+)\s*(?<u>小时|分钟)");
-    static readonly Regex ClockPattern = new(@"(?:凌晨|早上|上午|中午|下午|晚上)?\d{1,2}(?:[:：]\d{2}|点(?:半|\d{1,2}分?)?)");
+    static readonly Regex ClockPattern = new(@"(?:凌晨|早上|早晨|上午|中午|下午|晚上|晚间)?[0-9零〇一二两三四五六七八九十]{1,3}(?:[:：]\d{2}|点(?:半|一刻|三刻|[0-9零〇一二三四五六七八九十]{1,3}分?)?)");
     static readonly Regex RangePattern = new(@"(?<a>(?:上午|下午|晚上)?\d{1,2}(?:[:：]\d{2}|点))\s*(?:-|—|~|～|到|至)\s*(?<b>(?:上午|下午|晚上)?\d{1,2}(?:[:：]\d{2}|点))");
 
     public static AssistantTaskDraft Enrich(AssistantTaskDraft task, string source)
@@ -53,20 +53,70 @@ public static class AssistantScenarioPlanner
         return task with { Schedule = schedule };
     }
 
+    public static AssistantTaskDraft MergeExisting(AssistantTaskDraft task, RecurringReminder existing, AssistantDraftTurn turn)
+    {
+        if (task.Schedule is null && task.TimeText is null && task.ReminderText is null && task.RepeatText is null) return task;
+        if (existing.Recurrence == RecurrenceKind.StatutoryHolidays)
+            return task.Schedule is null && task.RepeatText is null ? task : task with
+            { UnhandledConstraints = ["节假日计划暂不支持更换重复规则；可以单独调整提醒时间"] };
+        if (task.RepeatText == "不重复") return task with
+        { UnhandledConstraints = ["将周期计划转换为单次事项需要另行明确日期，当前不会新建或删除原计划"] };
+        var old = existing.Schedule;
+        var next = task.Schedule ?? new AssistantScheduleDraft();
+        var days = next.DaysText ?? task.RepeatText;
+        var weekdays = next.WeekdaysText;
+        if (days is not null && DayMode(days) is null && AssistantDraftCompiler.TryRecurrence(days, out var rule) &&
+            rule!.Frequency == AssistantRecurrenceFrequencyV1.Weekly && days != "工作日")
+        {
+            days = "custom";
+            weekdays = string.Join(',', rule.Weekdays!.Select(d => (int)d));
+        }
+        var newClock = next.TimesText ?? task.TimeText ?? task.ReminderText;
+        var switchesToInterval = next.IntervalText is not null && next.TimesText is null;
+        var fixedTimes = newClock is not null || !switchesToInterval && old?.IntervalMinutes is null;
+        if (newClock is not null && next.IntervalText is not null || fixedTimes && next.WindowText is not null)
+            return task with { UnhandledConstraints = (task.UnhandledConstraints ?? [])
+                .Append("固定时刻与间隔或有效时段同时变更，需要先明确采用哪种提醒方式").ToArray() };
+        var start = next.StartText;
+        if (start is null && newClock is { } text && Regex.IsMatch(text, @"\d{4}[-/年]|今天|明天|后天|下周|明早|明晚"))
+            start = AssistantDraftCompiler.ParseTime(text, turn.ReferenceTime, turn.TimeZone)?.LocalDate?.ToString("yyyy-MM-dd");
+        var schedule = new AssistantScheduleDraft(
+            fixedTimes ? null : next.IntervalText ?? old?.IntervalMinutes?.ToString(),
+            fixedTimes ? null : next.WindowText ?? (old?.Window is { } window ? Format(window) : null),
+            next.ExclusionText ?? (newClock is not null ? "none" : old?.Exclusions is { Count: > 0 } exclusions
+                ? string.Join(';', exclusions.Select(Format)) : "none"),
+            days ?? old?.DayPattern ?? (existing.Recurrence switch
+            { RecurrenceKind.Weekly => "custom", RecurrenceKind.Weekdays => "weekdays", RecurrenceKind.OfficialWorkdays => "official", _ => "daily" }),
+            fixedTimes ? newClock ?? string.Join(",", (old?.Times ?? [existing.ReminderTime]).Select(t => t.ToString("HH:mm"))) : null,
+            start ?? old?.StartsOn.ToString("yyyy-MM-dd") ?? existing.StartsAt?.ToString("yyyy-MM-dd") ?? turn.ReferenceTime.ToString("yyyy-MM-dd"),
+            next.UntilText ?? old?.Until?.ToString("yyyy-MM-dd"),
+            fixedTimes ? null : next.FirstTrigger ?? old?.FirstTrigger,
+            fixedTimes ? null : next.Rhythm ?? old?.Rhythm,
+            weekdays ?? string.Join(',', (old?.Weekdays ?? existing.Weekdays).Select(d => (int)d)),
+            next.ReplaceDayOverrides ? next.DayOverrides : MergeOverrides(old?.DayOverrides?.Select(r => new AssistantDayOverrideDraft(r.DayPattern,
+                string.Join(",", r.Times.Select(t => t.ToString("HH:mm"))))).ToArray(), next.DayOverrides));
+        return task with { Schedule = schedule, ItemKind = "reminder", TimeText = null, ReminderText = null, RepeatText = null };
+    }
+
     public static AssistantSchedulePlan Compile(AssistantTaskDraft draft, AssistantDraftTurn turn, int index, bool edit)
     {
         var s = draft.Schedule!;
+        var updating = draft.Operation is "update_todo" or "reschedule_item";
+        var target = turn.Bindings.GetValueOrDefault(index);
+        if (updating && target is null)
+            return new(draft, null, [], draft.Evidence, [], [], "请先选择要修改的已有计划。");
         if (draft.ItemKind is not (null or "reminder"))
             return new(draft, null, [], draft.Evidence, [], [], "目前日内多次计划支持提醒；周期待办或日程请调整需求后再安排。");
         if (draft.EndText is not null || draft.DueText is not null || draft.ReminderText is not null && draft.ReminderText != draft.TimeText)
             return new(draft, null, [], draft.Evidence, [], [], "这个重复计划还包含独立的结束、截止或额外提醒条件，需要修改需求以明确各项时间，当前不会忽略它们。");
         var fields = new List<AssistantInputField>();
-        var facts = new List<string> { "目标：" + (draft.Title ?? "待填写") };
+        var facts = new List<string> { (updating ? "修改：" : "新增：") + (target?.Title ?? draft.Title ?? "待填写") };
+        if (updating && draft.Title is not null) facts.Add("新名称：" + draft.Title);
         void Add(string key, string label, string kind, string? value = null, string? help = null,
             IReadOnlyList<AssistantInputOption>? options = null, bool required = true, string? depends = null, string? dependsValue = null, string? error = null) =>
             fields.Add(new($"{index}.schedule.{key}", label, kind, options ?? [], value, help, required,
                 depends is null ? null : $"{index}.schedule.{depends}", dependsValue, error));
-        if (string.IsNullOrWhiteSpace(draft.Title) || edit)
+        if (!updating && (string.IsNullOrWhiteSpace(draft.Title) || edit))
             fields.Add(new($"{index}.title", "这份计划提醒你做什么？", "text", [], draft.Title));
         var fixedTimes = !string.IsNullOrWhiteSpace(s.TimesText);
         var interval = Minutes(s.IntervalText);
@@ -84,6 +134,25 @@ public static class AssistantScenarioPlanner
         else if (days == "custom" && selectedDays.Count == 0) Add("weekdays", "选择执行日期", "multichoice", s.WeekdaysText, options: WeekdayOptions);
         if (days is not null) facts.Add("执行日：" + DayOptions.First(o => o.Value == days).Label +
             (days == "custom" ? " " + string.Join("、", selectedDays.Select(d => WeekdayOptions.First(o => o.Value == ((int)d).ToString()).Label)) : ""));
+        var overrides = new List<ReminderDayOverride>();
+        for (var r = 0; r < (s.DayOverrides?.Count ?? 0); r++)
+        {
+            var rule = s.DayOverrides![r];
+            var mode = OverrideMode(rule.DaysText);
+            var clocks = ParseTimes(rule.TimesText ?? "", turn);
+            if (mode is null || edit)
+                Add($"override{r}days", $"第 {r + 1} 组：哪些日期使用不同时间？", "choice", mode,
+                    "法定休息日含周末并考虑调休；仅法定节假日不包含普通周末。", OverrideDayOptions);
+            if (clocks.Count == 0 || edit)
+                Add($"override{r}times", $"第 {r + 1} 组：新的提醒时刻", "time_list", clocks.Count > 0 ? string.Join(", ", clocks.Select(t => t.ToString("HH:mm"))) : rule.TimesText,
+                    "24 小时制，可用逗号分隔多个时刻；其他日期保持原规则。",
+                    error: !string.IsNullOrWhiteSpace(rule.TimesText) && clocks.Count == 0 ? "请填写明确时刻，例如 02:00。" : null);
+            if (mode is not null && clocks.Count > 0)
+            {
+                overrides.Add(new(mode, clocks));
+                facts.Add(OverrideDayOptions.First(o => o.Value == mode).Label + "：" + string.Join("、", clocks.Select(t => t.ToString("HH:mm"))));
+            }
+        }
         var window = ParseRange(s.WindowText, turn);
         var pauses = new List<ReminderTimeWindow>();
         var hasExclusion = s.ExclusionText is not (null or "" or "none" or "不排除");
@@ -105,7 +174,7 @@ public static class AssistantScenarioPlanner
             if (times.Count == 0 || edit) Add("times", "每天在哪些时刻提醒？", "time_list",
                 times.Count == 0 ? s.TimesText : string.Join(", ", times.Select(t => t.ToString("HH:mm"))),
                 "可填写多个 24 小时时刻，以逗号分隔，例如 09:00, 14:00, 18:00。");
-            if (times.Count > 0) facts.Add("每天时刻：" + string.Join("、", times.Select(t => t.ToString("HH:mm"))));
+            if (times.Count > 0) facts.Add((overrides.Count > 0 ? "其余执行日保持：" : "每天时刻：") + string.Join("、", times.Select(t => t.ToString("HH:mm"))));
             if (hasExclusion) return new(draft, null, fields, "固定时刻计划包含排除条件", facts, [],
                 "固定时刻与排除时段需要统一安排，请在修改需求中明确保留哪些时刻。");
         }
@@ -151,29 +220,47 @@ public static class AssistantScenarioPlanner
             var dayList = days == "weekdays" ? new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday }
                 : days == "custom" ? selectedDays.ToArray() : [];
             var schedule = new ReminderDailySchedule(times, days!, dayList, start, until, summary,
-                fixedTimes ? null : interval, window, pauses, first, rhythm);
+                fixedTimes ? null : interval, window, pauses, first, rhythm, overrides.Count == 0 ? null : overrides);
             schedule.Validate();
+            var firstDay = DateOnly.FromDateTime(turn.ReferenceTime.DateTime);
+            if (overrides.Any(rule => !Enumerable.Range(0, 551).Select(firstDay.AddDays).Any(day => schedule.Matches(day) && rule.Matches(day))))
+                throw new ArgumentException("指定日期类别与原计划的执行日或有效日期不相交，或当前日历没有可预览的日期。请调整日期类别或原执行日。");
             var next = schedule.Next(turn.ReferenceTime.DateTime);
             if (next.Count == 0) throw new ArgumentException("所选日期范围内没有未来提醒，请调整开始或结束日期。");
             var rule = new AssistantRecurrenceRuleV1(days is "weekdays" or "custom" ? AssistantRecurrenceFrequencyV1.Weekly : AssistantRecurrenceFrequencyV1.Daily,
                 1, dayList, null, until is null ? null : new(AssistantRecurrenceEndKindV1.Until, null, until));
             var wall = new AssistantTimeExpressionV1(DateOnly.FromDateTime(next[0]), TimeOnly.FromDateTime(next[0]), null,
                 turn.TimeZone, next[0].ToString("yyyy-MM-dd HH:mm"));
-            var command = new AssistantCommandEnvelope(1, AssistantCommandName.CreateRecurringTask,
-                new CreateRecurringTaskArgumentsV1(draft.Title, draft.Notes, AssistantItemKindV1.Reminder, wall, rule, null, schedule), [], []);
-            return new(draft, command, fields, summary + "\n每天时刻：" + string.Join("、", times.Select(t => t.ToString("HH:mm"))),
+            var command = updating
+                ? new AssistantCommandEnvelope(1, AssistantCommandName.UpdateTodo,
+                    new UpdateTodoArgumentsV1(new(target!.Title, target.Kind, null, target.CandidateRef),
+                        new(draft.Title, draft.Notes, null, null, null,
+                            (draft.ClearFields ?? []).Select(f => Enum.Parse<UpdateTodoClearFieldV1>(f, true)).ToArray(), schedule)), [], [])
+                : new AssistantCommandEnvelope(1, AssistantCommandName.CreateRecurringTask,
+                    new CreateRecurringTaskArgumentsV1(draft.Title, draft.Notes, AssistantItemKindV1.Reminder, wall, rule, null, schedule), [], []);
+            return new(draft, command, fields, summary + (!fixedTimes ? "\n每天时刻：" + string.Join("、", times.Select(t => t.ToString("HH:mm"))) : ""),
                 facts, next.Select(t => t.ToString("MM-dd ddd HH:mm", CultureInfo.GetCultureInfo("zh-CN"))).ToArray());
         }
         catch (ArgumentException e)
         {
             var editable = Compile(draft, turn, index, true);
-            return editable with { Summary = summary + "\n需要调整：" + e.Message };
+            return editable with { Summary = summary + "\n需要调整：" + e.Message,
+                Fields = editable.Fields.Select((field, i) => i == 0 ? field with { Error = e.Message } : field).ToArray() };
         }
     }
 
     public static AssistantTaskDraft Set(AssistantTaskDraft task, string key, string value)
     {
         var s = task.Schedule ?? new();
+        var overrideKey = Regex.Match(key, @"^override(?<index>\d+)(?<field>days|times)$");
+        if (overrideKey.Success)
+        {
+            var index = int.Parse(overrideKey.Groups["index"].Value);
+            var rules = (s.DayOverrides ?? []).ToList();
+            while (rules.Count <= index) rules.Add(new());
+            rules[index] = overrideKey.Groups["field"].Value == "days" ? rules[index] with { DaysText = value } : rules[index] with { TimesText = value };
+            return task with { Schedule = s with { DayOverrides = rules } };
+        }
         return task with { Schedule = key switch
         {
             "interval" => s with { IntervalText = value }, "window" => s with { WindowText = value },
@@ -201,6 +288,23 @@ public static class AssistantScenarioPlanner
         "daily" or "每天" or "每日" => "daily", "weekdays" or "周一至周五" => "weekdays",
         "official" or "法定工作日" => "official", "custom" => "custom", _ => null
     };
+    static string? OverrideMode(string? text) => text switch
+    {
+        "official" or "法定工作日" => "official", "weekdays" or "周一至周五" => "weekdays",
+        "weekends" or "周末" or "周六周日" => "weekends", "rest" or "法定休息日" => "rest",
+        "holidays" or "法定节假日" or "仅法定节假日" => "holidays", _ => null
+    };
+
+    internal static IReadOnlyList<AssistantDayOverrideDraft>? MergeOverrides(
+        IReadOnlyList<AssistantDayOverrideDraft>? previous, IReadOnlyList<AssistantDayOverrideDraft>? incoming)
+    {
+        if (incoming is null) return previous;
+        if (incoming.Count == 0) return [];
+        var result = incoming.ToList();
+        foreach (var rule in previous ?? [])
+            if (result.All(r => (OverrideMode(r.DaysText) ?? r.DaysText) != (OverrideMode(rule.DaysText) ?? rule.DaysText))) result.Add(rule);
+        return result;
+    }
     static IReadOnlyList<DayOfWeek> ReadWeekdays(string? text) => (text ?? "").Split(',').Where(s => int.TryParse(s, out var d) && d is >= 0 and <= 6).Select(s => (DayOfWeek)int.Parse(s)).Distinct().ToArray();
     static DateOnly? ParseDate(string? text, AssistantDraftTurn turn) => text switch
     {
@@ -223,6 +327,7 @@ public static class AssistantScenarioPlanner
     }
     static string Format(ReminderTimeWindow w) => $"{w.Start:HH:mm}-{w.End:HH:mm}";
     public static readonly IReadOnlyList<AssistantInputOption> DayOptions = [new("每天", "daily"), new("周一至周五", "weekdays"), new("法定工作日（含调休）", "official"), new("自选星期", "custom")];
+    public static readonly IReadOnlyList<AssistantInputOption> OverrideDayOptions = [new("法定休息日（含周末，考虑调休）", "rest"), new("仅法定节假日", "holidays"), new("法定工作日（含调休）", "official"), new("周一至周五", "weekdays"), new("周六、周日", "weekends")];
     public static readonly IReadOnlyList<AssistantInputOption> WeekdayOptions = Enumerable.Range(1, 7).Select(i => new AssistantInputOption("周" + "一二三四五六日"[i - 1], (i % 7).ToString())).ToArray();
     public static readonly IReadOnlyList<AssistantInputOption> DurationOptions = [new("30 分钟", "30"), new("1 小时", "60"), new("2 小时", "120"), new("自定义", "")];
 }

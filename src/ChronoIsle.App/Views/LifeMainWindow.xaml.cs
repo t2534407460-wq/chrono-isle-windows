@@ -60,6 +60,12 @@ public partial class LifeMainWindow : Window
     void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
 
     void Manage_Click(object sender, RoutedEventArgs e) => OpenManagement();
+    void History_Click(object sender, RoutedEventArgs e)
+    {
+        var data = services.GetRequiredService<ChronoIsle.App.Services.LifeDataService>();
+        var runtime = ChronoIsle.App.Services.Persistence.LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
+        new HistoryReportWindow(new ChronoIsle.App.Services.Reporting.HistoryReportService(runtime.WriteQueue), services.GetRequiredService<ChronoIsle.App.Services.Sync.Day21HabitClient>()) { Owner = this }.Show();
+    }
     void Markdown_Click(object sender, RoutedEventArgs e) => new MarkdownViewerWindow { Owner = this }.Show();
 
     public void OpenManagement(ItemNavigationTarget? target = null)

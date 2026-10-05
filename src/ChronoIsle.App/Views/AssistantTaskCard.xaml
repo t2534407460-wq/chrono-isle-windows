@@ -64,9 +64,19 @@
                   <TextBlock Text="HH:mm" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextTertiary}" Margin="8,0"/>
                 </WrapPanel>
                 <ItemsControl ItemsSource="{Binding Choices}" Visibility="{Binding IsMultiChoice,Converter={StaticResource CardVisible}}">
-                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.Style>
+                    <Style TargetType="ItemsControl">
+                      <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></Setter.Value></Setter>
+                      <Style.Triggers><DataTrigger Binding="{Binding IsItemSelection}" Value="True">
+                        <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate></Setter.Value></Setter>
+                      </DataTrigger></Style.Triggers>
+                    </Style>
+                  </ItemsControl.Style>
                   <ItemsControl.ItemTemplate><DataTemplate>
-                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected,Mode=TwoWay}" Margin="0,4,14,6" Foreground="{DynamicResource Brush.TextPrimary}"/>
+                    <CheckBox IsChecked="{Binding IsSelected,Mode=TwoWay}" Margin="0,4,14,6" Foreground="{DynamicResource Brush.TextPrimary}"
+                              HorizontalContentAlignment="Stretch" AutomationProperties.Name="{Binding Label}">
+                      <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                    </CheckBox>
                   </DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <DatePicker SelectedDate="{Binding Date,Mode=TwoWay}" Width="150" HorizontalAlignment="Left" MinHeight="34" Margin="0,0,8,4"
@@ -89,12 +99,14 @@
         </StackPanel>
       </ScrollViewer>
         <WrapPanel Margin="0,14,0,0">
-          <Button Content="继续规划" Command="{Binding SubmitInteractionCommand}" Style="{DynamicResource Button.Primary}" Margin="0,0,8,6"
+          <Button Content="{Binding Interaction.SubmitLabel}" Command="{Binding SubmitInteractionCommand}" Style="{DynamicResource Button.Primary}" Margin="0,0,8,6"
                   Visibility="{Binding Interaction.CanSubmit,Converter={StaticResource CardVisible}}" AutomationProperties.AutomationId="SubmitAssistantFields"/>
           <Button Content="确认执行" Command="{Binding ConfirmInteractionCommand}" Style="{DynamicResource Button.Primary}" Margin="0,0,8,6"
                   Visibility="{Binding Interaction.CanConfirm,Converter={StaticResource CardVisible}}" AutomationProperties.AutomationId="ConfirmAssistantDraft"/>
           <Button Content="修改信息" Command="{Binding EditInteractionCommand}" Style="{DynamicResource Button.Secondary}" Margin="0,0,8,6"
                   Visibility="{Binding Interaction.CanEdit,Converter={StaticResource CardVisible}}"/>
+          <Button Content="重新选择事项" Command="{Binding ReselectInteractionCommand}" Style="{DynamicResource Button.Secondary}" Margin="0,0,8,6"
+                  Visibility="{Binding Interaction.CanReselect,Converter={StaticResource CardVisible}}"/>
           <Button Content="重试" Command="{Binding RetryInteractionCommand}" Style="{DynamicResource Button.Secondary}" Margin="0,0,8,6"
                   Visibility="{Binding Interaction.CanRetry,Converter={StaticResource CardVisible}}"/>
           <Button Content="取消任务" Command="{Binding CancelInteractionCommand}" Style="{DynamicResource Button.Secondary}" Margin="0,0,0,6"/>

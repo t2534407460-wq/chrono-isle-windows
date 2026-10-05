@@ -552,6 +552,9 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
         var target = CanonicalCommandHandlers.SingleTarget(context);
         var kind = CompleteTodoCommandHandler.ReadKind(context, target.ItemId);
         var changes = arguments.Changes!;
+        // The rule, item and scheduler projection share the existing command transaction.
+        if (changes.DailySchedule is { } schedule)
+            changes = changes with { Remind = UpdateSchedule(context, target.ItemId, kind, schedule) };
         var sets = new List<string> { "row_version=row_version+1", "updated_at=$now" };
         using var command = context.UnitOfWork.Connection.CreateCommand();
         command.Transaction = context.UnitOfWork.Transaction;
@@ -576,8 +579,66 @@ public sealed class UpdateTodoCommandHandler : ICommandHandler<UpdateTodoArgumen
         command.CommandText = $"UPDATE life_items SET {string.Join(',', sets)} WHERE id=$id AND row_version=$version AND kind IN ('Todo','Reminder','Event','LongTerm') AND deleted_at IS NULL AND is_readonly=0";
         CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
         MirrorLegacy(context, target.ItemId, kind, changes);
-        CompleteTodoCommandHandler.SyncRecurringProjection(context, target.ItemId, changes.Remind is not null);
+        CompleteTodoCommandHandler.SyncRecurringProjection(context, target.ItemId,
+            changes.Remind is not null && changes.DailySchedule is null);
         return new(true, "updated", CanonicalCommandHandlers.ItemResult(target.ItemId, target.RowVersion + 1), [target.ItemId]);
+    }
+
+    static AssistantTimeExpressionV1 UpdateSchedule(AssistantCommandExecutionContext context, string id,
+        string kind, ReminderDailySchedule schedule)
+    {
+        schedule.Validate();
+        if (kind != "Reminder") throw new InvalidOperationException("只能修改已有周期提醒的计划规则。");
+        using var command = context.UnitOfWork.Connection.CreateCommand();
+        command.Transaction = context.UnitOfWork.Transaction;
+        command.Parameters.AddWithValue("$id", id);
+        command.CommandText = """
+            SELECT iana_time_zone_id FROM recurrence_rules
+            WHERE series_item_id=$id AND deleted_at IS NULL
+              AND EXISTS(SELECT 1 FROM recurring_reminders WHERE id=$id)
+            """;
+        var zone = command.ExecuteScalar() as string
+            ?? throw new InvalidOperationException("目标不是可修改规则的周期提醒。");
+        if (!context.TimeZones.TryResolveIana(zone, out var zoneInfo, out _) || zoneInfo is null)
+            throw new TimeZoneNotFoundException(zone);
+        var next = schedule.Next(TimeZoneInfo.ConvertTime(context.NowUtc, zoneInfo).DateTime, 1);
+        if (next.Count == 0) throw new InvalidOperationException("修改后的计划没有未来提醒。");
+        var expression = new AssistantTimeExpressionV1(DateOnly.FromDateTime(next[0]), TimeOnly.FromDateTime(next[0]), null, zone, null);
+        var wall = AssistantCommandTimeResolver.Resolve(context, expression);
+        var weekly = schedule.DayPattern is "weekdays" or "custom";
+        var days = schedule.DayPattern == "weekdays"
+            ? new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday }
+            : schedule.Weekdays;
+        command.CommandText = """
+            UPDATE recurrence_rules SET start_local_datetime=$start,next_occurrence_utc=$next,
+                frequency=$frequency,interval=1,weekdays=$days,month_day=NULL,end_kind=$endKind,
+                end_local_datetime=$until,occurrence_count=NULL,
+                rule_version=rule_version+1,row_version=row_version+1,updated_at=$now
+            WHERE series_item_id=$id AND deleted_at IS NULL;
+            """;
+        command.Parameters.AddWithValue("$start", schedule.StartsOn.ToDateTime(schedule.Times[0]).ToString("O"));
+        command.Parameters.AddWithValue("$next", wall.UtcInstant.ToUniversalTime().ToString("O"));
+        command.Parameters.AddWithValue("$frequency", weekly ? "Weekly" : "Daily");
+        command.Parameters.AddWithValue("$days", weekly ? string.Join(',', days.Select(d => (int)d)) : DBNull.Value);
+        command.Parameters.AddWithValue("$endKind", schedule.Until is null ? "Never" : "Until");
+        command.Parameters.AddWithValue("$until", schedule.Until is { } until ? until.ToDateTime(TimeOnly.MaxValue).ToString("O") : DBNull.Value);
+        command.Parameters.AddWithValue("$now", context.NowUtc.ToString("O"));
+        CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
+        command.CommandText = """
+            UPDATE recurring_reminders SET reminder_time=$time,recurrence=$legacyFrequency,
+                weekdays=$legacyDays,last_notified_at=NULL,updated_at=$now WHERE id=$id;
+            """;
+        command.Parameters.AddWithValue("$time", schedule.Times[0].ToString("HH:mm"));
+        command.Parameters.AddWithValue("$legacyFrequency", schedule.DayPattern == "official" ? "OfficialWorkdays" : weekly ? "Weekly" : "Daily");
+        command.Parameters.AddWithValue("$legacyDays", weekly ? string.Join(',', days.Select(d => (int)d)) : "");
+        CanonicalCommandHandlers.RequireAffected(command.ExecuteNonQuery());
+        command.CommandText = """
+            INSERT INTO assistant_reminder_schedules(series_item_id,schedule_json) VALUES($id,$schedule)
+            ON CONFLICT(series_item_id) DO UPDATE SET schedule_json=$schedule;
+            """;
+        command.Parameters.AddWithValue("$schedule", AssistantDraftJson.Serialize(schedule));
+        command.ExecuteNonQuery();
+        return expression;
     }
 
     static void AddTemporalChange(

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0"/><PackageReference Include="xunit" Version="2.5.3"/><PackageReference Include="xunit.runner.visualstudio" Version="2.5.3"/>
+    <PackageReference Include="ProjectInterop.Sync" Version="0.1.4"/>
+    <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+    <Using Include="Xunit"/><Using Include="Microsoft.AspNetCore.Builder"/><Using Include="Microsoft.AspNetCore.Http"/><Using Include="Microsoft.AspNetCore.Routing"/>
+    <Compile Include="../../src/ChronoIsle.App/Services/Sync/Day21HabitModels.cs" Link="Day21HabitModels.cs"/>
+    <Compile Include="E:/21day/backend/Day21Policy.cs" Link="Day21Policy.cs"/>
+    <Compile Include="E:/21day/backend/HabitEndpoints.cs" Link="HabitEndpoints.cs"/>
+  </ItemGroup>
+</Project>

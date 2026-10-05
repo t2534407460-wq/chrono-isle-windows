@@ -364,6 +364,12 @@ public static class AssistantCommandContractValidator
         Time(value.Due, "changes.due");
         Time(value.Remind, "changes.remind");
         var clear = value.ClearFields ?? [];
+        if (value.DailySchedule is { } schedule)
+        {
+            try { schedule.Validate(); } catch (ArgumentException e) { throw Invalid("changes.dailySchedule", e.Message); }
+            if (value.Remind is not null || value.Due is not null || clear.Contains(UpdateTodoClearFieldV1.Remind) || clear.Contains(UpdateTodoClearFieldV1.Due))
+                throw Invalid("changes.dailySchedule", "A schedule change cannot also set or clear individual times.");
+        }
         if (clear.Distinct().Count() != clear.Count) throw Invalid("changes.clearFields", "clearFields contains duplicates.");
         if (value.Due is not null && clear.Contains(UpdateTodoClearFieldV1.Due))
             throw Invalid("changes.due", "due cannot be set and cleared together.");

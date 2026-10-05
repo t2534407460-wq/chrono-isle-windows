@@ -161,10 +161,12 @@ public sealed record UpdateTodoChangesV1(
     AssistantTimeExpressionV1? Due,
     AssistantTimeExpressionV1? Remind,
     AssistantPriorityV1? Priority,
-    IReadOnlyList<UpdateTodoClearFieldV1>? ClearFields)
+    IReadOnlyList<UpdateTodoClearFieldV1>? ClearFields,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    ChronoIsle.App.Services.Domain.ReminderDailySchedule? DailySchedule = null)
 {
     public bool HasAnyChange => !string.IsNullOrWhiteSpace(Title) || Notes is not null || Due is not null ||
-        Remind is not null || Priority is not null || ClearFields is { Count: > 0 };
+        Remind is not null || Priority is not null || ClearFields is { Count: > 0 } || DailySchedule is not null;
 }
 
 public sealed record UpdateTodoArgumentsV1(

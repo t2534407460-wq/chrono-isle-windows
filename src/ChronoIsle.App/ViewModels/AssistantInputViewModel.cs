@@ -20,6 +20,8 @@ public partial class AssistantInputViewModel : ObservableObject
     public bool IsDuration { get; }
     public bool IsRange { get; }
     public bool IsMultiChoice { get; }
+    public bool IsItemSelection => IsMultiChoice && Key.EndsWith(".candidate");
+    public bool IsTimeList { get; }
     public bool HasSuggestions { get; }
     public bool HasDate { get; }
     public bool HasTime { get; }
@@ -43,6 +45,7 @@ public partial class AssistantInputViewModel : ObservableObject
         IsChoice = field.Kind == "choice"; IsText = field.Kind is "text" or "time_list";
         IsDuration = field.Kind == "duration"; IsRange = field.Kind == "time_range";
         IsMultiChoice = field.Kind == "multichoice";
+        IsTimeList = field.Kind == "time_list";
         HasSuggestions = (IsDuration || IsRange) && Options.Count > 0;
         HasDate = field.Kind is "datetime" or "date"; HasTime = field.Kind is "time" or "datetime";
         Value = field.Value;
@@ -68,6 +71,9 @@ public partial class AssistantInputViewModel : ObservableObject
         Error = !IsVisible ? null
             : Required && string.IsNullOrWhiteSpace(InputValue) ? "请填写或选择此项。"
             : IsRange && !string.IsNullOrWhiteSpace(InputValue) ? ReminderDailySchedule.WindowInputError(InputValue)
+            : IsTimeList && !string.IsNullOrWhiteSpace(InputValue) && InputValue.Split(',', '，', '、').Any(t =>
+                !TimeOnly.TryParseExact(t.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                ? "请填写 24 小时时刻，例如 02:00；多个时刻用逗号分隔。"
             : null;
         return !HasError;
     }

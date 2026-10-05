@@ -26,8 +26,8 @@ public partial class LifeViewModel : ObservableObject
     [ObservableProperty] bool isSending;
     [ObservableProperty] bool isKnowledgeMode;
     public bool CanChangeKnowledgeMode => !IsSending;
-    public string ChatHint => IsKnowledgeMode ? "输入完整问题，可加项目名、版本或笔记关键词" : "例如：明早九点提醒我开会";
-    public string ChatDescription => IsKnowledgeMode ? "自动读取本地笔记，核对原文后回答；相关片段会发送到已配置的模型。" : "用一句自然语言创建、安排和回顾你的事项";
+    public string ChatHint => IsKnowledgeMode ? "输入完整问题，可加项目名、版本或笔记关键词" : "例如：把睡觉提醒改到凌晨两点，或查看今天的事项";
+    public string ChatDescription => IsKnowledgeMode ? "自动读取本地笔记，核对原文后回答；相关片段会发送到已配置的模型。" : "用一句话新增、修改、删除或查询你的事项";
 
     partial void OnIsKnowledgeModeChanged(bool value)
     {
@@ -71,6 +71,7 @@ public partial class LifeViewModel : ObservableObject
         CancelInteractionCommand.NotifyCanExecuteChanged();
         RetryInteractionCommand.NotifyCanExecuteChanged();
         EditInteractionCommand.NotifyCanExecuteChanged();
+        ReselectInteractionCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanInteract))]
@@ -83,6 +84,8 @@ public partial class LifeViewModel : ObservableObject
     Task RetryInteraction() => ExecuteInteractionAsync("retry", "重试任务");
     [RelayCommand(CanExecute = nameof(CanInteract))]
     Task EditInteraction() => ExecuteInteractionAsync("edit", "修改任务信息");
+    [RelayCommand(CanExecute = nameof(CanInteract))]
+    Task ReselectInteraction() => ExecuteInteractionAsync("select_targets", "重新选择事项");
 
     async Task ExecuteInteractionAsync(string action, string label)
     {

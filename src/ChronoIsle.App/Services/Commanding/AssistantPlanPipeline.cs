@@ -124,6 +124,14 @@ public sealed class AssistantPlanPipeline
         ArgumentException.ThrowIfNullOrWhiteSpace(evidence);
         ArgumentException.ThrowIfNullOrWhiteSpace(segmentRef);
         if (maximum is < 1 or > 20) throw new ArgumentOutOfRangeException(nameof(maximum));
+        return ReadCandidateBindings(evidence, segmentRef, maximum);
+    }
+
+    public IReadOnlyList<AssistantPlanCandidateBindingV2> AllCandidateBindings(string segmentRef) =>
+        ReadCandidateBindings(null, segmentRef, null);
+
+    IReadOnlyList<AssistantPlanCandidateBindingV2> ReadCandidateBindings(string? evidence, string segmentRef, int? maximum)
+    {
         using var connection = connections.OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -131,7 +139,7 @@ public sealed class AssistantPlanPipeline
                    COALESCE(due_local_datetime,remind_local_datetime,start_local_datetime,
                             due_utc_instant,remind_utc_instant,start_utc_instant)
             FROM life_items
-            WHERE deleted_at IS NULL AND status NOT IN ('Completed','Cancelled','Ignored')
+            WHERE deleted_at IS NULL AND is_readonly=0 AND status NOT IN ('Completed','Cancelled','Ignored')
             ORDER BY updated_at DESC
             """;
         using var reader = command.ExecuteReader();
@@ -139,7 +147,7 @@ public sealed class AssistantPlanPipeline
         while (reader.Read())
         {
             var title = reader.GetString(2);
-            if (!evidence.Contains(title, StringComparison.OrdinalIgnoreCase)) continue;
+            if (evidence is not null && !evidence.Contains(title, StringComparison.OrdinalIgnoreCase)) continue;
             if (!Enum.TryParse<AssistantItemKindV1>(reader.GetString(3), true, out var kind)) continue;
             matches.Add((reader.GetString(0), reader.GetInt64(1), title, kind,
                 reader.IsDBNull(4) ? null : reader.GetString(4)));

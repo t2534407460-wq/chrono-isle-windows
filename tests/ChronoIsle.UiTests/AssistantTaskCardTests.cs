@@ -60,7 +60,19 @@ public sealed class AssistantTaskCardTests
                          new("0.dueText", "开始日期", "date", [], "2026-09-21", DependsOn: "0.timeText", DependsValue: "自定义"),
                          new("0.endText", "结束日期", "date", [], "2026-09-25", DependsOn: "0.timeText", DependsValue: "自定义")]),
                     new AssistantInteraction(id, 8, "NeedsConfirmation", "核对执行计划", "站起来活动\n周一至周五 · 09:00–18:00\n每 120 分钟 · 排除 12:00–13:00\n首次：工作满一个间隔\n午休后：继续原节奏",
-                        [], "确认后创建一个重复事项。", Preview: ["09-21 周一 11:00", "09-21 周一 13:00", "09-21 周一 15:00", "09-21 周一 17:00"])
+                        [], "确认后创建一个重复事项。", Preview: ["09-21 周一 11:00", "09-21 周一 13:00", "09-21 周一 15:00", "09-21 周一 17:00"]),
+                    new AssistantInteraction(id, 9, "NeedsConfirmation", "确认修改", "修改：睡觉\n执行日：法定工作日（含调休）\n每天时刻：02:00",
+                        [], "将在原计划上更新规则，未指定的内容保留。确认后生效。", Preview: ["10-08 周四 02:00", "10-09 周五 02:00"]),
+                    new AssistantInteraction(id, 10, "NeedsConfirmation", "确认删除", "删除：睡觉", [], "确认后删除所选的睡觉计划。"),
+                    new AssistantInteraction(id, 11, "NeedsInput", "选择事项", "将所选事项的休息日时间改为 02:00，其余保持原规则",
+                        [new("0.candidate", "勾选要操作的事项", "multichoice",
+                            Enumerable.Range(1, 25).Select(i => new AssistantInputOption($"睡觉计划 {i} · 周期提醒 · 每天 00:00 · 保留工作日原时间", $"c{i}")).ToArray(),
+                            Help: "已列出全部可操作事项。一次最多 3 项；确认前不会更改。")]),
+                    new AssistantInteraction(id, 12, "NeedsInput", "补充日期范围", "修改：睡觉 · 原来每天 00:00",
+                        [new("0.schedule.override0days", "哪些日期使用 02:00？", "choice", AssistantScenarioPlanner.OverrideDayOptions),
+                            new("0.schedule.override0times", "新的时刻", "time_list", [], "02:00")], "其他日期保持原规则。"),
+                    new AssistantInteraction(id, 13, "NeedsConfirmation", "确认修改", "当前事项：睡觉 · 每天 00:00\n本次操作：\n法定休息日（含周末，考虑调休）：02:00\n其余执行日保持：00:00", [],
+                        "确认后更新同一个事项。", Preview: ["10-05 周一 02:00", "10-08 周四 00:00", "10-10 周六（调休上班）00:00"])
                 };
                 var output = Environment.GetEnvironmentVariable("CHRONOISLE_ASSISTANT_QA_DIR");
                 using var themeService = new ThemeService(new LifePreferencesService());
@@ -128,6 +140,16 @@ public sealed class AssistantTaskCardTests
                     }
                     if (index == 7)
                         Assert.Contains(visible.OfType<TextBlock>(), t => t.Text.Contains("09-21 周一 13:00"));
+                    if (index == 10)
+                    {
+                        var field = Assert.Single(vm.InteractionFields);
+                        var checks = visible.OfType<CheckBox>().ToArray();
+                        Assert.Equal(25, checks.Length);
+                        checks[0].IsChecked = true;
+                        checks[1].IsChecked = true;
+                        Assert.Equal("c1,c2", field.InputValue);
+                        Assert.Contains(Descendants<ScrollViewer>(card), s => s.ScrollableHeight > 0);
+                    }
                     if (string.IsNullOrWhiteSpace(output)) continue;
                     Directory.CreateDirectory(output);
                     var bitmap = new RenderTargetBitmap((int)(width * 1.5), (int)Math.Ceiling(card.ActualHeight * 1.5), 144, 144, PixelFormats.Pbgra32);
@@ -142,6 +164,7 @@ public sealed class AssistantTaskCardTests
                 }
 
                 VerifyContinuePlanningButton(data, Path.Combine(directory, "life.db"), card, output);
+                VerifyItemSelectionButtons(data, card);
                 LayoutRefreshChecks.Verify(themeService, output);
                 KnowledgeUiChecks.Verify(data, themeService, output);
             }
@@ -158,6 +181,52 @@ public sealed class AssistantTaskCardTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(60));
+    }
+
+    static void VerifyItemSelectionButtons(LifeDataService data, AssistantTaskCard card)
+    {
+        var original = data.SaveRecurringReminder("睡觉", null, TimeOnly.MinValue, RecurrenceKind.Daily, []);
+        var session = data.NewSession();
+        var actions = new AssistantActionService(data, new ChinaStatutoryHolidayCalendar(), new ConversationRouter(),
+            new LocalAgendaQueryService(data), new NoModel(), draftInterpreter: new PartialChangeInterpreter());
+        var first = actions.HandleAsync(ProviderSettings.Default, session, [], "将节假日改为凌晨2点睡，工作日保持不变").GetAwaiter().GetResult();
+        var vm = new LifeViewModel(data, actions, new ProviderSettingsService(), null!, new ChronoIsle.App.Services.State.IslandStateCoordinator());
+        vm.SelectedSession = vm.Sessions.Single(s => s.Id == session.Id);
+        card.DataContext = vm;
+        Pump();
+        var checkbox = Descendants<CheckBox>(card).Single(c => c.IsVisible &&
+            System.Windows.Automation.AutomationProperties.GetName(c).StartsWith("睡觉 ·"));
+        ((System.Windows.Automation.Provider.IToggleProvider)new System.Windows.Automation.Peers.CheckBoxAutomationPeer(checkbox)).Toggle();
+        Invoke("SubmitAssistantFields");
+        Assert.Contains(vm.InteractionFields, f => f.Key == "0.schedule.override0days");
+        var options = Descendants<ComboBox>(card).Single(c => c.IsVisible && c.Items.Count == AssistantScenarioPlanner.OverrideDayOptions.Count);
+        options.SelectedValue = "rest";
+        Invoke("SubmitAssistantFields");
+        Assert.Equal("NeedsConfirmation", vm.Interaction?.State);
+        Assert.Contains("其余执行日保持：00:00", vm.Interaction!.Summary);
+        Assert.Null(data.RecurringReminders().Single(r => r.Id == original.Id).Schedule);
+        // Execution/notification delivery is tested in the runtime suite; UI cancellation must remain write-free.
+        var cancel = Descendants<Button>(card).Single(b => b.IsVisible && Equals(b.Content, "取消任务"));
+        ((System.Windows.Automation.Provider.IInvokeProvider)new System.Windows.Automation.Peers.ButtonAutomationPeer(cancel)).Invoke();
+        Pump();
+        Assert.Null(vm.Interaction);
+        Assert.Null(data.RecurringReminders().Single(r => r.Id == original.Id).Schedule);
+
+        void Pump() => System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        void Invoke(string id)
+        {
+            var button = Descendants<Button>(card).Single(b => b.IsVisible && System.Windows.Automation.AutomationProperties.GetAutomationId(b) == id);
+            ((System.Windows.Automation.Provider.IInvokeProvider)new System.Windows.Automation.Peers.ButtonAutomationPeer(button)).Invoke();
+            Pump();
+            Assert.True(vm.SubmitInteractionCommand.ExecutionTask is { IsCompletedSuccessfully: true });
+        }
+    }
+
+    sealed class PartialChangeInterpreter : IAssistantDraftInterpreter
+    {
+        public Task<AssistantUnderstanding> UnderstandAsync(ProviderSettings provider, string input, AssistantDraftTurn turn,
+            IReadOnlyList<ChatMessage> history, CancellationToken cancellationToken) => Task.FromResult(new AssistantUnderstanding(3, "tasks",
+                [new("update_todo", input, Schedule: new(DayOverrides: [new("节假日", "凌晨2点")]))]));
     }
 
     static void VerifyContinuePlanningButton(LifeDataService data, string path, AssistantTaskCard card, string? output)
@@ -178,7 +247,7 @@ public sealed class AssistantTaskCardTests
         vm.SelectedSession = vm.Sessions.Single(s => s.Id == session.Id);
         card.DataContext = vm;
         Pump();
-        var submit = Descendants<Button>(card).Single(b => Equals(b.Content, "继续规划"));
+        var submit = Descendants<Button>(card).Single(b => System.Windows.Automation.AutomationProperties.GetAutomationId(b) == "SubmitAssistantFields");
         Assert.True(submit.IsEnabled);
         var range = Assert.Single(vm.InteractionFields);
         var endInput = Descendants<TextBox>(card).Single(t =>

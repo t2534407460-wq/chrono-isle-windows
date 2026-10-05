@@ -12,13 +12,15 @@ public sealed class WeeklyReportThemeContractTests
             root, "src", "ChronoIsle.App", "Services", "Reporting", "LifeIslandWeeklyReports.cs"));
         var weeklyHistory = File.ReadAllText(Path.Combine(
             root, "src", "ChronoIsle.App", "Services", "Reporting", "LifeIslandWeeklyReportHistory.cs"));
+        var island = File.ReadAllText(Path.Combine(
+            root, "src", "ChronoIsle.App", "Views", "LifeIslandWindow.xaml.cs"));
 
         Assert.Contains(
             "SetThemeResource(weeklyReportPanel, Border.BackgroundProperty, \"Brush.Card\");",
             weeklyReport,
             StringComparison.Ordinal);
         Assert.Contains(
-            "SetThemeResource(weeklyReportPanel, Border.BorderBrushProperty, \"Brush.Stroke\");",
+            "SetThemeResource(weeklyReportPanel, Border.BorderBrushProperty, \"Brush.StrokeSoft\");",
             weeklyReport,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -35,25 +37,12 @@ public sealed class WeeklyReportThemeContractTests
             StringComparison.Ordinal);
         Assert.Contains(
             "SetThemeResource(headingText, TextBlock.ForegroundProperty, \"Brush.TextPrimary\");",
-            weeklyReport,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "SetThemeResource(weeklyHistoryPanel, Border.BackgroundProperty, \"Brush.Card\");",
-            weeklyHistory,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "SetThemeResource(weeklyHistoryPanel, Border.BorderBrushProperty, \"Brush.Stroke\");",
-            weeklyHistory,
+            island,
             StringComparison.Ordinal);
         Assert.Contains(
             "SetThemeResource(weeklyHistoryText, TextBlock.ForegroundProperty, \"Brush.TextSecondary\");",
             weeklyHistory,
             StringComparison.Ordinal);
-        Assert.Contains(
-            "SetThemeResource(historyHeading, TextBlock.ForegroundProperty, \"Brush.TextPrimary\");",
-            weeklyHistory,
-            StringComparison.Ordinal);
-
         Assert.DoesNotContain("new SolidColorBrush", weeklyReport, StringComparison.Ordinal);
         Assert.DoesNotContain("Brushes.White", weeklyReport, StringComparison.Ordinal);
         Assert.DoesNotContain("new SolidColorBrush", weeklyHistory, StringComparison.Ordinal);

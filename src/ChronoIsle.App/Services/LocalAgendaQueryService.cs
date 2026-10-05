@@ -4,9 +4,10 @@ namespace ChronoIsle.App.Services;
 
 public sealed class LocalAgendaQueryService(LifeDataService data)
 {
-    public LocalAgendaQueryResult Query(LocalAgendaQuery query)
+    public LocalAgendaQueryResult Query(LocalAgendaQuery query, string? title = null)
     {
         var items = data.AgendaForRange(query.StartsAt, query.EndsAt);
+        if (!string.IsNullOrWhiteSpace(title)) items = items.Where(item => item.Title.Contains(title, StringComparison.OrdinalIgnoreCase)).ToArray();
         return new(query, items, Format(query, items));
     }
 

@@ -25,7 +25,10 @@ public sealed record AssistantTaskDraft(
 public sealed record AssistantScheduleDraft(
     string? IntervalText = null, string? WindowText = null, string? ExclusionText = null,
     string? DaysText = null, string? TimesText = null, string? StartText = null, string? UntilText = null,
-    string? FirstTrigger = null, string? Rhythm = null, string? WeekdaysText = null);
+    string? FirstTrigger = null, string? Rhythm = null, string? WeekdaysText = null,
+    IReadOnlyList<AssistantDayOverrideDraft>? DayOverrides = null, bool ReplaceDayOverrides = false);
+
+public sealed record AssistantDayOverrideDraft(string? DaysText = null, string? TimesText = null);
 
 public sealed record AssistantUnderstanding(int Version, string Kind,
     IReadOnlyList<AssistantTaskDraft> Tasks, string? Reply = null);
@@ -41,12 +44,14 @@ public sealed record AssistantInputField(string Key, string Label, string Kind,
 
 public sealed record AssistantInteraction(string RequestId, int Revision, string State,
     string Title, string Summary, IReadOnlyList<AssistantInputField> Fields,
-    string Explanation = "", IReadOnlyList<string>? Facts = null, IReadOnlyList<string>? Preview = null)
+    string Explanation = "", IReadOnlyList<string>? Facts = null, IReadOnlyList<string>? Preview = null, bool HasTargets = false)
 {
     public bool CanSubmit => Fields.Count > 0 && State == "NeedsInput";
     public bool CanConfirm => State == "NeedsConfirmation";
     public bool CanRetry => State is "Failed" or "Interrupted" or "Prepared";
-    public bool CanEdit => State is "NeedsConfirmation" or "NeedsInput" or "Blocked" || State is "Failed" or "Interrupted" && Summary.Length > 0;
+    public bool CanEdit => State is "NeedsConfirmation" or "Blocked" || State is "Failed" or "Interrupted" && Summary.Length > 0;
+    public string SubmitLabel => Fields.Any(f => f.Key.EndsWith(".candidate")) ? "使用勾选事项" : "预览操作";
+    public bool CanReselect => HasTargets && State == "NeedsInput" && Fields.All(f => !f.Key.EndsWith(".candidate"));
 }
 
 public sealed record AssistantDraftTurn(
@@ -58,7 +63,8 @@ public sealed record AssistantDraftTurn(
     IReadOnlyDictionary<string, AssistantPlanCandidateBindingV2> Candidates,
     string Summary = "", string? ConfirmationId = null, string? Reply = null,
     bool RefreshReminders = false, int InteractionVersion = 1,
-    string Explanation = "", IReadOnlyList<string>? Facts = null, IReadOnlyList<string>? Preview = null);
+    string Explanation = "", IReadOnlyList<string>? Facts = null, IReadOnlyList<string>? Preview = null,
+    bool Editing = false);
 
 public static class AssistantDraftJson
 {

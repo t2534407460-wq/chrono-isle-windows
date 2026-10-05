@@ -40,6 +40,7 @@ public partial class App : System.Windows.Application
         }
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
+        StartupDiagnostic($"startup pid={Environment.ProcessId}; assembly={typeof(App).Assembly.Location}; open-main={e.Args.Contains("--open-main", StringComparer.Ordinal)}");
         base.OnStartup(e);
 
         LegacyDataMigration.Run();
@@ -48,6 +49,12 @@ public partial class App : System.Windows.Application
         collection.AddSingleton<LifeDataService>();
         collection.AddSingleton<ProviderSettingsService>();
         collection.AddSingleton<LifePreferencesService>();
+        collection.AddSingleton<ChronoIsle.App.Services.Sync.CloudAccountClient>();
+        collection.AddSingleton(provider => new ChronoIsle.App.Services.Sync.Day21HabitClient(
+            provider.GetRequiredService<ChronoIsle.App.Services.Sync.CloudAccountClient>(), provider.GetRequiredService<LifeDataService>()));
+        collection.AddSingleton(provider => new ChronoIsle.App.Services.Sync.CloudSyncService(
+            provider.GetRequiredService<ChronoIsle.App.Services.Sync.CloudAccountClient>(),
+            provider.GetRequiredService<LifeDataService>(), provider.GetRequiredService<LifePreferencesService>()));
         collection.AddSingleton<OpenAiChatService>();
         collection.AddSingleton<KnowledgeBaseSettingsService>();
         collection.AddSingleton<ObsidianKnowledgeIndex>();
@@ -146,6 +153,9 @@ public partial class App : System.Windows.Application
         island.OpenRequested += (_, _) => Dispatcher.BeginInvoke(OpenMain);
         island.SettingsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeSettings);
         island.ManageRequested += (_, _) => Dispatcher.BeginInvoke(() => OpenLifeManagement());
+        island.ReportsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeReports);
+        island.Day21Requested += (_, _) => Dispatcher.BeginInvoke(OpenDay21Management);
+        island.RecommendationsRequested += (_, _) => Dispatcher.BeginInvoke(OpenLifeRecommendations);
         island.ItemDetailsRequested += (_, target) => Dispatcher.BeginInvoke(() => OpenLifeManagement(target));
         island.ChatRequested += (_, text) => Dispatcher.BeginInvoke(() =>
         {
@@ -202,6 +212,11 @@ public partial class App : System.Windows.Application
             }
         }
         services.GetRequiredService<ReminderService>().Start();
+        StartupDiagnostic("startup-ready");
+        if (e.Args.Contains("--open-main", StringComparer.Ordinal))
+            Dispatcher.BeginInvoke(OpenMain);
+        if (e.Args.Contains("--open-settings", StringComparer.Ordinal))
+            Dispatcher.BeginInvoke(OpenLifeSettings);
     }
 
     async Task StartToastInboxAsync()
@@ -219,6 +234,7 @@ public partial class App : System.Windows.Application
 
     void OpenMain()
     {
+        StartupDiagnostic("open-main-enter");
         CloseStandalonePage();
         if (openingMain) return;
         openingMain = true;
@@ -233,6 +249,7 @@ public partial class App : System.Windows.Application
             if (main.WindowState == WindowState.Minimized) main.WindowState = WindowState.Normal;
             main.Activate();
             main.Focus();
+            StartupDiagnostic($"main-visible={main.IsVisible}; loaded={main.IsLoaded}; state={main.WindowState}; bounds={main.Left},{main.Top},{main.Width},{main.Height}");
         }
         finally { openingMain = false; }
     }
@@ -241,6 +258,7 @@ public partial class App : System.Windows.Application
     {
         var page = services!.GetRequiredService<LifeSettingsWindow>();
         OpenStandalonePage(page);
+        StartupDiagnostic($"settings-visible={page.IsVisible}; loaded={page.IsLoaded}; state={page.WindowState}; bounds={page.Left},{page.Top},{page.Width},{page.Height}");
     }
 
     public void OpenNaming()
@@ -253,6 +271,27 @@ public partial class App : System.Windows.Application
     {
         var page = services!.GetRequiredService<LifeManagementWindow>();
         if (target is not null) page.OpenItem(target);
+        OpenStandalonePage(page);
+    }
+
+    void OpenLifeReports()
+    {
+        var data = services!.GetRequiredService<LifeDataService>();
+        var runtime = LifeDataStoreRuntimeRegistry.GetOrCreate(data.DatabasePath);
+        OpenStandalonePage(new HistoryReportWindow(new HistoryReportService(runtime.WriteQueue), services!.GetRequiredService<ChronoIsle.App.Services.Sync.Day21HabitClient>()));
+    }
+
+    void OpenDay21Management()
+    {
+        var page = services!.GetRequiredService<LifeManagementWindow>();
+        page.OpenDay21Sources();
+        OpenStandalonePage(page);
+    }
+
+    void OpenLifeRecommendations()
+    {
+        var page = services!.GetRequiredService<LifeManagementWindow>();
+        page.OpenRecommendations();
         OpenStandalonePage(page);
     }
 
@@ -295,6 +334,17 @@ public partial class App : System.Windows.Application
         }
         catch { }
         e.Handled = true;
+    }
+
+    static void StartupDiagnostic(string message)
+    {
+        try
+        {
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ChronoIsle");
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(Path.Combine(directory, "startup-diagnostics.log"), $"{DateTimeOffset.Now:O} | {message}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     protected override void OnExit(ExitEventArgs e)

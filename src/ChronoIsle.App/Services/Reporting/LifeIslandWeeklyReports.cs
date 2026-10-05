@@ -8,6 +8,7 @@ namespace ChronoIsle.App.Views;
 public partial class LifeIslandWindow
 {
     Border? weeklyReportPanel;
+    DockPanel? weeklyReportActions;
     TextBlock? monthlyReportText;
     TextBlock? weeklyReportText;
     TextBlock? nextWeekPlanText;
@@ -21,14 +22,16 @@ public partial class LifeIslandWindow
         weeklyReportText = new TextBlock
         {
             FontSize = 12,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 19
         };
         SetThemeResource(weeklyReportText, TextBlock.ForegroundProperty, "Brush.Success");
         monthlyReportText = new TextBlock
         {
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 5, 0, 0)
+            LineHeight = 19,
+            Margin = new Thickness(12, 0, 0, 0)
         };
         SetThemeResource(monthlyReportText, TextBlock.ForegroundProperty, "Brush.TextSecondary");
         nextWeekPlanText = new TextBlock
@@ -51,35 +54,24 @@ public partial class LifeIslandWindow
         {
             nextWeekPlanVisible = true;
             RenderWeeklyReports();
+            ResizeExpandedToContent();
         };
-        var heading = new DockPanel();
-        DockPanel.SetDock(plan, Dock.Right);
-        heading.Children.Add(plan);
-        var headingText = new TextBlock
-        {
-            Text = "本周复盘",
-            FontWeight = FontWeights.SemiBold,
-            FontSize = 12
-        };
-        SetThemeResource(headingText, TextBlock.ForegroundProperty, "Brush.TextPrimary");
-        heading.Children.Add(headingText);
         var content = new StackPanel();
-        content.Children.Add(heading);
-        content.Children.Add(weeklyReportText);
+        var periods = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
+        periods.Children.Add(weeklyReportText);
+        periods.Children.Add(monthlyReportText);
+        content.Children.Add(periods);
+        weeklyReportActions = new DockPanel { Margin = new Thickness(0, 5, 0, 0) };
+        DockPanel.SetDock(plan, Dock.Right); weeklyReportActions.Children.Add(plan);
+        content.Children.Add(weeklyReportActions);
         content.Children.Add(nextWeekPlanText);
-        content.Children.Add(monthlyReportText);
-        weeklyReportPanel = new Border
-        {
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(14),
-            Margin = new Thickness(12, 0, 12, 8),
-            Visibility = Visibility.Collapsed,
-            Child = content
-        };
+        weeklyReportPanel = DashboardCard("reports", "报表", content,
+            () => ReportsRequested?.Invoke(this, EventArgs.Empty));
+        weeklyReportPanel.Margin = new Thickness(16, 0, 16, 10);
+        weeklyReportPanel.Visibility = todayPanel?.Visibility ?? Visibility.Collapsed;
         SetThemeResource(weeklyReportPanel, Border.BackgroundProperty, "Brush.Card");
-        SetThemeResource(weeklyReportPanel, Border.BorderBrushProperty, "Brush.Stroke");
-        ExpandedContent.Children.Insert(Math.Min(3, ExpandedContent.Children.Count), weeklyReportPanel);
+        SetThemeResource(weeklyReportPanel, Border.BorderBrushProperty, "Brush.StrokeSoft");
+        ExpandedContent.Children.Insert(todayPanel is null ? Math.Min(3, ExpandedContent.Children.Count) : ExpandedContent.Children.IndexOf(todayPanel) + 1, weeklyReportPanel);
         weeklyReportTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         weeklyReportTimer.Tick += (_, _) => RenderWeeklyReports();
         weeklyReportTimer.Start();
@@ -104,9 +96,7 @@ public partial class LifeIslandWindow
             ReportPeriodKind.Weekly,
             new DateTimeOffset(localStart, offset),
             new DateTimeOffset(localStart.AddDays(7), offset)), "facts-v2");
-        var history = reports.ListSnapshots(ReportPeriodKind.Weekly, 3);
-        weeklyReportText.Text = $"完成 {current.Facts.CompletedCount} · 逾期 {current.Facts.OverdueCount} · 高优先级 {current.Facts.HighPriorityCount}" +
-            (history.Count > 1 ? $"\n历史周报 {history.Count - 1} 份可查看" : "");
+        weeklyReportText.Text = $"本周 · 完成 {current.Facts.CompletedCount}\n逾期 {current.Facts.OverdueCount} · 高优先级 {current.Facts.HighPriorityCount}";
 
         var monthStart = new DateTime(now.Year, now.Month, 1);
         var monthOffset = TimeZoneInfo.Local.GetUtcOffset(monthStart);
@@ -114,7 +104,7 @@ public partial class LifeIslandWindow
             ReportPeriodKind.Monthly,
             new DateTimeOffset(monthStart, monthOffset),
             new DateTimeOffset(monthStart.AddMonths(1), monthOffset)), "facts-v2");
-        monthlyReportText.Text = $"本月复盘：完成 {monthly.Facts.CompletedCount} · 逾期 {monthly.Facts.OverdueCount} · 高优先级 {monthly.Facts.HighPriorityCount}";
+        monthlyReportText.Text = $"本月 · 完成 {monthly.Facts.CompletedCount}\n逾期 {monthly.Facts.OverdueCount} · 高优先级 {monthly.Facts.HighPriorityCount}";
 
         nextWeekPlanText.Visibility = nextWeekPlanVisible ? Visibility.Visible : Visibility.Collapsed;
         if (nextWeekPlanVisible)

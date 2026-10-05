@@ -9,9 +9,9 @@ public sealed class LifePreferencesService
 
     public event Action? Changed;
 
-    public LifePreferencesService()
+    public LifePreferencesService(string? directory = null)
     {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ChronoIsle");
+        directory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ChronoIsle");
         Directory.CreateDirectory(directory);
         path = Path.Combine(directory, "life-preferences.json");
     }
@@ -24,7 +24,9 @@ public sealed class LifePreferencesService
 
     public void Save(LifePreferences preferences)
     {
-        File.WriteAllText(path, JsonSerializer.Serialize(preferences));
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(preferences));
+        File.Move(temporary, path, true);
         Changed?.Invoke();
     }
 }

@@ -1092,7 +1092,8 @@ public sealed partial class AssistantActionService
 
     static bool TryParseOfficialSleepSchedule(string input, out OfficialSleepSchedule schedule)
     {
-        if (!input.Contains("睡觉", StringComparison.Ordinal) ||
+        if (Regex.IsMatch(input, "修改|更改|调整|改为|改成|改到|删除|移除|取消|查询|查看|不要|如何|怎么") ||
+            !input.Contains("睡觉", StringComparison.Ordinal) ||
             !input.Contains("工作日", StringComparison.Ordinal) ||
             !input.Contains("节假日", StringComparison.Ordinal) ||
             !TryExtractScheduleTime(input, "工作日", out var officialWorkdayTime) ||

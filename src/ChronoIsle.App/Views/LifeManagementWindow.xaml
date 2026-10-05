@@ -2,6 +2,7 @@
         Style="{StaticResource Window.Display}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:ChronoIsle.App.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="事项工作台" Width="920" Height="700" MinWidth="680" MinHeight="500"
         Background="Transparent" Foreground="{DynamicResource Brush.TextPrimary}"
@@ -40,7 +41,7 @@
             <TextBlock Text="按当前时间和精力筛选可执行事项，或管理全部事项。" Style="{StaticResource Text.Secondary}" Margin="0,4,0,0"/>
             </StackPanel>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,16,0,0"><Button x:Name="NowTab" Content="现在可做" Click="NowTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5" Margin="0,0,8,0"/><Button x:Name="ActiveTab" Content="全部事项" Click="ActiveTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5" Margin="0,0,8,0"/><Button x:Name="ArchiveTab" Content="归档" Click="ArchiveTab_Click" Style="{StaticResource Button.Secondary}" Padding="12,5"/></StackPanel>
-          <WrapPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0">
+          <WrapPanel x:Name="LocalActions" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0">
             <Button Content="下载模板" Click="DownloadTemplate_Click" Style="{StaticResource Button.Secondary}" ToolTip="保存 Markdown 导入模板" Margin="0,0,8,0"/>
             <Button Content="导入" Click="ImportMarkdown_Click" Style="{StaticResource Button.Secondary}" ToolTip="从 Markdown 导入事项" Margin="0,0,8,0"/>
             <Button Content="导出" Click="ExportMarkdown_Click" Style="{StaticResource Button.Secondary}" ToolTip="将当前事项导出为 Markdown" Margin="0,0,8,0"/>
@@ -54,6 +55,7 @@
           </Grid>
         </Border>
         <ScrollViewer x:Name="ItemsScroller" Grid.Row="2" Margin="0,16,0,14" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="Items"/></ScrollViewer>
+        <ScrollViewer x:Name="Day21Scroller" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,16,0,14"><views:Day21HabitPanel x:Name="Day21Sources"/></ScrollViewer>
         <TextBlock x:Name="Result" Grid.Row="3" MinHeight="20" Foreground="{DynamicResource Brush.Success}" TextWrapping="Wrap"/>
       </Grid>
     </Grid>

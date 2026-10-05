@@ -23,6 +23,26 @@ public sealed partial class AssistantActionService
     {
         var turn = draftStore.Active(sessionId);
         if (turn is null) return LegacyInteraction(sessionId);
+        if (turn.InteractionVersion < 3 && turn.State is "NeedsInput" or "Blocked" &&
+            turn.Tasks.Any(t => t.Operation is "update_todo" or "delete_todo" or "complete_todo" or "reschedule_item"))
+        {
+            // Upgrade stuck cards without interpreting text, preparing commands or executing a write.
+            if (turn.State == "Blocked" || turn.Fields.Any(f => f.Key == "request"))
+            {
+                var guided = BlockedDraft(turn, new([], [], turn.Summary, Blocked: turn.Explanation));
+                turn = draftStore.Get(turn.RequestId)!;
+                if (guided.Interaction?.State == "NeedsInput") return guided.Interaction;
+            }
+            if (turn.Fields.Any(f => f.Key.EndsWith(".target") || f.Key.EndsWith(".candidate")) || turn.Bindings.Count == 0)
+            {
+                var candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>();
+                var fields = turn.Tasks.Select((task, i) => (task, i))
+                    .Where(t => t.task.Operation is "update_todo" or "delete_todo" or "complete_todo" or "reschedule_item")
+                    .Select(t => TargetSelection(t.i, turn.Bindings.GetValueOrDefault(t.i)?.ItemId, candidates)).ToArray();
+                turn = SaveDraft(turn with { State = "NeedsInput", Fields = fields, Candidates = candidates,
+                    Explanation = "请先勾选要操作的事项。原请求保留，确认前不会更改。" });
+            }
+        }
         // Upgrade only the questions of unfinished drafts. Opening a chat never executes a plan.
         if (turn.InteractionVersion < 2 && turn.State == "NeedsInput")
         {
@@ -141,7 +161,9 @@ public sealed partial class AssistantActionService
             var source = turn.SourceText == input ? input : turn.SourceText + "\n" + input;
             turn = SaveDraft(turn with { State = "Understanding", Tasks = EnrichDrafts(MergeScheduleCorrections(turn.Tasks, understanding.Tasks), understanding.Tasks.Count == 1 ? input : source),
                 SourceText = source, ConfirmationId = null, Fields = [],
-                Bindings = new Dictionary<int, AssistantPlanCandidateBindingV2>(),
+                Bindings = turn.Bindings.Where(p => p.Key < understanding.Tasks.Count &&
+                    p.Key < turn.Tasks.Count && understanding.Tasks[p.Key].Operation == turn.Tasks[p.Key].Operation &&
+                    understanding.Tasks[p.Key].Target == turn.Tasks[p.Key].Target).ToDictionary(p => p.Key, p => p.Value),
                 Candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>() });
             AssistantAiDiagnosticsV2.Write("draft", "understood", null, turn.Tasks.Count, stopwatch.Elapsed, turn.RequestId);
             return ProcessDraft(session, turn, deadline.Token);
@@ -176,12 +198,7 @@ public sealed partial class AssistantActionService
         cancellationToken.ThrowIfCancellationRequested();
         if (turn.Tasks.All(t => t.Operation is "list_items" or "summarize_period"))
             return QueryDraft(turn);
-        var compiled = AssistantDraftCompiler.Compile(turn);
-        if (compiled.Blocked is not null)
-            return Result(SaveDraft(turn with { State = "Blocked", Fields = [], Summary = compiled.Summary,
-                Explanation = compiled.Blocked, Facts = compiled.Facts, Preview = [], Reply = compiled.Blocked }));
-        var queryReply = QueryContent(turn, out var queryFields);
-        var fields = compiled.Fields.Concat(queryFields).ToList();
+        var fields = new List<AssistantInputField>();
         var bindings = new Dictionary<int, AssistantPlanCandidateBindingV2>(turn.Bindings);
         var candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>();
         for (var i = 0; i < turn.Tasks.Count; i++)
@@ -190,22 +207,54 @@ public sealed partial class AssistantActionService
             if (task.Operation is not ("update_todo" or "complete_todo" or "delete_todo" or "reschedule_item") || bindings.ContainsKey(i)) continue;
             var matches = string.IsNullOrWhiteSpace(task.Target) ? [] : planPipeline.FindCandidateBindings(task.Target, $"s{i}");
             if (matches.Count == 1) bindings[i] = matches[0];
-            else if (matches.Count == 0)
-                fields.Add(new($"{i}.target", "要操作哪个事项？请输入完整名称", "text", [], task.Target));
             else
             {
-                foreach (var candidate in matches) candidates[candidate.CandidateRef] = candidate;
-                fields.Add(new($"{i}.candidate", "找到同名事项，请选择目标", "choice",
-                    matches.Select(c => new AssistantInputOption($"{c.Title} · {KindLabel(c.Kind)} · {c.TimeText ?? "未设时间"}", c.CandidateRef)).ToArray()));
+                var selection = TargetSelection(i, null, candidates);
+                if (selection.Options.Count == 0)
+                    return Result(SaveDraft(turn with { State = "Blocked", Fields = [],
+                        Summary = task.Evidence, Explanation = "当前没有可操作的事项。请在事项工作台查看归档或已完成内容，或取消本次操作。",
+                        Reply = "没有可供修改或删除的事项，尚未执行任何操作。" }));
+                fields.Add(selection);
             }
         }
-        turn = turn with { Fields = fields, Summary = string.IsNullOrWhiteSpace(queryReply) ? compiled.Summary : queryReply + "\n\n待执行：\n" + compiled.Summary, Bindings = bindings, Candidates = candidates, Facts = compiled.Facts, Preview = compiled.Preview,
-            Explanation = turn.Tasks.Any(t => t.Schedule is not null) ? PlanningExplanation : "已保留你提供的信息，只补充影响执行的条件。" };
+        // Resolve the existing item before planning changes or asking for schedule fields.
+        turn = turn with { Bindings = bindings, Candidates = candidates };
+        if (fields.Count > 0)
+            return Result(SaveDraft(turn with { State = "NeedsInput", Fields = fields,
+                Summary = string.Join("\n", turn.Tasks.Select(t => t.Evidence)),
+                Reply = "请先确定要操作的已有事项；当前没有执行任何修改。" }));
+        var recurring = data.RecurringReminders();
+        var planning = turn with { Tasks = turn.Tasks.Select((task, i) =>
+            task.Operation is "update_todo" or "reschedule_item" && bindings.TryGetValue(i, out var binding) &&
+            recurring.FirstOrDefault(r => r.Id == binding.ItemId) is { } existing
+                ? AssistantScenarioPlanner.MergeExisting(task, existing, turn) : task).ToArray() };
+        if (turn.Tasks.Select((task, i) => (task, i)).Any(t =>
+            t.task.Operation is "update_todo" or "reschedule_item" && (t.task.Schedule is not null || t.task.RepeatText is not null) &&
+            !recurring.Any(r => r.Id == bindings[t.i].ItemId)))
+            return Result(SaveDraft(turn with { State = "Blocked", Fields = [],
+                Reply = "目标不是周期提醒，不能直接修改重复规则。请明确要修改的计划。",
+                Explanation = "目标不是周期提醒，不能直接修改重复规则。" }));
+        var compiled = AssistantDraftCompiler.Compile(planning);
+        if (compiled.Blocked is not null)
+            return BlockedDraft(turn, compiled);
+        var queryReply = QueryContent(turn, out var queryFields);
+        fields.AddRange(compiled.Fields.Concat(queryFields));
+        var managed = bindings.Count == 0 ? [] : data.ManagedItems();
+        var before = bindings.Count == 0 ? "" : "当前事项：\n" + string.Join("\n", bindings.OrderBy(p => p.Key).Select(p =>
+        {
+            var item = managed.FirstOrDefault(item => item.Id == p.Value.ItemId);
+            return $"- {p.Value.Title} · " + (item?.RecurrenceLabel is { } rule ? rule + " · " : "") +
+                (item?.ScheduledAt?.ToString("yyyy-MM-dd HH:mm") ?? p.Value.TimeText ?? "未设时间");
+        })) + "\n\n本次操作：\n";
+        turn = turn with { Fields = fields, Summary = before + (string.IsNullOrWhiteSpace(queryReply) ? compiled.Summary : queryReply + "\n\n待执行：\n" + compiled.Summary), Bindings = bindings, Candidates = candidates, Facts = compiled.Facts, Preview = compiled.Preview,
+            Explanation = turn.Tasks.Any(t => t.Schedule is not null && t.Operation is "update_todo" or "reschedule_item")
+                ? "将在原计划上更新规则，未指定的内容保留。确认后生效。"
+                : turn.Tasks.Any(t => t.Schedule is not null && t.Operation.StartsWith("create_")) ? PlanningExplanation : "已保留你提供的信息，只补充影响执行的条件。" };
         if (fields.Count > 0)
         {
             turn = SaveDraft(turn with { State = "NeedsInput", Reply = fields.FirstOrDefault(f => f.Error is not null) is { } invalid
                 ? $"请调整“{invalid.Label}”：{invalid.Error} 已填写的信息已保留。"
-                : "我已整理出已知条件。请完成下方选项，接下来会生成具体执行计划。" });
+                : "请补充下方信息，随后核对要执行的操作。" });
             return Result(turn);
         }
         if (compiled.Commands.Any(c => c.Command == AssistantCommandName.DecomposeGoal))
@@ -235,7 +284,7 @@ public sealed partial class AssistantActionService
             return CompleteDraft(turn, planPipeline.ConfirmPlan(plan.ConfirmationId!, cancellationToken));
         }
         turn = SaveDraft(turn with { State = "NeedsConfirmation",
-            Reply = "请核对下方计划。确认后整体执行；你也可以修改信息或取消。" });
+            Reply = "请核对下方操作。确认后执行；你也可以修改信息或取消。" });
         return Result(turn);
     }
 
@@ -277,10 +326,22 @@ public sealed partial class AssistantActionService
         }
         if (action == "confirm" && turn.State == "NeedsConfirmation" && turn.ConfirmationId is not null)
             return CompleteDraft(turn, planPipeline.ConfirmPlan(turn.ConfirmationId, cancellationToken));
+        if (action == "select_targets" && turn.State == "NeedsInput" && turn.Bindings.Count > 0)
+        {
+            var candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>();
+            var fields = turn.Bindings.OrderBy(p => p.Key).Select(p => TargetSelection(p.Key, p.Value.ItemId, candidates)).ToArray();
+            return Result(SaveDraft(turn with { Fields = fields, Candidates = candidates,
+                Reply = "请重新勾选目标。已提交的修改要求保留，随后按新目标重新预览。" }));
+        }
         if (action == "edit" && turn.State == "Blocked")
+        {
+            var guided = BlockedDraft(turn, new([], [], turn.Summary, Blocked: turn.Explanation));
+            if (guided.Interaction?.State == "NeedsInput") return guided;
+            turn = draftStore.Get(turn.RequestId)!;
             return Result(SaveDraft(turn with { State = "NeedsInput",
                 Fields = [new("request", "调整需求", "text", [], turn.SourceText.Split("\n用户在卡片中补充：")[0],
                     turn.Explanation)], Reply = "修改需求后会重新规划；当前没有执行任何操作。" }));
+        }
         if (action == "edit" && turn.Tasks.Count > 0)
         {
             if (turn.ConfirmationId is not null)
@@ -288,9 +349,18 @@ public sealed partial class AssistantActionService
                 if (planPipeline.ReadPlanResult(turn.ConfirmationId) is { Succeeded: true } receipt) return CompleteDraft(turn, receipt);
                 planPipeline.CancelPlan(turn.ConfirmationId);
             }
-            var edit = AssistantDraftCompiler.Compile(turn, edit: true);
-            if (edit.Fields.Count == 0) return Result(turn, "此任务没有可直接编辑的字段，可取消后重新描述。");
-            return Result(SaveDraft(turn with { State = "NeedsInput", Fields = edit.Fields, ConfirmationId = null,
+            var recurring = data.RecurringReminders();
+            var planning = turn with { Tasks = turn.Tasks.Select((task, i) =>
+                task.Operation is "update_todo" or "reschedule_item" && turn.Bindings.TryGetValue(i, out var binding) &&
+                recurring.FirstOrDefault(r => r.Id == binding.ItemId) is { } existing
+                    ? AssistantScenarioPlanner.MergeExisting(task, existing, turn) : task).ToArray() };
+            var edit = AssistantDraftCompiler.Compile(planning, edit: true);
+            var candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>();
+            var selections = turn.Tasks.Select((task, i) => (task, i))
+                .Where(t => t.task.Operation is "update_todo" or "reschedule_item" or "delete_todo" or "complete_todo")
+                .Select(t => TargetSelection(t.i, turn.Bindings.GetValueOrDefault(t.i)?.ItemId, candidates)).ToArray();
+            if (edit.Fields.Count == 0 && selections.Length == 0) return Result(turn, "此任务没有可直接编辑的字段，可取消后重新描述。");
+            return Result(SaveDraft(turn with { State = "NeedsInput", Fields = selections.Concat(edit.Fields).ToArray(), Candidates = candidates, ConfirmationId = null, Editing = true,
                 Reply = "修改后将重新校验，并生成新的确认卡。" }));
         }
         if (action == "retry" && turn.State is "Failed" or "Interrupted" or "Understanding" or "Prepared")
@@ -304,11 +374,30 @@ public sealed partial class AssistantActionService
         {
             if (!values.TryGetValue("request", out var revised) || string.IsNullOrWhiteSpace(revised) || revised.Length > 2000)
                 return Result(turn, "请填写调整后的需求。");
-            turn = SaveDraft(turn with { Tasks = [], SourceText = revised, Fields = [], ConfirmationId = null });
+            if (revised.Trim() == turn.Fields[0].Value?.Trim())
+                return Result(turn, "需求尚未改变，相同内容不会再次规划。请调整不支持的条件，或取消任务。");
+            turn = SaveDraft(turn with { SourceText = revised, Fields = [], ConfirmationId = null });
             return await UnderstandDraftAsync(provider, session, turn, [], revised, null, cancellationToken);
+        }
+        if (turn.Fields.Any(f => f.Key == "correction.scope"))
+        {
+            var selection = turn.Fields.Single(f => f.Key.EndsWith(".candidate"));
+            if (!values.TryGetValue(selection.Key, out var selectedItems) || string.IsNullOrWhiteSpace(selectedItems) ||
+                selectedItems.Split(',').Any(key => selection.Options.All(o => o.Value != key)))
+                return Result(turn, "请勾选要操作的事项。");
+            if (!values.TryGetValue("correction.scope", out var scope) || scope is not ("partial" or "all") ||
+                !values.TryGetValue("correction.times", out var times) || string.IsNullOrWhiteSpace(times) || times.Length > 2000 ||
+                scope == "partial" && (!values.TryGetValue("correction.days", out var days) ||
+                    AssistantScenarioPlanner.OverrideDayOptions.All(o => o.Value != days)))
+                return Result(turn, "请选择修改范围，并填写新的提醒时刻。");
+            var patch = turn.Tasks[0] with { Schedule = scope == "partial"
+                ? new(DayOverrides: [new(values["correction.days"], times)]) : new(TimesText: times, DayOverrides: []),
+                TimeText = null, RepeatText = null, ReminderText = null, UnhandledConstraints = [] };
+            turn = turn with { Tasks = [patch], Fields = turn.Fields.Where(f => f.Key.EndsWith(".candidate")).ToArray() };
         }
         var tasks = turn.Tasks.ToArray();
         var bindings = new Dictionary<int, AssistantPlanCandidateBindingV2>(turn.Bindings);
+        var additional = new List<(int Index, AssistantPlanCandidateBindingV2 Binding)>();
         foreach (var field in turn.Fields)
         {
             if (field.DependsOn is { } dependency &&
@@ -323,17 +412,44 @@ public sealed partial class AssistantActionService
             var index = int.Parse(parts[0]);
             if (parts[1] == "candidate")
             {
-                if (!turn.Candidates.TryGetValue(value, out var candidate)) return Result(turn, "目标选项已过期，请重新选择。");
+                var selectedKeys = value.Split(',').Distinct().ToArray();
+                if (selectedKeys.Any(key => !turn.Candidates.ContainsKey(key))) return Result(turn, "目标选项已过期，请重新选择。");
+                var candidate = turn.Candidates[selectedKeys[0]];
                 bindings[index] = candidate;
+                tasks[index] = tasks[index] with { Target = candidate.Title };
+                foreach (var key in selectedKeys.Skip(1)) additional.Add((index, turn.Candidates[key]));
             }
             else
             {
+                // Values shown from the old item are context, not requests to overwrite a newly selected item.
+                if (turn.Editing && value == (field.Value?.Trim() ?? "")) continue;
                 tasks[index] = parts[1] == "schedule" ? AssistantScenarioPlanner.Set(tasks[index], parts[2], value)
                     : AssistantDraftCompiler.SetField(tasks[index], parts[1], value);
                 if (parts[1] == "target") bindings.Remove(index);
             }
         }
-        turn = SaveDraft(turn with { Tasks = tasks, Bindings = bindings, State = "Understanding", Fields = [],
+        if (turn.Editing)
+            for (var i = 0; i < tasks.Length; i++)
+            {
+                var ruleFields = turn.Fields.Where(f => f.Key.StartsWith($"{i}.schedule.override")).ToArray();
+                if (!ruleFields.Any(f => values.TryGetValue(f.Key, out var raw) && raw.Trim() != (f.Value?.Trim() ?? ""))) continue;
+                var rules = ruleFields.Where(f => f.Key.EndsWith("days")).Select(f => new AssistantDayOverrideDraft(
+                    values.GetValueOrDefault(f.Key) ?? f.Value,
+                    values.GetValueOrDefault(f.Key[..^4] + "times") ?? ruleFields.First(t => t.Key == f.Key[..^4] + "times").Value)).ToArray();
+                tasks[i] = tasks[i] with { Schedule = (tasks[i].Schedule ?? new()) with { DayOverrides = rules, ReplaceDayOverrides = true } };
+            }
+        if (tasks.Count(t => t.Operation is not ("list_items" or "summarize_period")) + additional.Count > 3)
+            return SelectionError(turn, values, "一次最多操作 3 个事项，请减少勾选；当前没有执行任何操作。");
+        var expanded = tasks.ToList();
+        foreach (var extra in additional)
+        {
+            bindings[expanded.Count] = extra.Binding;
+            // Use the edited patch for every selected item; existing rules are merged separately per target.
+            expanded.Add(tasks[extra.Index] with { Target = extra.Binding.Title });
+        }
+        if (bindings.Values.Select(b => b.ItemId).Distinct().Count() != bindings.Count)
+            return SelectionError(turn, values, "同一事项只能选择一次，请取消重复勾选。");
+        turn = SaveDraft(turn with { Tasks = expanded, Bindings = bindings, State = "Understanding", Fields = [], Editing = false,
             SourceText = turn.SourceText + "\n用户在卡片中补充：" + string.Join("；", values.Select(p => $"{p.Key}={p.Value}")) });
         try { return ProcessDraft(session, turn, cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -347,6 +463,44 @@ public sealed partial class AssistantActionService
             if (turn.ConfirmationId is not null) return RecoverPrepared(turn);
             return Result(SaveDraft(turn with { State = "Failed", Reply = "补充信息未通过校验，请修改后继续。" }));
         }
+    }
+
+    AssistantInputField TargetSelection(int index, string? selectedId,
+        IDictionary<string, AssistantPlanCandidateBindingV2> candidates)
+    {
+        var all = planPipeline.AllCandidateBindings($"s{index}");
+        var managed = data.ManagedItems().ToDictionary(item => item.Id);
+        foreach (var candidate in all) candidates[candidate.CandidateRef] = candidate;
+        return new($"{index}.candidate", "勾选要操作的事项", "multichoice",
+            all.Select(c => new AssistantInputOption($"{c.Title} · {KindLabel(c.Kind)} · " +
+                (managed.GetValueOrDefault(c.ItemId)?.RecurrenceLabel is { } rule ? rule + " · " : "") +
+                (managed.GetValueOrDefault(c.ItemId)?.ScheduledAt?.ToString("MM-dd HH:mm") ?? c.TimeText ?? "未设时间"), c.CandidateRef)).ToArray(),
+            all.FirstOrDefault(c => c.ItemId == selectedId)?.CandidateRef,
+            "已列出全部可操作事项（不含归档、已完成及只读事项）。一次最多 3 项；确认前不会更改。" );
+    }
+
+    AssistantConversationResult SelectionError(AssistantDraftTurn turn, IReadOnlyDictionary<string, string> values, string message) =>
+        Result(SaveDraft(turn with { Reply = message, Fields = turn.Fields.Select(f => f with
+        { Value = values.TryGetValue(f.Key, out var value) ? value : f.Value, Error = f.Key.EndsWith(".candidate") ? message : f.Error }).ToArray() }));
+
+    AssistantConversationResult BlockedDraft(AssistantDraftTurn turn, AssistantDraftCompilation compiled)
+    {
+        if (turn.Tasks.Count == 1 && turn.Tasks[0].Operation is "update_todo" or "reschedule_item" &&
+            turn.Bindings.TryGetValue(0, out var bound) && data.RecurringReminders().Any(r => r.Id == bound.ItemId &&
+                r.Recurrence != RecurrenceKind.StatutoryHolidays && r.Schedule?.IntervalMinutes is null))
+        {
+            var candidates = new Dictionary<string, AssistantPlanCandidateBindingV2>();
+            return Result(SaveDraft(turn with { State = "NeedsInput", Summary = compiled.Summary, Preview = [],
+                Explanation = compiled.Blocked + "\n可在下方重新指定修改范围和时刻。提交后以表单替代上方未支持的条件，原事项和未修改的字段保留。",
+                Reply = "请勾选事项，再选择修改范围和时刻；无需反复重写同一句话。",
+                Fields = [TargetSelection(0, bound.ItemId, candidates),
+                    new("correction.scope", "修改范围", "choice", [new("仅修改指定日期，其余保持原规则", "partial"), new("全部执行日使用新的时刻（取消分日期时刻）", "all")]),
+                    new("correction.days", "要修改哪类日期？", "choice", AssistantScenarioPlanner.OverrideDayOptions,
+                        DependsOn: "correction.scope", DependsValue: "partial"),
+                    new("correction.times", "新的提醒时刻", "time_list", [], Help: "24 小时制，例如 02:00；多个时刻用逗号分隔。")], Candidates = candidates }));
+        }
+        return Result(SaveDraft(turn with { State = "Blocked", Fields = [], Summary = compiled.Summary,
+            Explanation = compiled.Blocked!, Facts = compiled.Facts, Preview = [], Reply = compiled.Blocked }));
     }
 
     AssistantConversationResult QueryDraft(AssistantDraftTurn turn)
@@ -366,6 +520,18 @@ public sealed partial class AssistantActionService
             var task = turn.Tasks[i];
             if (task.Operation is not ("list_items" or "summarize_period")) continue;
             var range = task.TimeText;
+            if (string.IsNullOrWhiteSpace(range) && !string.IsNullOrWhiteSpace(task.Target) || range is "所有" or "全部")
+            {
+                var items = data.ManagedItems().Where(item => string.IsNullOrWhiteSpace(task.Target) ||
+                    item.Title.Contains(task.Target, StringComparison.OrdinalIgnoreCase)).ToArray();
+                replies.Add(items.Length == 0 ? "未找到匹配的事项。" : string.Join("\n", items.Select(item =>
+                    $"- {item.Title} · {item.Kind switch { "recurring" => "周期提醒", "reminder" => "提醒", "event" => "日程", "long_term" => "长期事项", _ => "待办" }}" +
+                    (item.IsCompleted ? "（已完成）" : "") +
+                    (item.ScheduledAt is { } at ? $" · {at:yyyy-MM-dd HH:mm}" : "") +
+                    (item.RecurrenceLabel is { } rule ? "\n  " + rule : "") +
+                    (string.IsNullOrWhiteSpace(item.Notes) ? "" : "\n  " + item.Notes))));
+                continue;
+            }
             if (task.Evidence.Contains("长期") && string.IsNullOrWhiteSpace(range)) { replies.Add(LongTermQueryText(data.LongTermItems())); continue; }
             var now = turn.ReferenceTime.Date;
             var start = range switch
@@ -379,7 +545,7 @@ public sealed partial class AssistantActionService
                 DateTime.TryParseExact(task.EndText, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var customEnd) &&
                 customEnd >= customStart && (customEnd - customStart).TotalDays <= 366)
             {
-                replies.Add(localQueries.Query(new(customStart, customEnd.AddDays(1), $"{customStart:MM-dd} 至 {customEnd:MM-dd}")).ListText);
+                replies.Add(localQueries.Query(new(customStart, customEnd.AddDays(1), $"{customStart:MM-dd} 至 {customEnd:MM-dd}"), task.Target).ListText);
                 continue;
             }
             if (start is null)
@@ -391,7 +557,7 @@ public sealed partial class AssistantActionService
                 continue;
             }
             var end = range is "本月" or "这个月" ? start.Value.AddMonths(1) : range is "本周" or "这周" or "下周" ? start.Value.AddDays(7) : start.Value.AddDays(1);
-            var query = localQueries.Query(new(start.Value, end, range!));
+            var query = localQueries.Query(new(start.Value, end, range!), task.Target);
             replies.Add(query.ListText);
         }
         return string.Join("\n\n", replies);
@@ -419,7 +585,7 @@ public sealed partial class AssistantActionService
 
     AssistantDraftTurn SaveDraft(AssistantDraftTurn turn)
     {
-        var next = turn with { Revision = turn.Revision + 1, InteractionVersion = 2 };
+        var next = turn with { Revision = turn.Revision + 1, InteractionVersion = 3 };
         draftStore.Save(next, turn.Revision);
         return next;
     }
@@ -432,22 +598,33 @@ public sealed partial class AssistantActionService
 
     static AssistantInteraction? Card(AssistantDraftTurn turn) => turn.State is "Succeeded" or "Cancelled" or "Expired" or "Superseded"
         ? null : new(turn.RequestId, turn.Revision, turn.State,
-            turn.State == "NeedsConfirmation" ? "核对执行计划" : turn.State == "NeedsInput" ? "一起完善计划" : turn.State == "Blocked" ? "需要调整需求" : "任务已保留",
-            turn.Summary, turn.Fields, turn.State == "NeedsConfirmation" && turn.Preview is { Count: > 0 }
+            turn.State == "NeedsConfirmation" ? ConfirmationTitle(turn) : turn.State == "NeedsInput" ? "补充操作信息" : turn.State == "Blocked" ? "需要调整需求" : "任务已保留",
+            turn.Summary, turn.Fields, turn.State == "NeedsConfirmation" && turn.Preview is { Count: > 0 } && turn.Tasks.All(t => t.Operation.StartsWith("create_"))
                 ? "确认后创建完整的重复计划。错过多次时仅补最近一次；休息时段不补发。"
-                : turn.State is "Failed" or "Interrupted" ? turn.Reply ?? turn.Explanation : turn.Explanation, turn.Facts, turn.Preview);
+                : turn.State is "Failed" or "Interrupted" ? turn.Reply ?? turn.Explanation : turn.Explanation, turn.Facts, turn.Preview, turn.Bindings.Count > 0);
+
+    static string ConfirmationTitle(AssistantDraftTurn turn) => turn.Tasks.Count != 1 ? "核对操作" : turn.Tasks[0].Operation switch
+    {
+        "update_todo" or "reschedule_item" => "确认修改", "delete_todo" => "确认删除",
+        "complete_todo" => "确认完成", _ => "确认新增"
+    };
 
     static IReadOnlyList<AssistantTaskDraft> MergeScheduleCorrections(IReadOnlyList<AssistantTaskDraft> previous, IReadOnlyList<AssistantTaskDraft> incoming) =>
         incoming.Select(task =>
         {
-            var matching = previous.Where(old => old.Operation == task.Operation && old.Title == task.Title).ToArray();
+            var matching = previous.Where(old => old.Operation == task.Operation && old.Title == task.Title && old.Target == task.Target).ToArray();
             if (matching.Length != 1 || matching[0].Schedule is not { } old || task.RepeatText == "不重复") return task;
             var next = task.Schedule ?? new AssistantScheduleDraft();
+            var newTimes = next.TimesText ?? (task.Operation is "update_todo" or "reschedule_item" ? task.TimeText ?? task.ReminderText : null);
+            var newInterval = next.IntervalText is not null && newTimes is null;
             return task with { Schedule = new(
-                next.IntervalText ?? old.IntervalText, next.WindowText ?? old.WindowText,
-                next.ExclusionText ?? old.ExclusionText, next.DaysText ?? old.DaysText,
-                next.TimesText ?? old.TimesText, next.StartText ?? old.StartText, next.UntilText ?? old.UntilText,
-                next.FirstTrigger ?? old.FirstTrigger, next.Rhythm ?? old.Rhythm, next.WeekdaysText ?? old.WeekdaysText) };
+                newTimes is not null ? null : next.IntervalText ?? old.IntervalText, newTimes is not null ? null : next.WindowText ?? old.WindowText,
+                next.ExclusionText ?? (newTimes is not null ? "none" : old.ExclusionText),
+                next.DaysText ?? (task.RepeatText != matching[0].RepeatText ? task.RepeatText : null) ?? old.DaysText,
+                newTimes ?? (newInterval ? null : old.TimesText), next.StartText ?? old.StartText, next.UntilText ?? old.UntilText,
+                next.FirstTrigger ?? old.FirstTrigger, next.Rhythm ?? old.Rhythm, next.WeekdaysText ?? old.WeekdaysText,
+                AssistantScenarioPlanner.MergeOverrides(old.DayOverrides, next.DayOverrides),
+                next.ReplaceDayOverrides || old.ReplaceDayOverrides) };
         }).ToArray();
 
     const string PlanningExplanation = "先确定执行日、有效时段与计时方式，再预览实际提醒时刻。确认后创建一个完整的重复计划。";

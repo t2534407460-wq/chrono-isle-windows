@@ -22,6 +22,8 @@ public partial class LifeSettingsWindow : Window
     readonly KnowledgeBaseSettingsService knowledgeSettings;
     readonly AutoStartService autoStart;
     readonly ThemeService theme;
+    readonly CloudAccountClient accountClient;
+    readonly CloudSyncService cloudSync;
     readonly SystemToastInboxService? toastInbox;
     readonly SqliteOnlineBackupService backups;
     readonly IcsExportService icsExport;
@@ -35,13 +37,15 @@ public partial class LifeSettingsWindow : Window
 
     public LifeSettingsWindow(ProviderSettingsService settings, LifePreferencesService preferences, ReminderService reminders,
         OpenAiChatService ai, AutoStartService autoStart, LifeDataService data, AssistantCommandPipeline commandPipeline,
-        ThemeService theme, SystemToastInboxService? toastInbox = null, KnowledgeBaseSettingsService? knowledgeSettings = null)
+        ThemeService theme, CloudAccountClient accountClient, CloudSyncService cloudSync, SystemToastInboxService? toastInbox = null, KnowledgeBaseSettingsService? knowledgeSettings = null)
     {
         InitializeComponent();
         this.settings = settings;
         this.preferences = preferences;
         this.reminders = reminders;
         this.ai = ai;
+        this.accountClient = accountClient;
+        this.cloudSync = cloudSync;
         this.knowledgeSettings = knowledgeSettings ?? new KnowledgeBaseSettingsService();
         try
         {
@@ -75,6 +79,18 @@ public partial class LifeSettingsWindow : Window
         loading = true;
         var savedPreferences = preferences.Load();
         committedPreferences = savedPreferences;
+        LoadPreferenceControls(savedPreferences);
+        AutoStart.IsEnabled = autoStart.IsSupported;
+        AutoStart.IsChecked = autoStart.IsEnabled;
+        AutoStartStatus.Text = autoStart.Status;
+        loading = false;
+        RefreshAuditEntries();
+        RefreshAccountEntry();
+    }
+
+    void LoadPreferenceControls(LifePreferences savedPreferences)
+    {
+        var wasLoading = loading; loading = true;
         WindowsNotifications.IsChecked = savedPreferences.WindowsNotifications;
         ToastInboxEnabled.IsChecked = savedPreferences.ToastInboxEnabled;
         RefreshToastInboxStatus();
@@ -96,11 +112,32 @@ public partial class LifeSettingsWindow : Window
         IslandShowExpandIndicator.IsChecked = savedPreferences.IslandShowExpandIndicator;
         MoveIslandDuringFullscreen.IsChecked = savedPreferences.MoveIslandDuringFullscreen;
         Persona.SelectedValue = Enum.TryParse<AssistantPersona>(savedPreferences.AssistantPersona, out _) ? savedPreferences.AssistantPersona : "Direct";
-        AutoStart.IsEnabled = autoStart.IsSupported;
-        AutoStart.IsChecked = autoStart.IsEnabled;
-        AutoStartStatus.Text = autoStart.Status;
-        loading = false;
-        RefreshAuditEntries();
+        loading = wasLoading;
+    }
+
+    void Account_Click(object sender, RoutedEventArgs e)
+    {
+        new CloudAccountWindow(accountClient, cloudSync, () => EditedPreferences(committedPreferences) != committedPreferences) { Owner = this }.ShowDialog();
+        RefreshAccountEntry();
+        var saved = preferences.Load();
+        if (saved == committedPreferences) return;
+        LoadPreferenceControls(saved);
+        committedPreferences = saved; themePreviewDirty = false;
+    }
+
+    void RefreshAccountEntry()
+    {
+        if (accountClient.Account is not { } account)
+        {
+            AccountAvatar.FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"); AccountAvatar.Text = "\uE77B";
+            AccountName.Text = "登录你的账号"; AccountSummary.Text = "登录 / 注册 · 管理账号与云端同步";
+        }
+        else
+        {
+            AccountAvatar.FontFamily = (System.Windows.Media.FontFamily)FindResource("Font.UI"); AccountAvatar.Text = account.Email[..1].ToUpperInvariant();
+            AccountName.Text = account.Email;
+            AccountSummary.Text = cloudSync.Conflicts.Count > 0 ? "有同步冲突需要处理 · 点击进入账号中心" : cloudSync.LastSuccess is { } at ? $"上次同步 {at.ToLocalTime():MM-dd HH:mm} · 账号中心" : "已登录 · 点击同步数据";
+        }
     }
 
     void Section_Click(object sender, RoutedEventArgs e)
@@ -222,26 +259,9 @@ public partial class LifeSettingsWindow : Window
         }
     }
 
-    async void Save_Click(object sender, RoutedEventArgs e)
+    LifePreferences EditedPreferences(LifePreferences current)
     {
-        try
-        {
-            if (UseRemoteKnowledge.IsChecked == true)
-                knowledgeSettings.SaveRemote(true, KnowledgeRemoteUrl.Text, KnowledgeRemoteKey.Password);
-            else
-            {
-                knowledgeSettings.SavePath(KnowledgeVaultPath.Text);
-                knowledgeSettings.SaveRemote(false, "", "");
-            }
-        }
-        catch (Exception error) when (error is KnowledgeBaseException or System.IO.IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
-        {
-            KnowledgeVaultStatus.Text = error is KnowledgeBaseException ? error.Message : "知识库设置保存失败，请检查目录权限。";
-            return;
-        }
-        settings.Save(Value());
-        var current = preferences.Load();
-        var updated = current with
+        return current with
         {
             WindowsNotifications = WindowsNotifications.IsChecked == true,
             ToastInboxEnabled = ToastInboxEnabled.IsChecked == true,
@@ -264,6 +284,28 @@ public partial class LifeSettingsWindow : Window
             IslandShowExpandIndicator = IslandShowExpandIndicator.IsChecked == true,
             MoveIslandDuringFullscreen = MoveIslandDuringFullscreen.IsChecked == true
         };
+    }
+
+    async void Save_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (UseRemoteKnowledge.IsChecked == true)
+                knowledgeSettings.SaveRemote(true, KnowledgeRemoteUrl.Text, KnowledgeRemoteKey.Password);
+            else
+            {
+                knowledgeSettings.SavePath(KnowledgeVaultPath.Text);
+                knowledgeSettings.SaveRemote(false, "", "");
+            }
+        }
+        catch (Exception error) when (error is KnowledgeBaseException or System.IO.IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        {
+            KnowledgeVaultStatus.Text = error is KnowledgeBaseException ? error.Message : "知识库设置保存失败，请检查目录权限。";
+            return;
+        }
+        settings.Save(Value());
+        var current = preferences.Load();
+        var updated = EditedPreferences(current);
         preferences.Save(updated);
         committedPreferences = updated;
         themePreviewDirty = false;

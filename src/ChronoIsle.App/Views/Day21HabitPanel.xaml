@@ -1,0 +1,18 @@
+<UserControl x:Class="ChronoIsle.App.Views.Day21HabitPanel"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Foreground="{DynamicResource Brush.TextPrimary}" FontFamily="{StaticResource Font.UI}">
+ <StackPanel x:Name="SourceLayout" Margin="14">
+  <Grid x:Name="SourceHeader"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <StackPanel><TextBlock Text="21day 打卡" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="来源：21day · 按来源规则操作，保留独立记录" Foreground="{DynamicResource Brush.TextSecondary}" TextWrapping="Wrap" FontSize="12" Margin="0,5,8,0"/></StackPanel>
+   <Button x:Name="RefreshSource" Grid.Column="1" Content="刷新来源" Click="Refresh_Click" Style="{StaticResource Button.Secondary}" Padding="10,5" MinHeight="32" VerticalAlignment="Top"/>
+  </Grid>
+  <TextBlock x:Name="SourceStatus" Text="登录后刷新来源记录。" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" Margin="0,12,0,0"/>
+  <Button x:Name="OpenAccount" Content="前往设置登录" Click="Account_Click" Style="{StaticResource Button.Secondary}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+  <ProgressBar x:Name="SourceBusy" IsIndeterminate="True" Height="3" Visibility="Collapsed" Margin="0,12,0,0"/>
+  <StackPanel x:Name="RequestIssues" Margin="0,12,0,0"/>
+  <StackPanel x:Name="SourceCards" Margin="0,14,0,0"/>
+  <TextBlock x:Name="SourceMessage" Text="" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,12,0,0" AutomationProperties.LiveSetting="Polite">
+   <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
+  </TextBlock>
+ </StackPanel>
+</UserControl>

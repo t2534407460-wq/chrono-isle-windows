@@ -40,6 +40,8 @@
     <Compile Include="Services\State\*.cs" />
     <Compile Include="Services\Productivity\*.cs" />
     <Compile Include="Services\Reporting\*.cs" />
+    <Compile Include="Views\HistoryReportWindow.xaml.cs" />
+    <Compile Include="Views\CloudAccountWindow.xaml.cs" />
     <Compile Include="Services\Sync\*.cs" />
     <Compile Include="Services\LifeDataService.cs;Services\ProviderSettingsService.cs;Services\OpenAiChatService.cs;Services\AutoStartService.cs;Services\LegacyDataMigration.cs;Services\MediaSessionService.cs;Services\AudioSpectrumService.cs;Services\LyricsService.cs;Services\FullscreenAvoidanceService.cs;Services\SystemTelemetryService.cs;Services\SystemToastInboxService.cs;Services\ThemeService.cs;Services\NetworkSpeedTestService.cs;Services\ForegroundFpsService.cs" />
     <Compile Include="Services\LifePreferencesService.cs;Services\DesktopMusicSessionDetector.cs;Services\AssistantIntentService.cs;Services\AssistantActionService.cs;Services\AssistantDraftRuntime.cs;Services\ReminderService.cs;Services\WindowsNotificationService.cs;Services\RecurringReminderData.cs;Services\SingleReminderData.cs;Services\ConversationRouter.cs;Services\LocalAgendaQueryService.cs;Services\LifeTrayService.cs;Services\ChinaStatutoryHolidayCalendar.cs" />
@@ -49,6 +51,7 @@
     <Compile Include="Services\Scheduling\*.cs" />
     <Compile Include="Services\SchedulingV2\*.cs" />
     <Compile Include="ViewModels\LifeViewModel.cs;ViewModels\AssistantInputViewModel.cs;Views\AssistantTaskCard.xaml.cs" />
+    <Compile Include="Views\Day21HabitPanel.xaml.cs" />
     <Compile Include="Views\LifeMainWindow.xaml.cs;Views\LifeSettingsWindow.xaml.cs;Views\LifeIslandWindow.xaml.cs;Views\IslandNotificationWindow.xaml.cs;Views\LifeManagementWindow.xaml.cs;Views\TrayMenuWindow.xaml.cs;Views\IslandWindowStyles.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -58,6 +61,9 @@
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="Views\LifeMainWindow.xaml;Views\LifeSettingsWindow.xaml;Views\LifeIslandWindow.xaml;Views\IslandNotificationWindow.xaml;Views\LifeManagementWindow.xaml;Views\TrayMenuWindow.xaml" />
     <Page Include="Views\AssistantTaskCard.xaml" />
+    <Page Include="Views\HistoryReportWindow.xaml" />
+    <Page Include="Views\CloudAccountWindow.xaml" />
+    <Page Include="Views\Day21HabitPanel.xaml" />
     <Page Include="Views\MarkdownViewerWindow.xaml" />
     <Page Include="Resources\DesignTokens.xaml" />
     <Page Include="Resources\Controls.xaml" />

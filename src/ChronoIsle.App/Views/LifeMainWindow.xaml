@@ -53,6 +53,7 @@
               <Button Content="今天" Click="Today_Click" Style="{StaticResource NavButton}"/>
               <Button Content="日历" Click="Calendar_Click" Style="{StaticResource NavButton}"/>
               <Button Content="所有事项" Click="Manage_Click" Style="{StaticResource NavButton}"/>
+              <Button Content="历史报表" Click="History_Click" Style="{StaticResource NavButton}"/>
               <Button Content="Markdown 查看器" Click="Markdown_Click" Style="{StaticResource NavButton}"/>
             </StackPanel>
             <TextBlock Grid.Row="2" Text="最近对话" Style="{StaticResource Text.Tertiary}" Margin="12,18,0,6"/>

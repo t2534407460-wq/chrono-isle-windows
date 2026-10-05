@@ -11,6 +11,7 @@ using ChronoIsle.App.Services;
 using ChronoIsle.App.Services.Productivity;
 using ChronoIsle.App.Services.Domain;
 using ChronoIsle.App.Services.ImportExport;
+using ChronoIsle.App.Services.Sync;
 
 namespace ChronoIsle.App.Views;
 
@@ -29,10 +30,12 @@ public partial class LifeManagementWindow : Window
     bool awaitingConfirmation;
     bool showingArchive;
     bool showingRecommendations = true;
+    bool showingDay21;
+    readonly Button day21Tab;
     int recommendationMinutes = 30;
     EnergyLevel recommendationEnergy = EnergyLevel.Medium;
 
-    public LifeManagementWindow(LifeDataService data, ReminderService reminders, FocusService focus, TaskAttributesService taskAttributes, MarkdownItemTransferService markdownTransfer)
+    public LifeManagementWindow(LifeDataService data, ReminderService reminders, FocusService focus, TaskAttributesService taskAttributes, MarkdownItemTransferService markdownTransfer, Day21HabitClient? day21 = null)
     {
         InitializeComponent();
         this.data = data;
@@ -41,6 +44,10 @@ public partial class LifeManagementWindow : Window
         this.markdownTransfer = markdownTransfer;
         Loaded += (_, _) => RefreshItems();
         this.taskAttributes = taskAttributes;
+        day21Tab = new Button { Content = "21day 打卡", Style = (Style)FindResource("Button.Secondary"), Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(8, 0, 0, 0) };
+        day21Tab.Click += (_, _) => OpenDay21Sources();
+        ((StackPanel)NowTab.Parent).Children.Add(day21Tab);
+        if (day21 is not null) Day21Sources.Initialize(day21);
     }
 
     void DownloadTemplate_Click(object sender, RoutedEventArgs e)
@@ -139,13 +146,24 @@ public partial class LifeManagementWindow : Window
     public void OpenItem(ItemNavigationTarget target)
     {
         itemToLocate = target;
+        showingDay21 = false;
         showingArchive = false;
         showingRecommendations = false;
         if (IsLoaded) RefreshItems();
     }
 
+    public void OpenDay21Sources()
+    {
+        itemToLocate = null;
+        showingDay21 = true;
+        showingRecommendations = showingArchive = false;
+        selected.Clear();
+        if (IsLoaded) RefreshItems();
+    }
+
     void RefreshItems()
     {
+        if (showingDay21) { UpdatePageTabs(); return; }
         data.ArchiveCompletedAndOverdue();
         UpdatePageTabs();
         if (showingArchive)
@@ -234,22 +252,28 @@ public partial class LifeManagementWindow : Window
 
     void ActiveTab_Click(object sender, RoutedEventArgs e)
     {
+        showingDay21 = false;
         showingArchive = false;
         showingRecommendations = false;
         selected.Clear();
         RefreshItems();
     }
 
-    void NowTab_Click(object sender, RoutedEventArgs e)
+    void NowTab_Click(object sender, RoutedEventArgs e) => OpenRecommendations();
+
+    public void OpenRecommendations()
     {
+        itemToLocate = null;
+        showingDay21 = false;
         showingArchive = false;
         showingRecommendations = true;
         selected.Clear();
-        RefreshItems();
+        if (IsLoaded) RefreshItems();
     }
 
     void ArchiveTab_Click(object sender, RoutedEventArgs e)
     {
+        showingDay21 = false;
         showingArchive = true;
         showingRecommendations = false;
         selected.Clear();
@@ -266,6 +290,7 @@ public partial class LifeManagementWindow : Window
 
     void UpdateRecommendationContext()
     {
+        showingDay21 = false;
         if (RecommendationMinutes.SelectedItem is ComboBoxItem { Tag: string minutes } && int.TryParse(minutes, out var parsedMinutes))
             recommendationMinutes = parsedMinutes;
         if (RecommendationEnergy.SelectedItem is ComboBoxItem { Tag: string energy } && Enum.TryParse<EnergyLevel>(energy, out var parsedEnergy))
@@ -278,10 +303,14 @@ public partial class LifeManagementWindow : Window
 
     void UpdatePageTabs()
     {
+        SetTabState(day21Tab, showingDay21);
+        Day21Scroller.Visibility = showingDay21 ? Visibility.Visible : Visibility.Collapsed;
+        ItemsScroller.Visibility = showingDay21 ? Visibility.Collapsed : Visibility.Visible;
+        LocalActions.Visibility = showingDay21 ? Visibility.Collapsed : Visibility.Visible;
         SetTabState(NowTab, showingRecommendations && !showingArchive);
-        SetTabState(ActiveTab, !showingArchive && !showingRecommendations);
+        SetTabState(ActiveTab, !showingArchive && !showingRecommendations && !showingDay21);
         SetTabState(ArchiveTab, showingArchive);
-        RecommendationContext.Visibility = showingRecommendations && !showingArchive ? Visibility.Visible : Visibility.Collapsed;
+        RecommendationContext.Visibility = showingRecommendations && !showingArchive && !showingDay21 ? Visibility.Visible : Visibility.Collapsed;
         ArchiveSelected.Visibility = showingArchive ? Visibility.Collapsed : Visibility.Visible;
     }
 

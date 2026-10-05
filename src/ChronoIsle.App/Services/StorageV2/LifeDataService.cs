@@ -17,6 +17,7 @@ public sealed partial class LifeDataService
     internal string DatabasePath { get; }
     public event EventHandler? AgendaChanged;
     public event EventHandler? TodosChanged;
+    internal void NotifyCloudDataChanged() => RaiseAgendaChanged();
 
     public LifeDataService(string? databasePath = null, Func<DateTime>? localNow = null)
     {
@@ -47,6 +48,7 @@ public sealed partial class LifeDataService
             EnsureColumn(unitOfWork.Connection, unitOfWork.Transaction, "life_items", "item_type", "TEXT");
         });
         new ProductivitySchemaInitializer(writeQueue).Initialize();
+        Reporting.HistoryReportService.EnsureCreated(writeQueue);
     }
 
     SqliteConnection Open() => connectionFactory.OpenConnection();

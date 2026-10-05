@@ -68,17 +68,24 @@
         <Button Grid.Column="1" Content="×" Click="Close_Click" Style="{StaticResource DialogTitleButton}" ToolTip="关闭"/>
       </Grid>
       <Grid Grid.Row="1" Margin="24,0,24,22">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <WrapPanel Margin="0,4,0,12">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Button x:Name="AccountButton" Click="Account_Click" ToolTip="账号中心与云端同步" AutomationProperties.AutomationId="SettingsAccountButton" AutomationProperties.Name="登录注册与账号中心" Style="{StaticResource Button.Secondary}" HorizontalContentAlignment="Stretch" Padding="16" Margin="0,6,0,14">
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Border Width="46" Height="46" CornerRadius="23" Background="{DynamicResource Brush.AccentSoft}" Margin="0,0,14,0"><TextBlock x:Name="AccountAvatar" Text="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="21" Foreground="{DynamicResource Brush.Accent}" VerticalAlignment="Center" HorizontalAlignment="Center"/></Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0"><TextBlock x:Name="AccountName" Text="登录你的账号" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="AccountSummary" Text="登录 / 注册 · 管理账号与云端同步" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+            <TextBlock Grid.Column="2" Text="›" FontSize="25" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}"/>
+          </Grid>
+        </Button>
+        <WrapPanel Grid.Row="1" Margin="0,4,0,12">
           <Button Content="模型与知识库" Tag="ModelSection" Click="Section_Click" Style="{StaticResource Button.Ghost}" Margin="0,0,6,4"/>
           <Button Content="通知与启动" Tag="NotificationSection" Click="Section_Click" Style="{StaticResource Button.Ghost}" Margin="0,0,6,4"/>
           <Button Content="外观与灵动岛" Tag="AppearanceSection" Click="Section_Click" Style="{StaticResource Button.Ghost}" Margin="0,0,6,4"/>
           <Button Content="数据与隐私" Tag="DataSection" Click="Section_Click" Style="{StaticResource Button.Ghost}" Margin="0,0,0,4"/>
         </WrapPanel>
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,14" Padding="0,0,10,0">
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,14" Padding="0,0,10,0">
           <StackPanel>
             <TextBlock Text="设置" Style="{StaticResource Text.PageTitle}"/>
-            <TextBlock Text="管理本地助手、提醒和数据。所有设置仅保存在此设备。" Style="{StaticResource Text.Secondary}" Margin="0,6,0,20"/>
+            <TextBlock Text="管理助手、提醒和外观；保存设置后可在账号中心同步。" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,6,0,20"/>
             <Border x:Name="ModelSection" Style="{StaticResource Card.Standard}" Padding="18" Margin="0,0,0,14"><StackPanel>
               <TextBlock Text="AI 模型" Style="{StaticResource Text.SectionTitle}"/><TextBlock Text="DeepSeek 为默认预设，也兼容 OpenAI 格式服务。" Style="{StaticResource Text.Secondary}" Margin="0,5,0,16"/>
               <TextBlock Text="Base URL" Style="{StaticResource Text.Secondary}"/><TextBox x:Name="Url" Margin="0,5,0,12"/>
@@ -276,7 +283,7 @@
             </StackPanel></Border>
           </StackPanel>
         </ScrollViewer>
-        <Border Grid.Row="2" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="0,1,0,0" Padding="0,14,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.Stroke}" BorderThickness="0,1,0,0" Padding="0,14,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button x:Name="CancelButton" Content="取消" Click="Cancel_Click" MinWidth="88" Margin="0,0,8,0"/>
           <Button x:Name="SaveButton" Content="保存" Click="Save_Click" MinWidth="88" Style="{StaticResource Button.Primary}"/>
         </StackPanel></Border>
